@@ -1,0 +1,23 @@
+{
+  "format": "cad2d-ir",
+  "version": "0.1.0",
+  "header": {
+    "units": "mm",
+    "angle_unit": "deg",
+    "coord_space": "world"
+  },
+  "entities": [
+    {
+      "id": "E1",
+      "kind": "LINE",
+      "p1": [0, 0],
+      "p2": [50, 0]
+    },
+    {
+      "id": "E2",
+      "kind": "CIRCLE",
+      "center": [25, 25],
+      "radius": 10
+    }
+  ]
+}

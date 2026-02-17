@@ -1,0 +1,49 @@
+[project]
+name = "cad2d-ir"
+version = "0.1.0"
+description = "Intermediate representation (IR) for 2D CAD and DXF converters"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "neka-nat", email = "nekanat.stock@gmail.com" }
+]
+requires-python = ">=3.10"
+keywords = ["cad", "dxf", "geometry", "2d", "intermediate-representation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    "jsonschema>=4.23.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/neka-nat/cad2d-ir"
+Repository = "https://github.com/neka-nat/cad2d-ir"
+Documentation = "https://github.com/neka-nat/cad2d-ir/tree/main/docs"
+Issues = "https://github.com/neka-nat/cad2d-ir/issues"
+
+[project.scripts]
+cad2d-ir = "cad2d_ir.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.8.15,<0.9.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.1",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,32 @@
+{
+  "format": "cad2d-ir",
+  "version": "0.1.0",
+  "header": {
+    "units": "mm",
+    "angle_unit": "deg",
+    "coord_space": "world"
+  },
+  "entities": [
+    {
+      "id": "E1",
+      "kind": "LINE",
+      "p1": [0, 0],
+      "p2": [20, 0]
+    },
+    {
+      "id": "E2",
+      "kind": "LINE",
+      "p1": [0, 5],
+      "p2": [20, 5]
+    }
+  ],
+  "constraints": [
+    {
+      "kind": "HORIZONTAL",
+      "refs": [
+        { "entity": "E1", "feature": "p1->p2" },
+        { "entity": "E2", "feature": "p1->p2" }
+      ]
+    }
+  ]
+}

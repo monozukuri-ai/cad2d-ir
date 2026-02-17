@@ -1,0 +1,571 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/cad-ir.schema.json",
+  "title": "CAD-IR (Intermediate Representation for CAD Drawings)",
+  "type": "object",
+  "required": ["format", "version", "header", "entities"],
+  "additionalProperties": false,
+
+  "properties": {
+    "format": { "const": "cad2d-ir" },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+
+    "header": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "angle_unit", "coord_space"],
+      "properties": {
+        "units": {
+          "description": "Drawing units. If 'custom', interpret 'unit_scale_to_mm'.",
+          "type": "string",
+          "enum": ["mm", "cm", "m", "inch", "ft", "custom"]
+        },
+        "unit_scale_to_mm": {
+          "description": "Only used when units=custom. drawing_unit * unit_scale_to_mm = millimeter.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "angle_unit": { "type": "string", "enum": ["deg", "rad"] },
+
+        "coord_space": {
+          "description": "Coordinate space for entity geometry. 'world' is CAD-like. 'normalized' is [0,1] relative to source image.",
+          "type": "string",
+          "enum": ["world", "normalized"]
+        },
+
+        "bbox": {
+          "description": "Optional drawing bounds in the same coord_space.",
+          "$ref": "#/$defs/BBox2"
+        },
+
+        "precision": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "coord_decimals": { "type": "integer", "minimum": 0, "maximum": 8 },
+            "angle_decimals": { "type": "integer", "minimum": 0, "maximum": 8 },
+            "snap_tolerance": {
+              "description": "Suggested tolerance in drawing units for snapping/merging in post-processing.",
+              "type": "number",
+              "minimum": 0
+            }
+          }
+        },
+
+        "source_image": {
+          "description": "Optional info about the raster source and mapping to drawing space.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "image_id": { "type": "string" },
+            "width_px": { "type": "integer", "minimum": 1 },
+            "height_px": { "type": "integer", "minimum": 1 },
+
+            "pixel_to_drawing_affine": {
+              "description": "2D affine: [a,b,c,d,e,f] meaning x=a*xp+b*yp+c, y=d*xp+e*yp+f. Useful when coord_space=world and you estimated calibration.",
+              "$ref": "#/$defs/Affine2D"
+            },
+
+            "dpi": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        },
+
+        "metadata": { "type": "object" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "units": { "const": "custom" } } },
+          "then": { "required": ["unit_scale_to_mm"] }
+        }
+      ]
+    },
+
+    "tables": {
+      "description": "Optional dictionaries/tables similar to DXF tables.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "layers": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/LayerDef" },
+          "default": {}
+        },
+        "linetypes": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/LinetypeDef" },
+          "default": {}
+        },
+        "text_styles": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/TextStyleDef" },
+          "default": {}
+        },
+        "dim_styles": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/DimStyleDef" },
+          "default": {}
+        },
+        "blocks": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/BlockDef" },
+          "default": {}
+        }
+      }
+    },
+
+    "entities": {
+      "type": "array",
+      "minItems": 0,
+      "items": { "$ref": "#/$defs/Entity" }
+    },
+
+    "constraints": {
+      "description": "Optional geometric constraints for post-processing (snapping/orthogonality/parallelism etc.).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/Constraint" }
+    }
+  },
+
+  "$defs": {
+    "Point2": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": [{ "type": "number" }, { "type": "number" }]
+    },
+
+    "BBox2": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min", "max"],
+      "properties": {
+        "min": { "$ref": "#/$defs/Point2" },
+        "max": { "$ref": "#/$defs/Point2" }
+      }
+    },
+
+    "Affine2D": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": [
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" }
+      ]
+    },
+
+    "Color": {
+      "description": "Either ACI index (0..256) or RGBA hex (#RRGGBB or #RRGGBBAA).",
+      "oneOf": [
+        { "type": "integer", "minimum": 0, "maximum": 256 },
+        { "type": "string", "pattern": "^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})$" }
+      ]
+    },
+
+    "EntityCommon": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_\\-:.]{0,63}$" },
+        "kind": { "type": "string" },
+
+        "layer": { "type": "string", "default": "0" },
+        "linetype": { "type": "string" },
+        "color": { "$ref": "#/$defs/Color" },
+        "lineweight_mm": { "type": "number", "minimum": 0 },
+
+        "visible": { "type": "boolean", "default": true },
+        "metadata": { "type": "object" }
+      }
+    },
+
+    "LayerDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "color": { "$ref": "#/$defs/Color" },
+        "linetype": { "type": "string" },
+        "lineweight_mm": { "type": "number", "minimum": 0 },
+        "plot": { "type": "boolean", "default": true }
+      }
+    },
+
+    "LinetypeDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "description": { "type": "string" },
+        "pattern_mm": {
+          "description": "Dash-gap pattern lengths in mm: [dash, gap, dash, gap, ...].",
+          "type": "array",
+          "items": { "type": "number" }
+        }
+      }
+    },
+
+    "TextStyleDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "font": { "type": "string" },
+        "height": { "type": "number", "minimum": 0 },
+        "width_factor": { "type": "number", "exclusiveMinimum": 0 },
+        "oblique_deg": { "type": "number" }
+      }
+    },
+
+    "DimStyleDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "arrow_size": { "type": "number", "minimum": 0 },
+        "text_height": { "type": "number", "minimum": 0 },
+        "extension_offset": { "type": "number", "minimum": 0 },
+        "extension_overhang": { "type": "number", "minimum": 0 },
+        "baseline_spacing": { "type": "number", "minimum": 0 }
+      }
+    },
+
+    "BlockDef": {
+      "description": "Block definition. Entities inside block use the same schema as top-level entities (2D).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_point", "entities"],
+      "properties": {
+        "base_point": { "$ref": "#/$defs/Point2" },
+        "entities": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/Entity" }
+        },
+        "metadata": { "type": "object" }
+      }
+    },
+
+    "Vertex2": {
+      "description": "Polyline vertex as [x,y] or [x,y,bulge]. bulge = tan(theta/4) (DXF compatible).",
+      "oneOf": [
+        {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": [{ "type": "number" }, { "type": "number" }]
+        },
+        {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": [{ "type": "number" }, { "type": "number" }, { "type": "number" }]
+        }
+      ]
+    },
+
+    "EntityLine": {
+      "allOf": [
+        { "$ref": "#/$defs/EntityCommon" },
+        {
+          "type": "object",
+          "required": ["kind", "p1", "p2"],
+          "properties": {
+            "kind": { "const": "LINE" },
+            "p1": { "$ref": "#/$defs/Point2" },
+            "p2": { "$ref": "#/$defs/Point2" }
+          }
+        }
+      ]
+    },
+
+    "EntityCircle": {
+      "allOf": [
+        { "$ref": "#/$defs/EntityCommon" },
+        {
+          "type": "object",
+          "required": ["kind", "center", "radius"],
+          "properties": {
+            "kind": { "const": "CIRCLE" },
+            "center": { "$ref": "#/$defs/Point2" },
+            "radius": { "type": "number", "exclusiveMinimum": 0 }
+          }
+        }
+      ]
+    },
+
+    "EntityArc": {
+      "allOf": [
+        { "$ref": "#/$defs/EntityCommon" },
+        {
+          "type": "object",
+          "required": ["kind", "center", "radius", "start_angle", "end_angle"],
+          "properties": {
+            "kind": { "const": "ARC" },
+            "center": { "$ref": "#/$defs/Point2" },
+            "radius": { "type": "number", "exclusiveMinimum": 0 },
+            "start_angle": { "type": "number" },
+            "end_angle": { "type": "number" },
+            "ccw": {
+              "description": "If omitted, interpret by standard CAD convention (increasing angle is CCW in XY).",
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+
+    "EntityLWPolyline": {
+      "allOf": [
+        { "$ref": "#/$defs/EntityCommon" },
+        {
+          "type": "object",
+          "required": ["kind", "vertices"],
+          "properties": {
+            "kind": { "const": "LWPOLYLINE" },
+            "vertices": {
+              "type": "array",
+              "minItems": 2,
+              "items": { "$ref": "#/$defs/Vertex2" }
+            },
+            "closed": { "type": "boolean", "default": false }
+          }
+        }
+      ]
+    },
+
+    "EntitySpline": {
+      "allOf": [
+        { "$ref": "#/$defs/EntityCommon" },
+        {
+          "type": "object",
+          "required": ["kind", "degree", "control_points"],
+          "properties": {
+            "kind": { "const": "SPLINE" },
+            "degree": { "type": "integer", "minimum": 1, "maximum": 7 },
+            "control_points": {
+              "type": "array",
+              "minItems": 2,
+              "items": { "$ref": "#/$defs/Point2" }
+            },
+            "knots": {
+              "type": "array",
+              "items": { "type": "number" }
+            },
+            "weights": {
+              "type": "array",
+              "items": { "type": "number", "exclusiveMinimum": 0 }
+            },
+            "closed": { "type": "boolean", "default": false }
+          }
+        }
+      ]
+    },
+
+    "TextAlignH": { "type": "string", "enum": ["left", "center", "right"] },
+    "TextAlignV": { "type": "string", "enum": ["baseline", "bottom", "middle", "top"] },
+
+    "EntityText": {
+      "allOf": [
+        { "$ref": "#/$defs/EntityCommon" },
+        {
+          "type": "object",
+          "required": ["kind", "insert", "height", "text"],
+          "properties": {
+            "kind": { "const": "TEXT" },
+            "insert": { "$ref": "#/$defs/Point2" },
+            "height": { "type": "number", "exclusiveMinimum": 0 },
+            "rotation": { "type": "number", "default": 0 },
+            "text": { "type": "string" },
+            "style": { "type": "string" },
+            "halign": { "$ref": "#/$defs/TextAlignH", "default": "left" },
+            "valign": { "$ref": "#/$defs/TextAlignV", "default": "baseline" },
+            "width_factor": { "type": "number", "exclusiveMinimum": 0 },
+            "oblique_deg": { "type": "number" }
+          }
+        }
+      ]
+    },
+
+    "MTextAttach": {
+      "type": "string",
+      "enum": [
+        "top_left", "top_center", "top_right",
+        "middle_left", "middle_center", "middle_right",
+        "bottom_left", "bottom_center", "bottom_right"
+      ]
+    },
+
+    "EntityMText": {
+      "allOf": [
+        { "$ref": "#/$defs/EntityCommon" },
+        {
+          "type": "object",
+          "required": ["kind", "insert", "height", "text"],
+          "properties": {
+            "kind": { "const": "MTEXT" },
+            "insert": { "$ref": "#/$defs/Point2" },
+            "height": { "type": "number", "exclusiveMinimum": 0 },
+            "rotation": { "type": "number", "default": 0 },
+            "width": { "type": "number", "minimum": 0 },
+            "text": { "type": "string" },
+            "style": { "type": "string" },
+            "attach": { "$ref": "#/$defs/MTextAttach", "default": "top_left" }
+          }
+        }
+      ]
+    },
+
+    "EntityInsert": {
+      "allOf": [
+        { "$ref": "#/$defs/EntityCommon" },
+        {
+          "type": "object",
+          "required": ["kind", "block", "insert"],
+          "properties": {
+            "kind": { "const": "INSERT" },
+            "block": { "type": "string" },
+            "insert": { "$ref": "#/$defs/Point2" },
+            "rotation": { "type": "number", "default": 0 },
+            "scale": {
+              "description": "Uniform scale or [sx,sy].",
+              "oneOf": [
+                { "type": "number", "exclusiveMinimum": 0 },
+                {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": [
+                    { "type": "number", "exclusiveMinimum": 0 },
+                    { "type": "number", "exclusiveMinimum": 0 }
+                  ]
+                }
+              ],
+              "default": 1
+            },
+            "attributes": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        }
+      ]
+    },
+
+    "EntityHatch": {
+      "description": "Simplified hatch: each loop is a closed polyline. Convert to DXF HATCH later.",
+      "allOf": [
+        { "$ref": "#/$defs/EntityCommon" },
+        {
+          "type": "object",
+          "required": ["kind", "loops"],
+          "properties": {
+            "kind": { "const": "HATCH" },
+            "solid": { "type": "boolean", "default": true },
+            "pattern": { "type": "string" },
+            "loops": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["vertices"],
+                "properties": {
+                  "vertices": {
+                    "type": "array",
+                    "minItems": 3,
+                    "items": { "$ref": "#/$defs/Vertex2" }
+                  },
+                  "is_outer": { "type": "boolean", "default": true }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+
+    "EntityDimension": {
+      "description": "Semantic dimension (optional). Converting to DXF DIMENSION may require style and placement logic.",
+      "allOf": [
+        { "$ref": "#/$defs/EntityCommon" },
+        {
+          "type": "object",
+          "required": ["kind", "dim_kind", "definition"],
+          "properties": {
+            "kind": { "const": "DIMENSION" },
+            "dim_kind": {
+              "type": "string",
+              "enum": ["LINEAR", "ALIGNED", "ANGULAR", "RADIAL", "DIAMETER", "ORDINATE"]
+            },
+            "style": { "type": "string" },
+            "definition": {
+              "type": "object",
+              "description": "Flexible container. Recommended keys: refs, points, text, location.",
+              "additionalProperties": true
+            }
+          }
+        }
+      ]
+    },
+
+    "Entity": {
+      "oneOf": [
+        { "$ref": "#/$defs/EntityLine" },
+        { "$ref": "#/$defs/EntityCircle" },
+        { "$ref": "#/$defs/EntityArc" },
+        { "$ref": "#/$defs/EntityLWPolyline" },
+        { "$ref": "#/$defs/EntitySpline" },
+        { "$ref": "#/$defs/EntityText" },
+        { "$ref": "#/$defs/EntityMText" },
+        { "$ref": "#/$defs/EntityInsert" },
+        { "$ref": "#/$defs/EntityHatch" },
+        { "$ref": "#/$defs/EntityDimension" }
+      ]
+    },
+
+    "FeatureRef": {
+      "description": "Reference to a feature on an entity (for constraints). 'feature' is a symbolic path like 'p1', 'p2', 'center', 'v[3]'.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entity", "feature"],
+      "properties": {
+        "entity": { "type": "string" },
+        "feature": { "type": "string" }
+      }
+    },
+
+    "Constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "refs"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "COINCIDENT",
+            "HORIZONTAL",
+            "VERTICAL",
+            "PARALLEL",
+            "PERPENDICULAR",
+            "CONCENTRIC",
+            "EQUAL_LENGTH",
+            "EQUAL_RADIUS",
+            "COLLINEAR"
+          ]
+        },
+        "refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/FeatureRef" }
+        },
+        "tolerance": {
+          "description": "Optional tolerance in drawing units.",
+          "type": "number",
+          "minimum": 0
+        },
+        "metadata": { "type": "object" }
+      }
+    }
+  }
+}
