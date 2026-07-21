@@ -160,8 +160,7 @@ def _fallback_validate(document: Any) -> None:
     if not isinstance(entities, list):
         raise IRValidationError("entities must be an array")
 
-    for idx, entity in enumerate(entities):
-        _validate_entity(entity, f"entities[{idx}]")
+    _validate_entity_scope(entities, "entities")
 
     _validate_constraints(document.get("constraints"))
 
@@ -199,8 +198,24 @@ def _validate_tables(tables: Any) -> None:
             raise IRValidationError(
                 f"tables.blocks.{block_name}.entities must be an array"
             )
-        for idx, entity in enumerate(block_entities):
-            _validate_entity(entity, f"tables.blocks.{block_name}.entities[{idx}]")
+        _validate_entity_scope(
+            block_entities,
+            f"tables.blocks.{block_name}.entities",
+        )
+
+
+def _validate_entity_scope(entities: list[Any], path: str) -> None:
+    seen_ids: dict[str, int] = {}
+    for idx, entity in enumerate(entities):
+        entity_path = f"{path}[{idx}]"
+        _validate_entity(entity, entity_path)
+        entity_id = str(entity["id"])
+        first_index = seen_ids.get(entity_id)
+        if first_index is not None:
+            raise IRValidationError(
+                f"{entity_path}.id duplicates {path}[{first_index}].id: {entity_id!r}"
+            )
+        seen_ids[entity_id] = idx
 
 
 def _validate_entity(entity: Any, path: str) -> None:

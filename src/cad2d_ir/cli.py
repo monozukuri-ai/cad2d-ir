@@ -7,11 +7,12 @@ import sys
 from typing import Sequence
 
 from cad2d_ir.api import (
-    convert_dxf_text_to_ir,
+    convert_dxf_file_to_ir,
     convert_file_to_ir,
     convert_ir_to_dxf_text,
     load_ir_json,
 )
+from cad2d_ir.codecs.dxf import SUPPORTED_DXF_TARGET_VERSIONS
 from cad2d_ir.constants import CURRENT_IR_VERSION
 from cad2d_ir.importers import ImporterError
 from cad2d_ir.schema import IRValidationError, validate_ir
@@ -46,6 +47,11 @@ def build_parser() -> argparse.ArgumentParser:
     dxf2ir_parser.add_argument(
         "--ir-version", default=CURRENT_IR_VERSION, help="IR version string"
     )
+    dxf2ir_parser.add_argument(
+        "--encoding",
+        default="auto",
+        help="Input encoding (default: BOM/codepage/UTF-8/CP932 auto detection)",
+    )
 
     import_parser = subparsers.add_parser(
         "import",
@@ -77,10 +83,33 @@ def build_parser() -> argparse.ArgumentParser:
         default=96,
         help="Segments per full curve when approximation is required (8..4096)",
     )
+    import_parser.add_argument(
+        "--encoding",
+        default="auto",
+        help="DXF input encoding; ignored by other adapters (default: auto)",
+    )
 
     ir2dxf_parser = subparsers.add_parser("ir2dxf", help="Convert IR JSON to DXF file")
     ir2dxf_parser.add_argument("input", type=Path, help="Path to IR JSON file")
     ir2dxf_parser.add_argument("-o", "--output", type=Path, help="Output DXF path")
+    ir2dxf_parser.add_argument(
+        "--target-version",
+        default="AC1024",
+        choices=SUPPORTED_DXF_TARGET_VERSIONS,
+        help="DXF target version: AC1009 (R12) or AC1024 (R2010)",
+    )
+    ir2dxf_parser.add_argument(
+        "--curve-segments",
+        type=int,
+        default=96,
+        help="Segments per full curve for R12 approximations (8..4096)",
+    )
+    ir2dxf_parser.add_argument(
+        "--generic-dimensions",
+        default="explode",
+        choices=("explode", "skip"),
+        help="Expand GENERIC dimensions to primitives or omit them",
+    )
     return parser
 
 
@@ -95,18 +124,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
 
         if args.command == "dxf2ir":
-            result = convert_dxf_text_to_ir(
-                args.input.read_text(encoding="utf-8"),
+            result = convert_dxf_file_to_ir(
+                args.input,
                 ir_version=args.ir_version,
                 validate=True,
+                encoding=args.encoding,
             )
             indent = 2 if args.pretty else None
             text = json.dumps(result.document, ensure_ascii=False, indent=indent)
             if indent is not None:
                 text += "\n"
             _write_text(args.output, text)
-            for warning in result.warnings:
-                print(f"Warning: {warning}", file=sys.stderr)
+            for diagnostic in result.diagnostics:
+                print(
+                    f"{diagnostic.severity.title()} "
+                    f"[{diagnostic.code}]: {diagnostic.message}",
+                    file=sys.stderr,
+                )
             return 0
 
         if args.command == "import":
@@ -117,6 +151,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 validate=True,
                 strict=not args.lenient,
                 curve_segments=args.curve_segments,
+                encoding=args.encoding,
             )
             indent = 2 if args.pretty else None
             text = json.dumps(result.document, ensure_ascii=False, indent=indent)
@@ -132,11 +167,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         if args.command == "ir2dxf":
             result = convert_ir_to_dxf_text(
-                load_ir_json(args.input, validate=True), validate=True
+                load_ir_json(args.input, validate=True),
+                validate=True,
+                target_version=args.target_version,
+                curve_segments=args.curve_segments,
+                generic_dimensions=args.generic_dimensions,
             )
             _write_text(args.output, result.dxf_text)
-            for warning in result.warnings:
-                print(f"Warning: {warning}", file=sys.stderr)
+            for diagnostic in result.diagnostics:
+                print(
+                    f"{diagnostic.severity.title()} "
+                    f"[{diagnostic.code}]: {diagnostic.message}",
+                    file=sys.stderr,
+                )
             return 0
     except (
         IRValidationError,

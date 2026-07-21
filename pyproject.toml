@@ -1,9 +1,10 @@
 [project]
 name = "cad2d-ir"
-version = "0.2.0"
+version = "0.3.0"
 description = "Intermediate representation (IR) and importers for 2D CAD formats"
 readme = "README.md"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
     { name = "neka-nat", email = "nekanat.stock@gmail.com" }
 ]

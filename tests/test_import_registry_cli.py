@@ -30,7 +30,9 @@ def test_generic_file_import_and_cli_support_dxf(tmp_path: Path) -> None:
 
     result = convert_file_to_ir(source)
     assert result.document["version"] == "0.2.0"
-    assert result.document["source"] == {"format": "dxf", "name": "line.dxf"}
+    assert result.document["source"]["format"] == "dxf"
+    assert result.document["source"]["name"] == "line.dxf"
+    assert result.document["source"]["metadata"]["encoding"] == "utf-8"
     assert result.statistics["converted_entity_counts"] == {"LINE": 1}
 
     assert main(["import", str(source), "-o", str(output), "--pretty"]) == 0
@@ -61,3 +63,51 @@ def test_registry_dispatches_dwg_and_sxf_adapters(
     assert convert_file_to_ir(dwg_path) == "dwg-result"
     assert convert_file_to_ir(sxf_path) == "sxf-result"
     assert calls == [("dwg", dwg_path), ("sxf", sxf_path)]
+
+
+def test_ir2dxf_cli_accepts_target_version_and_dimension_mode(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "drawing.json"
+    output = tmp_path / "drawing-r12.dxf"
+    source.write_text(
+        json.dumps(
+            {
+                "format": "cad2d-ir",
+                "version": "0.2.0",
+                "header": {
+                    "units": "mm",
+                    "angle_unit": "deg",
+                    "coord_space": "world",
+                },
+                "entities": [
+                    {
+                        "id": "E1",
+                        "kind": "LWPOLYLINE",
+                        "vertices": [[0, 0], [1, 0], [1, 1]],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert (
+        main(
+            [
+                "ir2dxf",
+                str(source),
+                "-o",
+                str(output),
+                "--target-version",
+                "AC1009",
+                "--generic-dimensions",
+                "explode",
+            ]
+        )
+        == 0
+    )
+    dxf_text = output.read_text(encoding="utf-8")
+    assert "$ACADVER\n1\nAC1009" in dxf_text
+    assert "\nPOLYLINE\n" in dxf_text
+    assert "\nLWPOLYLINE\n" not in dxf_text

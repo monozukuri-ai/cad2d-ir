@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0
+
+- Added deterministic R2010 entity handles, $HANDSEED, and IR-to-DXF
+  entity-map results with 1:N and skipped-entity records.
+- Added structured ExportDiagnostic records while retaining compatibility
+  warning strings.
+- Added selectable R12 (AC1009) and R2010 (AC1024) output, including
+  documented R12 explosion and approximation rules.
+- Added CP932-aware DXF file decoding with BOM/codepage/probe detection and
+  structured replacement diagnostics.
+- Added LAYER, LTYPE, and STYLE table write/read round-tripping.
+- Added R2010 AcDb subclass markers and generated geometry blocks for native DIMENSION entities so independent DXF audits require no repairs.
+- Changed GENERIC dimension export to visual primitive expansion by default,
+  with an explicit generic_dimensions=skip compatibility option.
+- Published the stable diagnostic-code catalog and Python code registry.
+- Documented and golden-tested deterministic export.
+- Enforced entity-ID uniqueness per modelspace or block scope and disambiguated
+  repeated input DXF handles.
+
 ## 0.2.0
 
 - Added a common importer result, options, diagnostics, statistics, format detection, and `cad2d-ir import` CLI.

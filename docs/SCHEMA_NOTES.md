@@ -31,15 +31,17 @@ Schema `0.2.0` adds:
 
 Existing `0.1.x` documents remain valid. New conversions default to `0.2.0`.
 
+Entity IDs are unique within modelspace and independently within each block definition. `validate_ir()` rejects duplicate IDs in one scope.
+
 When changing schema behavior:
 
 - Add/adjust tests first
 - Document compatibility impact in PR and changelog
-- Keep unsupported mappings explicit via conversion warnings
+- Keep unsupported mappings explicit via structured conversion diagnostics
 
 ## Current conversion limitations
 
 - `constraints` are IR-only metadata today and are omitted on DXF export.
-- `GENERIC` dimensions intentionally have no automatic DXF `DIMENSION` mapping and are omitted with a warning on export.
+- `GENERIC` dimensions are exported as visual LINE/TEXT/POINT/polyline primitives by default; they are not mislabeled as native DXF `DIMENSION` entities.
 - `HATCH` mapping currently focuses on polyline-like loops.
 - Ellipse start/end parameters are always radians, independent of `header.angle_unit`, matching the DXF ellipse parameter convention.

@@ -116,6 +116,7 @@
     },
 
     "entities": {
+      "description": "Modelspace entities. Entity id values must be unique in this array.",
       "type": "array",
       "minItems": 0,
       "items": { "$ref": "#/$defs/Entity" }
@@ -291,6 +292,7 @@
       "properties": {
         "base_point": { "$ref": "#/$defs/Point2" },
         "entities": {
+          "description": "Block-local entities. Entity id values must be unique within this block.",
           "type": "array",
           "items": { "$ref": "#/$defs/Entity" }
         },

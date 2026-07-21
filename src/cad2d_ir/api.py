@@ -1,13 +1,25 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from pathlib import Path
 from typing import Any
 
-from cad2d_ir.codecs.dxf import dxf_to_ir, ir_to_dxf, read_dxf_file
+from cad2d_ir.codecs.dxf import (
+    EntityMapEntry,
+    GenericDimensionMode,
+    TargetVersion,
+    dxf_to_ir,
+    ir_to_dxf,
+    read_dxf_file,
+)
 from cad2d_ir.constants import CURRENT_IR_VERSION
-from cad2d_ir.importers.base import ImportOptions, ImportResult
+from cad2d_ir.diagnostics import ExportDiagnostic
+from cad2d_ir.importers.base import (
+    ImportDiagnostic,
+    ImportOptions,
+    ImportResult,
+)
 from cad2d_ir.importers.registry import import_file
 from cad2d_ir.schema import validate_ir
 
@@ -16,12 +28,28 @@ from cad2d_ir.schema import validate_ir
 class DxfToIrResult:
     document: dict[str, Any]
     warnings: list[str]
+    diagnostics: list[ImportDiagnostic] = field(default_factory=list)
+
+    @property
+    def encoding(self) -> str | None:
+        """Return the detected file encoding when this result came from a file."""
+        source = self.document.get("source")
+        if not isinstance(source, dict):
+            return None
+        metadata = source.get("metadata")
+        if not isinstance(metadata, dict):
+            return None
+        encoding = metadata.get("encoding")
+        return str(encoding) if encoding is not None else None
 
 
 @dataclass(slots=True)
 class IrToDxfResult:
     dxf_text: str
     warnings: list[str]
+    diagnostics: list[ExportDiagnostic] = field(default_factory=list)
+    entity_map: list[EntityMapEntry] = field(default_factory=list)
+    target_version: str = "AC1024"
 
 
 def convert_dxf_text_to_ir(
@@ -37,7 +65,19 @@ def convert_dxf_text_to_ir(
         validate=validate,
         warnings=warnings,
     )
-    return DxfToIrResult(document=document, warnings=warnings)
+    diagnostics = [
+        ImportDiagnostic(
+            code="DXF_IMPORT_WARNING",
+            severity="warning",
+            message=warning,
+        )
+        for warning in warnings
+    ]
+    return DxfToIrResult(
+        document=document,
+        warnings=warnings,
+        diagnostics=diagnostics,
+    )
 
 
 def convert_dxf_file_to_ir(
@@ -45,15 +85,33 @@ def convert_dxf_file_to_ir(
     *,
     ir_version: str = CURRENT_IR_VERSION,
     validate: bool = True,
+    encoding: str = "auto",
 ) -> DxfToIrResult:
     warnings: list[str] = []
+    diagnostics: list[ImportDiagnostic] = []
     document = read_dxf_file(
         path,
         ir_version=ir_version,
         validate=validate,
         warnings=warnings,
+        diagnostics=diagnostics,
+        encoding=encoding,
     )
-    return DxfToIrResult(document=document, warnings=warnings)
+    diagnosed_messages = {diagnostic.message for diagnostic in diagnostics}
+    diagnostics.extend(
+        ImportDiagnostic(
+            code="DXF_IMPORT_WARNING",
+            severity="warning",
+            message=warning,
+        )
+        for warning in warnings
+        if warning not in diagnosed_messages
+    )
+    return DxfToIrResult(
+        document=document,
+        warnings=warnings,
+        diagnostics=diagnostics,
+    )
 
 
 def convert_file_to_ir(
@@ -64,6 +122,7 @@ def convert_file_to_ir(
     validate: bool = True,
     strict: bool = True,
     curve_segments: int = 96,
+    encoding: str = "auto",
 ) -> ImportResult:
     """Convert a supported CAD file to IR using format detection or an explicit adapter."""
     return import_file(
@@ -74,6 +133,7 @@ def convert_file_to_ir(
             validate=validate,
             strict=strict,
             curve_segments=curve_segments,
+            encoding=encoding,
         ),
     )
 
@@ -148,19 +208,48 @@ def convert_ir_to_dxf_text(
     document: dict[str, Any],
     *,
     validate: bool = True,
+    target_version: TargetVersion = "AC1024",
+    curve_segments: int = 96,
+    generic_dimensions: GenericDimensionMode = "explode",
 ) -> IrToDxfResult:
     warnings: list[str] = []
-    dxf_text = ir_to_dxf(document, validate=validate, warnings=warnings)
-    return IrToDxfResult(dxf_text=dxf_text, warnings=warnings)
+    diagnostics: list[ExportDiagnostic] = []
+    entity_map: list[EntityMapEntry] = []
+    dxf_text = ir_to_dxf(
+        document,
+        validate=validate,
+        warnings=warnings,
+        diagnostics=diagnostics,
+        entity_map=entity_map,
+        target_version=target_version,
+        curve_segments=curve_segments,
+        generic_dimensions=generic_dimensions,
+    )
+    return IrToDxfResult(
+        dxf_text=dxf_text,
+        warnings=warnings,
+        diagnostics=diagnostics,
+        entity_map=entity_map,
+        target_version=target_version,
+    )
 
 
 def convert_ir_file_to_dxf(
     path: str | Path,
     *,
     validate: bool = True,
+    target_version: TargetVersion = "AC1024",
+    curve_segments: int = 96,
+    generic_dimensions: GenericDimensionMode = "explode",
 ) -> IrToDxfResult:
     document = load_ir_json(path, validate=validate)
-    return convert_ir_to_dxf_text(document, validate=validate)
+    return convert_ir_to_dxf_text(
+        document,
+        validate=validate,
+        target_version=target_version,
+        curve_segments=curve_segments,
+        generic_dimensions=generic_dimensions,
+    )
 
 
 def load_ir_json(path: str | Path, *, validate: bool = True) -> dict[str, Any]:

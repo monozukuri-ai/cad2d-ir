@@ -1,134 +1,148 @@
 # cad2d-ir
 
-`cad2d-ir` is an intermediate representation (IR) for 2D CAD data, with a common importer API and DXF conversion support.
+`cad2d-ir` is a typed intermediate representation and conversion toolkit
+for 2D CAD data.
 
-The goal is to provide a stable, machine-friendly format for:
+It provides:
 
-- CAD ingestion pipelines
-- geometric post-processing
-- round-trip conversion workflows
-
-## Status
-
-The project currently supports:
-
-- IR entities: `LINE`, `CIRCLE`, `ARC`, `POINT`, `ELLIPSE`, `LWPOLYLINE`, `SPLINE`, `TEXT`, `MTEXT`, `INSERT`, `HATCH`, and `DIMENSION`
-- DXF import and export
-- Native DWG import through the optional `ezdwg` adapter
-- Native JWW import through the optional `ezjww` adapter
-- Native SXF SFC/P21 import through the optional `ezsxf` adapter
-- Structured importer diagnostics, statistics, and source provenance
-
-DWG and JWW are converted from their native parser models rather than through an intermediate DXF. SFC dimensions are regrouped from the `ezsxf` drawing model into semantic IR dimensions with their rendered world-space geometry attached. P21 uses the same backend-neutral drawing model; its current semantic-flattening boundary is explicitly diagnosed.
-
-See `ir_schema.json` for the canonical schema.
+- a canonical JSON Schema for 2D CAD geometry and tables;
+- native DXF, DWG, JWW, and SXF import paths;
+- DXF R12 (`AC1009`) and R2010 (`AC1024`) export;
+- structured import/export diagnostics;
+- deterministic IR-entity to DXF-handle correspondence.
 
 ## Installation
 
-### With pip
-
 ```bash
 pip install cad2d-ir
-```
-
-Install one adapter or all adapters with:
-
-```bash
 pip install "cad2d-ir[dwg]"
 pip install "cad2d-ir[jww]"
 pip install "cad2d-ir[sxf]"
 pip install "cad2d-ir[all]"
 ```
 
-### For development (uv)
+Python 3.13 or newer is required. The core wheel is pure Python; native format
+adapters are optional extras.
+
+For development:
 
 ```bash
 uv sync
-uv sync --all-extras  # when working with all native CAD adapters
-uv run pytest
+uv sync --all-extras
+uv run python -m pytest
 ```
+
+## Supported data
+
+IR entities include `LINE`, `CIRCLE`, `ARC`, `POINT`,
+`ELLIPSE`, `LWPOLYLINE`, `SPLINE`, `TEXT`,
+`MTEXT`, `INSERT`, `HATCH`, and `DIMENSION`.
+Layer, linetype, text-style, dimension-style, and block tables are represented
+by the schema.
+
+Import adapters:
+
+| Format | Path | Dependency |
+|---|---|---|
+| DXF | built-in parser | core |
+| DWG | native `ezdwg` model | `cad2d-ir[dwg]` |
+| JWW | native `ezjww` model | `cad2d-ir[jww]` |
+| SXF SFC/P21 | backend-neutral `ezsxf` drawing | `cad2d-ir[sxf]` |
+
+Native adapters preserve source semantics and provenance rather than flattening
+through an intermediate DXF.
 
 ## CLI
 
 ```bash
-# Validate IR JSON
+# Validate IR
 cad2d-ir validate examples/ir/minimal.json
 
-# DXF -> IR
-cad2d-ir dxf2ir examples/dxf/simple_line.dxf -o /tmp/out.json --pretty
+# DXF -> IR with BOM/codepage/UTF-8/CP932 detection
+cad2d-ir dxf2ir drawing.dxf -o drawing.json --pretty
+cad2d-ir dxf2ir drawing.dxf --encoding cp932 -o drawing.json
 
 # Auto-detected DXF/DWG/JWW/SFC/P21 -> IR
-cad2d-ir import drawing.JWW -o /tmp/drawing.json --pretty
-cad2d-ir import drawing.dwg -o /tmp/drawing.json --pretty
-cad2d-ir import drawing.p21 -o /tmp/drawing.json --pretty
+cad2d-ir import drawing.JWW -o drawing.json --pretty
+cad2d-ir import drawing.dwg -o drawing.json --pretty
+cad2d-ir import drawing.p21 -o drawing.json --pretty
 
-# Explicit adapter and approximation resolution
-cad2d-ir import drawing.jww --format jww --curve-segments 128 -o /tmp/drawing.json
-
-# IR -> DXF
-cad2d-ir ir2dxf examples/ir/minimal.json -o /tmp/out.dxf
+# IR -> R2010 or R12 DXF
+cad2d-ir ir2dxf drawing.json --target-version AC1024 -o drawing-r2010.dxf
+cad2d-ir ir2dxf drawing.json --target-version AC1009 \
+  --curve-segments 128 -o drawing-r12.dxf
 ```
-
-Structured importer diagnostics and export warnings are printed to stderr. `--lenient` skips malformed source entities and reports them instead of failing the whole import.
 
 ## Python API
 
 ```python
 from cad2d_ir import convert_file_to_ir, convert_ir_to_dxf_text
 
-to_ir = convert_file_to_ir("drawing.dwg")
-print(to_ir.document["source"]["format"])  # dwg
-print(to_ir.statistics["converted_entity_counts"])
-for diagnostic in to_ir.diagnostics:
-    print(diagnostic.code, diagnostic.message)
+imported = convert_file_to_ir("drawing.dxf", strict=False)
+print(imported.statistics["encoding"])
+for diagnostic in imported.diagnostics:
+    print(diagnostic.code, diagnostic.as_dict())
 
-to_dxf = convert_ir_to_dxf_text(to_ir.document)
-print(len(to_dxf.warnings))
+exported = convert_ir_to_dxf_text(
+    imported.document,
+    target_version="AC1024",
+    generic_dimensions="explode",
+)
+for entry in exported.entity_map:
+    print(entry["ir_id"], entry["handle"], entry["dxf_type"])
 ```
 
-Lower-level conversion functions (`dxf_to_ir`, `ir_to_dxf`) are also available.
+R2010 output assigns deterministic handles and emits `$HANDSEED`.
+Re-importing the DXF records each handle in `entity.source.id`. R12 omits
+handles and retains deterministic `index` values in the entity map.
+
+## Export behavior
+
+- `TABLES` contains LAYER, LTYPE, and STYLE records from IR tables.
+- GENERIC dimensions expand to their preserved visual primitives by default.
+- R12 converts LWPOLYLINE to POLYLINE/VERTEX, MTEXT to TEXT,
+  ELLIPSE/SPLINE to sampled polylines, and HATCH to boundary polylines.
+- Every skip, approximation, explosion, and normalization is represented by an
+  `ExportDiagnostic`.
+- The same document and options produce byte-identical DXF and entity-map output
+  within a package minor version.
+
+## Compatibility boundaries
+
+- `constraints` are IR-only and are diagnosed when omitted from DXF.
+- A complete affine `INSERT.transform` cannot be represented by plain DXF
+  INSERT and is diagnosed when omitted.
+- R12 has no true-color, lineweight, or `$INSUNITS` equivalent with the
+  same semantics; downgrade diagnostics disclose those losses.
+- HATCH support focuses on polyline-style loops.
+- Ellipse start/end parameters are radians independently of
+  `header.angle_unit`.
+
+See:
+
+- [API guide](docs/API.md)
+- [Importer behavior](docs/IMPORTERS.md)
+- [Schema notes](docs/SCHEMA_NOTES.md)
+- [Diagnostic code catalog](docs/DIAGNOSTICS.md)
+- [Contributing](CONTRIBUTING.md)
 
 ## Repository layout
 
 ```text
 src/cad2d_ir/
-  api.py             # public high-level API
-  cli.py             # CLI entrypoint
-  schema.py          # schema loading + validation
-  codecs/dxf.py      # DXF <-> IR conversion
-  importers/         # common importer contract and format adapters
+  api.py
+  cli.py
+  diagnostics.py
+  schema.py
+  codecs/dxf.py
+  importers/
   data/ir_schema.json
-ir_schema.json       # canonical schema source
+ir_schema.json
 tests/
 examples/
 docs/
 ```
 
-## Compatibility and limitations
-
-- `constraints` are preserved in IR but omitted when exporting to DXF.
-- JWW `DIMENSION` records are preserved as `GENERIC` dimensions; generic dimensions are omitted with a warning on DXF export rather than being mislabeled as linear dimensions.
-- JWW `CIRCLE_SOLID` boundaries are approximated as polyline `HATCH` loops. The chosen segment count is recorded in `approximation` and reported as a diagnostic.
-- DWG drawing units are currently reported as `unknown` because `ezdwg` does not expose the DWG unit header. Non-zero Z geometry is projected to XY with a diagnostic.
-- DWG block bodies are reconstructed when `ezdwg` exposes an owner handle. Block base points are not exposed and are recorded as unresolved metadata with `[0, 0]` as the IR table value.
-- SFC dimensions remain semantic `DIMENSION` entities. Other SFC curves are emitted as polylines with explicit approximation records.
-- P21 currently exposes generic STEP entities plus flattened drawing primitives in `ezsxf`; the adapter preserves the primitives and emits `SXF_P21_SEMANTICS_FLATTENED` rather than claiming semantic dimensions.
-- `HATCH` currently focuses on polyline-style loops.
-
-## Development
-
-```bash
-uv run pytest -q
-uv run cad2d-ir --help
-```
-
-See:
-
-- `CONTRIBUTING.md`
-- `docs/API.md`
-- `docs/IMPORTERS.md`
-- `docs/SCHEMA_NOTES.md`
-
 ## License
 
-MIT (`LICENSE`)
+MIT ([LICENSE](LICENSE)).

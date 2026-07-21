@@ -12,8 +12,20 @@ from cad2d_ir.api import (
     dump_ir_json,
     load_ir_json,
 )
-from cad2d_ir.codecs.dxf import dxf_to_ir, ir_to_dxf, read_dxf_file, write_dxf_file
+from cad2d_ir.codecs.dxf import (
+    SUPPORTED_DXF_TARGET_VERSIONS,
+    dxf_to_ir,
+    ir_to_dxf,
+    read_dxf_file,
+    write_dxf_file,
+)
 from cad2d_ir.constants import CURRENT_IR_VERSION
+from cad2d_ir.diagnostics import (
+    ALL_CODES,
+    DIAGNOSTIC_CODES,
+    ExportDiagnostic,
+    diagnostic_code_details,
+)
 from cad2d_ir.importers import (
     ImportDiagnostic,
     ImportOptions,
@@ -25,13 +37,16 @@ from cad2d_ir.importers import (
 )
 from cad2d_ir.schema import IRValidationError, load_schema, validate_ir
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "__version__",
     "DxfToIrResult",
+    "ALL_CODES",
+    "DIAGNOSTIC_CODES",
     "CURRENT_IR_VERSION",
     "IRValidationError",
+    "ExportDiagnostic",
     "ImportDiagnostic",
     "ImporterError",
     "ImportOptions",
@@ -39,6 +54,7 @@ __all__ = [
     "IrToDxfResult",
     "MissingOptionalDependencyError",
     "UnsupportedSourceFormatError",
+    "SUPPORTED_DXF_TARGET_VERSIONS",
     "convert_dwg_file_to_ir",
     "convert_dxf_file_to_ir",
     "convert_dxf_text_to_ir",
@@ -50,6 +66,7 @@ __all__ = [
     "dxf_to_ir",
     "dump_ir_json",
     "detect_source_format",
+    "diagnostic_code_details",
     "ir_to_dxf",
     "load_ir_json",
     "load_schema",

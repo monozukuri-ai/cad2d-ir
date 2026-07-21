@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any
 
 from cad2d_ir.constants import CURRENT_IR_VERSION
-
-DiagnosticSeverity = Literal["info", "warning", "error"]
+from cad2d_ir.diagnostics import DiagnosticSeverity
 
 
 class ImporterError(ValueError):
@@ -32,8 +31,9 @@ class ImportDiagnostic:
     source_id: str | None = None
     source_kind: str | None = None
     action: str | None = None
+    details: dict[str, Any] | None = None
 
-    def as_dict(self) -> dict[str, str]:
+    def as_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation without empty fields."""
         result = {
             "code": self.code,
@@ -46,6 +46,8 @@ class ImportDiagnostic:
             result["source_kind"] = self.source_kind
         if self.action is not None:
             result["action"] = self.action
+        if self.details is not None:
+            result["details"] = self.details
         return result
 
 
@@ -57,6 +59,7 @@ class ImportOptions:
     validate: bool = True
     strict: bool = True
     curve_segments: int = 96
+    encoding: str = "auto"
 
     def __post_init__(self) -> None:
         if not 8 <= self.curve_segments <= 4096:

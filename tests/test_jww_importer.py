@@ -4,6 +4,7 @@ import math
 
 import pytest
 
+from cad2d_ir import convert_ir_to_dxf_text
 from cad2d_ir.importers import ImportOptions
 from cad2d_ir.importers.jww import jww_document_to_ir
 from cad2d_ir.schema import validate_ir
@@ -262,3 +263,25 @@ def test_jww_document_to_ir_leniently_skips_unknown_entities() -> None:
     assert result.document["entities"] == []
     assert result.statistics["skipped_entity_counts"] == {"FUTURE_ENTITY": 1}
     assert result.diagnostics[0].code == "JWW_UNSUPPORTED_ENTITY"
+
+
+def test_jww_generic_dimension_is_visible_in_dxf_and_mapped_one_to_many() -> None:
+    imported = jww_document_to_ir(_document())
+    dimension = next(
+        entity
+        for entity in imported.document["entities"]
+        if entity["kind"] == "DIMENSION"
+    )
+
+    exported = convert_ir_to_dxf_text(imported.document)
+    mapped = [
+        entry for entry in exported.entity_map if entry["ir_id"] == dimension["id"]
+    ]
+
+    assert [entry["dxf_type"] for entry in mapped] == ["LINE", "TEXT", "POINT"]
+    assert all(entry["handle"] is not None for entry in mapped)
+    assert any(
+        diagnostic.code == "DXF_GENERIC_DIMENSION_EXPLODED"
+        and diagnostic.entity_id == dimension["id"]
+        for diagnostic in exported.diagnostics
+    )

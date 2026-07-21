@@ -51,29 +51,46 @@ def import_file(
     import_options = options or ImportOptions()
     if normalized_format == "dxf":
         warnings: list[str] = []
+        diagnostics: list[ImportDiagnostic] = []
         document = read_dxf_file(
             source_path,
             ir_version=import_options.ir_version,
             validate=import_options.validate,
             warnings=warnings,
+            diagnostics=diagnostics,
+            encoding=import_options.encoding,
         )
-        diagnostics = [
+        diagnosed_messages = {diagnostic.message for diagnostic in diagnostics}
+        diagnostics.extend(
             ImportDiagnostic(
-                code="DXF_IMPORT_WARNING", severity="warning", message=warning
+                code="DXF_IMPORT_WARNING",
+                severity="warning",
+                message=warning,
             )
             for warning in warnings
-        ]
+            if warning not in diagnosed_messages
+        )
         entity_counts = Counter(
             str(entity.get("kind", "UNKNOWN")) for entity in document["entities"]
+        )
+        metadata = document.get("source", {}).get("metadata", {})
+        skipped = sum(
+            diagnostic.code == "DXF_IMPORT_WARNING" for diagnostic in diagnostics
         )
         return ImportResult(
             document=document,
             diagnostics=diagnostics,
             statistics={
                 "source_format": "dxf",
+                "encoding": metadata.get("encoding"),
+                "encoding_source": metadata.get("encoding_source"),
+                "decode_replacement_characters": metadata.get(
+                    "decode_replacement_characters", 0
+                ),
+                "decode_replacement_lines": metadata.get("decode_replacement_lines", 0),
                 "converted_entities": len(document["entities"]),
                 "converted_entity_counts": dict(sorted(entity_counts.items())),
-                "skipped_entities": len(warnings),
+                "skipped_entities": skipped,
             },
         )
 
