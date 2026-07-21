@@ -17,7 +17,7 @@ The registry in `cad2d_ir.importers.registry` currently dispatches:
 | Format | Suffix | Adapter state | Parser dependency |
 | --- | --- | --- | --- |
 | DXF | `.dxf` | implemented | built in |
-| JWW | `.jww` | implemented | `ezjww>=0.2.5,<0.3` |
+| JWW | `.jww` | implemented | `ezjww>=0.2.6,<0.3` |
 | DWG | `.dwg` | implemented | `ezdwg>=0.9,<1` |
 | SXF | `.sxf`, `.sfc`, `.p21` | implemented | `ezsxf>=0.1,<0.2` |
 

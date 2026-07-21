@@ -1,6 +1,6 @@
 [project]
 name = "cad2d-ir"
-version = "0.4.0"
+version = "0.5.0"
 description = "Intermediate representation (IR) and importers for 2D CAD formats"
 readme = "README.md"
 license = "MIT"
@@ -8,14 +8,18 @@ license-files = ["LICENSE"]
 authors = [
     { name = "neka-nat", email = "nekanat.stock@gmail.com" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.10"
 keywords = ["cad", "dxf", "dwg", "jww", "sxf", "geometry", "2d", "intermediate-representation"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering",
     "Topic :: Software Development :: Libraries",
 ]
@@ -25,9 +29,9 @@ dependencies = [
 
 [project.optional-dependencies]
 dwg = ["ezdwg>=0.9,<1"]
-jww = ["ezjww>=0.2.5,<0.3"]
+jww = ["ezjww>=0.2.6,<0.3"]
 sxf = ["ezsxf>=0.1,<0.2"]
-all = ["ezdwg>=0.9,<1", "ezjww>=0.2.5,<0.3", "ezsxf>=0.1,<0.2"]
+all = ["ezdwg>=0.9,<1", "ezjww>=0.2.6,<0.3", "ezsxf>=0.1,<0.2"]
 
 [project.urls]
 Homepage = "https://github.com/neka-nat/cad2d-ir"
@@ -47,7 +51,11 @@ dev = [
     "pytest>=8.4.1",
     "pytest-cov>=6.0.0",
     "ruff>=0.8.0",
+    "tomli>=2.0; python_version < '3.11'",
 ]
+
+[tool.ruff]
+target-version = "py310"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -21,7 +21,7 @@ pip install "cad2d-ir[sxf]"
 pip install "cad2d-ir[all]"
 ```
 
-Python 3.13 or newer is required. The core wheel is pure Python; native format
+Python 3.10 or newer is required. The core wheel is pure Python; native format
 adapters are optional extras.
 
 For development:
