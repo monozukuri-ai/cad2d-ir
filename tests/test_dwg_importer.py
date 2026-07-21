@@ -243,3 +243,91 @@ def test_dwg_document_to_ir_leniently_skips_malformed_entities() -> None:
 
     with pytest.raises(ValueError, match="DWG CIRCLE"):
         dwg_document_to_ir(document)
+
+
+class _DocumentWithHeader(_Document):
+    def __init__(
+        self, entities: list[_Entity], header_variables: dict[str, Any] | Exception
+    ) -> None:
+        super().__init__(entities)
+        self._header_variables = header_variables
+
+    def header_variables(self) -> dict[str, Any]:
+        if isinstance(self._header_variables, Exception):
+            raise self._header_variables
+        return self._header_variables
+
+
+def _line_entities() -> list[_Entity]:
+    return [
+        _Entity(
+            "LINE",
+            1,
+            {"start": (0.0, 0.0, 0.0), "end": (10.0, 0.0, 0.0), **_style()},
+        )
+    ]
+
+
+def test_dwg_units_resolved_from_insunits() -> None:
+    result = dwg_document_to_ir(
+        _DocumentWithHeader(_line_entities(), {"insunits": 4})
+    )
+
+    header = result.document["header"]
+    assert header["units"] == "mm"
+    assert header["metadata"]["dwg"]["insunits"] == 4
+    assert "units_status" not in header["metadata"]["dwg"]
+    assert not [d for d in result.diagnostics if "UNITS" in d.code]
+    validate_ir(result.document, strict_jsonschema=True)
+
+
+def test_dwg_units_imperial_code_maps_to_inch() -> None:
+    result = dwg_document_to_ir(
+        _DocumentWithHeader(_line_entities(), {"insunits": 1})
+    )
+
+    assert result.document["header"]["units"] == "inch"
+
+
+def test_dwg_units_r14_without_insunits_stays_unknown() -> None:
+    result = dwg_document_to_ir(
+        _DocumentWithHeader(_line_entities(), {"insunits": None})
+    )
+
+    header = result.document["header"]
+    assert header["units"] == "unknown"
+    assert header["metadata"]["dwg"]["units_status"] == "INSUNITS not present (R14)"
+
+
+def test_dwg_units_unsupported_code_falls_back_with_diagnostic() -> None:
+    result = dwg_document_to_ir(
+        _DocumentWithHeader(_line_entities(), {"insunits": 3})
+    )
+
+    header = result.document["header"]
+    assert header["units"] == "unknown"
+    assert header["metadata"]["dwg"]["insunits"] == 3
+    assert header["metadata"]["dwg"]["units_status"] == "unsupported INSUNITS code"
+    codes = [diagnostic.code for diagnostic in result.diagnostics]
+    assert "DWG_UNSUPPORTED_INSUNITS" in codes
+
+
+def test_dwg_units_absent_api_keeps_previous_behavior() -> None:
+    result = dwg_document_to_ir(_document())
+
+    header = result.document["header"]
+    assert header["units"] == "unknown"
+    assert header["metadata"]["dwg"]["units_status"] == "not exposed by ezdwg"
+
+
+def test_dwg_units_header_decode_failure_is_lenient() -> None:
+    result = dwg_document_to_ir(
+        _DocumentWithHeader(_line_entities(), ValueError("corrupt header"))
+    )
+
+    header = result.document["header"]
+    assert header["units"] == "unknown"
+    assert header["metadata"]["dwg"]["units_status"] == "header variables unreadable"
+    codes = [diagnostic.code for diagnostic in result.diagnostics]
+    assert "DWG_HEADER_UNITS_UNREADABLE" in codes
+    assert result.document["entities"], "import itself must still succeed"

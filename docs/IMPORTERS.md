@@ -53,7 +53,7 @@ The DWG adapter consumes `ezdwg.read()` and `Document.modelspace().query()` dire
 | `DIMENSION` | semantic `DIMENSION` | subtype and complete native geometry payload retained |
 | block-owned entities | block table body | grouped when owner handles are exposed |
 
-DWG units are `unknown` because the current parser model does not expose the unit header. Non-zero Z coordinates are projected to XY and reported. Unsupported 3D/presentation entities are skipped with aggregate diagnostics. Block base points are also not exposed; recovered block bodies use `[0, 0]` and state that limitation in metadata.
+DWG units come from the `$INSUNITS` header variable (`ezdwg` >= 0.11 `Document.header_variables()`); mapped codes fill `header.units` (and therefore `$INSUNITS` on DXF export), the raw code is recorded in header metadata, and unmapped codes or R14 files (no `$INSUNITS`) fall back to `unknown` with the reason in metadata plus a diagnostic. Non-zero Z coordinates are projected to XY and reported. Unsupported 3D/presentation entities are skipped with aggregate diagnostics. Block base points are also not exposed; recovered block bodies use `[0, 0]` and state that limitation in metadata.
 
 ## SXF adapter
 

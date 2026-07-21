@@ -1,10 +1,19 @@
 # Changelog
 
-## 0.4.0
+## 0.5.0
 
+- Resolved DWG header units from `$INSUNITS` via `ezdwg`
+  `Document.header_variables()` (adapter dependency raised to `ezdwg>=0.11,<1`):
+  mapped codes fill IR `header.units` (and therefore `$INSUNITS` on DXF
+  export) with the raw code kept in header metadata; unmapped codes and R14
+  files (no `$INSUNITS`) fall back to `unknown` with structured diagnostics
+  (`DWG_UNSUPPORTED_INSUNITS`, `DWG_HEADER_UNITS_UNREADABLE`).
 - Expanded supported Python versions to 3.10 through 3.14 and added an
   all-extras CI matrix for every supported interpreter.
 - Updated the JWW adapter dependency to `ezjww>=0.2.6,<0.3`.
+
+## 0.4.0
+
 - Added ANSI_932 declaration and target-aware CP932 file encoding for R12
   Japanese text output.
 

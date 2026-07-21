@@ -103,6 +103,10 @@ _IR_TO_INSUNITS = {
     "m": 6,
 }
 
+# Public mapping used by native importers (DWG) so $INSUNITS handling stays
+# consistent between the DXF codec and the other format adapters.
+INSUNITS_TO_IR_UNITS = _INSUNITS_TO_IR
+
 _TEXT_HALIGN_TO_DXF = {"left": 0, "center": 1, "right": 2}
 _TEXT_VALIGN_TO_DXF = {"baseline": 0, "bottom": 1, "middle": 2, "top": 3}
 _TEXT_HALIGN_FROM_DXF = {value: key for key, value in _TEXT_HALIGN_TO_DXF.items()}

@@ -104,6 +104,18 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
     "DWG_NONPLANAR_PROJECTED": DiagnosticCode(
         "warning", "projected", "DWG import", "Non-planar geometry was projected to XY."
     ),
+    "DWG_HEADER_UNITS_UNREADABLE": DiagnosticCode(
+        "warning",
+        None,
+        "DWG import",
+        "The DWG header variables could not be decoded for units.",
+    ),
+    "DWG_UNSUPPORTED_INSUNITS": DiagnosticCode(
+        "warning",
+        "normalized",
+        "DWG import",
+        "A $INSUNITS code without an IR units mapping fell back to unknown.",
+    ),
     "SXF_DIMENSION_CONVERSION_FAILED": DiagnosticCode(
         "error", "skipped", "SXF import", "A malformed SXF dimension was skipped."
     ),

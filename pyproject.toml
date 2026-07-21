@@ -1,6 +1,6 @@
 [project]
 name = "cad2d-ir"
-version = "0.5.0"
+version = "0.6.0"
 description = "Intermediate representation (IR) and importers for 2D CAD formats"
 readme = "README.md"
 license = "MIT"
@@ -28,10 +28,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dwg = ["ezdwg>=0.9,<1"]
+dwg = ["ezdwg>=0.11,<1"]
 jww = ["ezjww>=0.2.6,<0.3"]
 sxf = ["ezsxf>=0.1,<0.2"]
-all = ["ezdwg>=0.9,<1", "ezjww>=0.2.6,<0.3", "ezsxf>=0.1,<0.2"]
+all = ["ezdwg>=0.11,<1", "ezjww>=0.2.6,<0.3", "ezsxf>=0.1,<0.2"]
 
 [project.urls]
 Homepage = "https://github.com/neka-nat/cad2d-ir"

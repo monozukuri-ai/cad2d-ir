@@ -9,6 +9,7 @@ import math
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from cad2d_ir.codecs.dxf import INSUNITS_TO_IR_UNITS
 from cad2d_ir.importers.base import (
     ImportDiagnostic,
     ImporterError,
@@ -82,6 +83,52 @@ def convert_dwg_file_to_ir(
         block_names_by_handle=block_names,
         options=options,
     )
+
+
+def _resolve_header_units(
+    dwg_document: Any, context: _ConversionContext
+) -> tuple[str, dict[str, Any]]:
+    """Resolve IR header units from the DWG ``$INSUNITS`` header variable.
+
+    Uses ``Document.header_variables()`` (``ezdwg`` >= 0.11). Document objects
+    without that API keep the previous behavior of reporting unknown units, so
+    adapters and test doubles stay compatible.
+    """
+    header_variables = getattr(dwg_document, "header_variables", None)
+    if not callable(header_variables):
+        return "unknown", {"units_status": "not exposed by ezdwg"}
+    try:
+        insunits = header_variables().get("insunits")
+    except Exception as exc:
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="DWG_HEADER_UNITS_UNREADABLE",
+                severity="warning",
+                message=f"Failed to decode DWG header variables for units: {exc}",
+            )
+        )
+        return "unknown", {"units_status": "header variables unreadable"}
+    if insunits is None:
+        return "unknown", {"units_status": "INSUNITS not present (R14)"}
+    code = int(insunits)
+    units = INSUNITS_TO_IR_UNITS.get(code)
+    if units is None:
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="DWG_UNSUPPORTED_INSUNITS",
+                severity="warning",
+                message=(
+                    f"DWG $INSUNITS code {code} has no CAD 2D IR units mapping; "
+                    "header units fall back to 'unknown'."
+                ),
+                action="normalized",
+            )
+        )
+        return "unknown", {
+            "insunits": code,
+            "units_status": "unsupported INSUNITS code",
+        }
+    return units, {"insunits": code}
 
 
 def dwg_document_to_ir(
@@ -172,19 +219,19 @@ def dwg_document_to_ir(
     if source_sha256 is not None:
         source["sha256"] = source_sha256
 
+    header_units, units_metadata = _resolve_header_units(dwg_document, context)
+    dwg_header_metadata: dict[str, Any] = {
+        **units_metadata,
+        "block_base_points_status": "not exposed by ezdwg",
+    }
     document: dict[str, Any] = {
         "format": "cad2d-ir",
         "version": import_options.ir_version,
         "header": {
-            "units": "unknown",
+            "units": header_units,
             "angle_unit": "deg",
             "coord_space": "world",
-            "metadata": {
-                "dwg": {
-                    "units_status": "not exposed by ezdwg",
-                    "block_base_points_status": "not exposed by ezdwg",
-                }
-            },
+            "metadata": {"dwg": dwg_header_metadata},
         },
         "source": source,
         "tables": tables,

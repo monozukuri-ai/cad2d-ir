@@ -21,6 +21,6 @@ def test_release_metadata_keeps_license_and_adapter_extras() -> None:
     assert project["license"] == "MIT"
     assert project["license-files"] == ["LICENSE"]
     assert (root / "LICENSE").is_file()
-    assert project["optional-dependencies"]["dwg"] == ["ezdwg>=0.9,<1"]
+    assert project["optional-dependencies"]["dwg"] == ["ezdwg>=0.11,<1"]
     assert project["optional-dependencies"]["jww"] == ["ezjww>=0.2.6,<0.3"]
     assert project["optional-dependencies"]["sxf"] == ["ezsxf>=0.1,<0.2"]
