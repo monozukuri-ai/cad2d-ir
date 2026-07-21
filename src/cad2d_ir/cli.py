@@ -12,7 +12,10 @@ from cad2d_ir.api import (
     convert_ir_to_dxf_text,
     load_ir_json,
 )
-from cad2d_ir.codecs.dxf import SUPPORTED_DXF_TARGET_VERSIONS
+from cad2d_ir.codecs.dxf import (
+    SUPPORTED_DXF_TARGET_VERSIONS,
+    resolve_dxf_output_encoding,
+)
 from cad2d_ir.constants import CURRENT_IR_VERSION
 from cad2d_ir.importers import ImporterError
 from cad2d_ir.schema import IRValidationError, validate_ir
@@ -22,11 +25,14 @@ def _read_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _write_text(path: Path | None, text: str) -> None:
+def _write_text(path: Path | None, text: str, *, encoding: str = "utf-8") -> None:
     if path is None:
+        if encoding != "utf-8":
+            sys.stdout.buffer.write(text.encode(encoding))
+            return
         print(text, end="")
         return
-    path.write_text(text, encoding="utf-8")
+    path.write_bytes(text.encode(encoding))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -110,6 +116,11 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("explode", "skip"),
         help="Expand GENERIC dimensions to primitives or omit them",
     )
+    ir2dxf_parser.add_argument(
+        "--encoding",
+        default="auto",
+        help="Output encoding (auto: CP932 for AC1009, UTF-8 for AC1024)",
+    )
     return parser
 
 
@@ -173,7 +184,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 curve_segments=args.curve_segments,
                 generic_dimensions=args.generic_dimensions,
             )
-            _write_text(args.output, result.dxf_text)
+            output_encoding = resolve_dxf_output_encoding(
+                target_version=args.target_version,
+                encoding=args.encoding,
+            )
+            _write_text(args.output, result.dxf_text, encoding=output_encoding)
             for diagnostic in result.diagnostics:
                 print(
                     f"{diagnostic.severity.title()} "

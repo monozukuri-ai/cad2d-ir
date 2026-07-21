@@ -3,7 +3,14 @@ from __future__ import annotations
 import codecs
 from pathlib import Path
 
-from cad2d_ir import convert_dxf_file_to_ir, convert_file_to_ir
+import pytest
+
+from cad2d_ir import (
+    convert_dxf_file_to_ir,
+    convert_file_to_ir,
+    ir_to_dxf,
+    write_dxf_file,
+)
 
 
 def _text_dxf(*, codepage: bool) -> str:
@@ -118,3 +125,70 @@ def test_bom_takes_precedence_during_auto_detection(tmp_path: Path) -> None:
         item for item in result.diagnostics if item.code == "DXF_ENCODING_DETECTED"
     )
     assert detected.details == {"encoding": "utf-8-sig", "source": "bom"}
+
+
+def _japanese_ir_document() -> dict:
+    return {
+        "format": "cad2d-ir",
+        "version": "0.2.0",
+        "header": {
+            "units": "mm",
+            "angle_unit": "deg",
+            "coord_space": "world",
+        },
+        "entities": [
+            {
+                "id": "T1",
+                "kind": "TEXT",
+                "layer": "日本語レイヤ",
+                "insert": [0, 0],
+                "height": 2.5,
+                "text": "寸法",
+            }
+        ],
+    }
+
+
+def test_r12_text_declares_ansi_932_codepage() -> None:
+    dxf_text = ir_to_dxf(_japanese_ir_document(), target_version="AC1009")
+
+    assert "\n$DWGCODEPAGE\n3\nANSI_932\n" in dxf_text
+    assert "日本語レイヤ" in dxf_text
+    assert "寸法" in dxf_text
+
+
+@pytest.mark.parametrize("encoding", ["auto", "cp932"])
+def test_r12_file_writer_emits_cp932_bytes(
+    tmp_path: Path,
+    encoding: str,
+) -> None:
+    output = tmp_path / f"r12-{encoding}.dxf"
+
+    write_dxf_file(
+        _japanese_ir_document(),
+        output,
+        target_version="AC1009",
+        encoding=encoding,
+    )
+
+    raw = output.read_bytes()
+    assert "日本語レイヤ".encode("cp932") in raw
+    assert "寸法".encode("cp932") in raw
+    assert "日本語レイヤ".encode("utf-8") not in raw
+
+    imported = convert_dxf_file_to_ir(output)
+    assert imported.encoding == "cp932"
+    assert imported.document["entities"][0]["layer"] == "日本語レイヤ"
+    assert imported.document["entities"][0]["text"] == "寸法"
+
+
+def test_r12_file_writer_rejects_encoding_that_conflicts_with_codepage(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="ANSI_932"):
+        write_dxf_file(
+            _japanese_ir_document(),
+            tmp_path / "invalid.dxf",
+            target_version="AC1009",
+            encoding="utf-8",
+        )

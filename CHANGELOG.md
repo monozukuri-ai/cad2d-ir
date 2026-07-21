@@ -8,6 +8,8 @@
   warning strings.
 - Added selectable R12 (AC1009) and R2010 (AC1024) output, including
   documented R12 explosion and approximation rules.
+- Added ANSI_932 declaration and target-aware CP932 file encoding for R12
+  Japanese text output.
 - Added CP932-aware DXF file decoding with BOM/codepage/probe detection and
   structured replacement diagnostics.
 - Added LAYER, LTYPE, and STYLE table write/read round-tripping.

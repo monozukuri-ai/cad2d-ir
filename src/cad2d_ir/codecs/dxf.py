@@ -249,20 +249,50 @@ def write_dxf_file(
     target_version: TargetVersion = "AC1024",
     curve_segments: int = 96,
     generic_dimensions: GenericDimensionMode = "explode",
+    encoding: str = "auto",
 ) -> None:
-    Path(path).write_text(
-        ir_to_dxf(
-            ir_document,
-            validate=validate,
-            warnings=warnings,
-            diagnostics=diagnostics,
-            entity_map=entity_map,
-            target_version=target_version,
-            curve_segments=curve_segments,
-            generic_dimensions=generic_dimensions,
-        ),
-        encoding="utf-8",
+    selected_encoding = resolve_dxf_output_encoding(
+        target_version=target_version,
+        encoding=encoding,
     )
+    dxf_text = ir_to_dxf(
+        ir_document,
+        validate=validate,
+        warnings=warnings,
+        diagnostics=diagnostics,
+        entity_map=entity_map,
+        target_version=target_version,
+        curve_segments=curve_segments,
+        generic_dimensions=generic_dimensions,
+    )
+    Path(path).write_bytes(dxf_text.encode(selected_encoding))
+
+
+def resolve_dxf_output_encoding(
+    *,
+    target_version: TargetVersion,
+    encoding: str = "auto",
+) -> str:
+    """Resolve and validate the byte encoding for a target DXF version."""
+    if target_version not in SUPPORTED_DXF_TARGET_VERSIONS:
+        choices = ", ".join(SUPPORTED_DXF_TARGET_VERSIONS)
+        raise ValueError(f"target_version must be one of: {choices}")
+
+    requested = encoding.strip().lower()
+    if requested == "auto":
+        return "cp932" if target_version == "AC1009" else "utf-8"
+
+    try:
+        selected = codecs.lookup(requested).name
+    except LookupError as exc:
+        raise ValueError(f"Unknown DXF output encoding: {encoding!r}") from exc
+
+    if target_version == "AC1009" and selected != "cp932":
+        raise ValueError(
+            "AC1009 output declares $DWGCODEPAGE=ANSI_932 and must be "
+            "written with encoding='cp932' (or encoding='auto')."
+        )
+    return selected
 
 
 def dxf_to_ir(
@@ -472,6 +502,8 @@ def _header_to_pairs(
     else:
         pairs.extend(
             [
+                (9, "$DWGCODEPAGE"),
+                (3, "ANSI_932"),
                 (9, "$MEASUREMENT"),
                 (70, "0" if units_name in {"inch", "ft"} else "1"),
             ]

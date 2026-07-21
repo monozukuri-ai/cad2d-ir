@@ -40,7 +40,7 @@ Format-specific helpers are also public:
 
 Returns `IrToDxfResult`:
 
-- `dxf_text`: output ASCII DXF text
+- `dxf_text`: Unicode DXF text; encode it according to the target version when writing bytes
 - `diagnostics`: structured `ExportDiagnostic` records
 - `warnings`: compatibility list of warning/error messages
 - `entity_map`: IR entity to emitted DXF entity correspondence
@@ -66,6 +66,13 @@ output handles are omitted and consumers use `index`.
 | `AC1009` | R12 | LWPOLYLINE to POLYLINE; MTEXT to TEXT; ELLIPSE/SPLINE to sampled POLYLINE; HATCH to boundary POLYLINE |
 | `AC1024` | R2010 | native supported entities, deterministic handles, and `$HANDSEED` |
 
+AC1009 text output declares `$DWGCODEPAGE=ANSI_932`. Use
+`write_dxf_file(..., target_version="AC1009", encoding="cp932")`, or leave
+`encoding="auto"` to select CP932 for AC1009 and UTF-8 for AC1024. Manual
+consumers of the `str` returned by `ir_to_dxf()` must likewise encode R12
+output as CP932. An explicit non-CP932 encoding is rejected for AC1009 so the
+declared codepage cannot disagree with the file bytes.
+
 `generic_dimensions="explode"` is the default. It preserves GENERIC
 dimension lines, rendered paths, text, and point markers as primitives.
 `"skip"` retains the previous omission behavior with a structured reason.
@@ -78,8 +85,9 @@ dimension lines, rendered paths, text, and point markers as primitives.
 
 - `dxf_to_ir(...)`
 - `read_dxf_file(..., encoding="auto", diagnostics=None)`
+- `resolve_dxf_output_encoding(target_version=..., encoding="auto")`
 - `ir_to_dxf(..., target_version="AC1024", curve_segments=96, generic_dimensions="explode", diagnostics=None, entity_map=None)`
-- `write_dxf_file(...)`
+- `write_dxf_file(..., encoding="auto")`
 
 The low-level `ir_to_dxf()` return type remains `str`. Pass mutable
 `diagnostics` and `entity_map` lists to collect the added result data.

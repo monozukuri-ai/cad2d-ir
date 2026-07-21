@@ -85,7 +85,15 @@ def test_ir2dxf_cli_accepts_target_version_and_dimension_mode(
                         "id": "E1",
                         "kind": "LWPOLYLINE",
                         "vertices": [[0, 0], [1, 0], [1, 1]],
-                    }
+                    },
+                    {
+                        "id": "T1",
+                        "kind": "TEXT",
+                        "layer": "日本語レイヤ",
+                        "insert": [0, 0],
+                        "height": 1,
+                        "text": "寸法",
+                    },
                 ],
             }
         ),
@@ -103,11 +111,18 @@ def test_ir2dxf_cli_accepts_target_version_and_dimension_mode(
                 "AC1009",
                 "--generic-dimensions",
                 "explode",
+                "--encoding",
+                "cp932",
             ]
         )
         == 0
     )
-    dxf_text = output.read_text(encoding="utf-8")
+    raw = output.read_bytes()
+    dxf_text = raw.decode("cp932")
+    assert "日本語レイヤ".encode("utf-8") not in raw
     assert "$ACADVER\n1\nAC1009" in dxf_text
+    assert "日本語レイヤ" in dxf_text
+    assert "寸法" in dxf_text
+    assert "$DWGCODEPAGE\n3\nANSI_932" in dxf_text
     assert "\nPOLYLINE\n" in dxf_text
     assert "\nLWPOLYLINE\n" not in dxf_text

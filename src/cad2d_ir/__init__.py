@@ -17,6 +17,7 @@ from cad2d_ir.codecs.dxf import (
     dxf_to_ir,
     ir_to_dxf,
     read_dxf_file,
+    resolve_dxf_output_encoding,
     write_dxf_file,
 )
 from cad2d_ir.constants import CURRENT_IR_VERSION
@@ -71,6 +72,7 @@ __all__ = [
     "load_ir_json",
     "load_schema",
     "read_dxf_file",
+    "resolve_dxf_output_encoding",
     "validate_ir",
     "write_dxf_file",
 ]

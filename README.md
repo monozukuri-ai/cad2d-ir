@@ -70,7 +70,7 @@ cad2d-ir import drawing.p21 -o drawing.json --pretty
 # IR -> R2010 or R12 DXF
 cad2d-ir ir2dxf drawing.json --target-version AC1024 -o drawing-r2010.dxf
 cad2d-ir ir2dxf drawing.json --target-version AC1009 \
-  --curve-segments 128 -o drawing-r12.dxf
+  --encoding cp932 --curve-segments 128 -o drawing-r12.dxf
 ```
 
 ## Python API
@@ -100,8 +100,9 @@ handles and retains deterministic `index` values in the entity map.
 
 - `TABLES` contains LAYER, LTYPE, and STYLE records from IR tables.
 - GENERIC dimensions expand to their preserved visual primitives by default.
-- R12 converts LWPOLYLINE to POLYLINE/VERTEX, MTEXT to TEXT,
-  ELLIPSE/SPLINE to sampled polylines, and HATCH to boundary polylines.
+- R12 declares `$DWGCODEPAGE=ANSI_932` and file output uses CP932 by
+  default; LWPOLYLINE becomes POLYLINE/VERTEX, MTEXT becomes TEXT,
+  ELLIPSE/SPLINE become sampled polylines, and HATCH becomes boundary polylines.
 - Every skip, approximation, explosion, and normalization is represented by an
   `ExportDiagnostic`.
 - The same document and options produce byte-identical DXF and entity-map output
