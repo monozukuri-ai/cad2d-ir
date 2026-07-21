@@ -6,7 +6,14 @@ from pathlib import Path
 import sys
 from typing import Sequence
 
-from cad2d_ir.api import convert_dxf_text_to_ir, convert_ir_to_dxf_text, load_ir_json
+from cad2d_ir.api import (
+    convert_dxf_text_to_ir,
+    convert_file_to_ir,
+    convert_ir_to_dxf_text,
+    load_ir_json,
+)
+from cad2d_ir.constants import CURRENT_IR_VERSION
+from cad2d_ir.importers import ImporterError
 from cad2d_ir.schema import IRValidationError, validate_ir
 
 
@@ -25,14 +32,51 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cad2d-ir")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    validate_parser = subparsers.add_parser("validate", help="Validate an IR JSON document")
+    validate_parser = subparsers.add_parser(
+        "validate", help="Validate an IR JSON document"
+    )
     validate_parser.add_argument("input", type=Path, help="Path to IR JSON file")
 
     dxf2ir_parser = subparsers.add_parser("dxf2ir", help="Convert DXF file to IR JSON")
     dxf2ir_parser.add_argument("input", type=Path, help="Path to DXF file")
     dxf2ir_parser.add_argument("-o", "--output", type=Path, help="Output IR JSON path")
-    dxf2ir_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON")
-    dxf2ir_parser.add_argument("--ir-version", default="0.1.0", help="IR version string")
+    dxf2ir_parser.add_argument(
+        "--pretty", action="store_true", help="Pretty-print JSON"
+    )
+    dxf2ir_parser.add_argument(
+        "--ir-version", default=CURRENT_IR_VERSION, help="IR version string"
+    )
+
+    import_parser = subparsers.add_parser(
+        "import",
+        help="Import a supported CAD file (DXF, DWG, JWW, or SXF) to IR JSON",
+    )
+    import_parser.add_argument("input", type=Path, help="Path to source CAD file")
+    import_parser.add_argument("-o", "--output", type=Path, help="Output IR JSON path")
+    import_parser.add_argument(
+        "--format",
+        dest="source_format",
+        default="auto",
+        choices=("auto", "dxf", "jww", "dwg", "sxf"),
+        help="Source format (default: detect from filename)",
+    )
+    import_parser.add_argument(
+        "--pretty", action="store_true", help="Pretty-print JSON"
+    )
+    import_parser.add_argument(
+        "--ir-version", default=CURRENT_IR_VERSION, help="IR version string"
+    )
+    import_parser.add_argument(
+        "--lenient",
+        action="store_true",
+        help="Skip malformed source entities and report diagnostics",
+    )
+    import_parser.add_argument(
+        "--curve-segments",
+        type=int,
+        default=96,
+        help="Segments per full curve when approximation is required (8..4096)",
+    )
 
     ir2dxf_parser = subparsers.add_parser("ir2dxf", help="Convert IR JSON to DXF file")
     ir2dxf_parser.add_argument("input", type=Path, help="Path to IR JSON file")
@@ -65,14 +109,43 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"Warning: {warning}", file=sys.stderr)
             return 0
 
+        if args.command == "import":
+            result = convert_file_to_ir(
+                args.input,
+                source_format=args.source_format,
+                ir_version=args.ir_version,
+                validate=True,
+                strict=not args.lenient,
+                curve_segments=args.curve_segments,
+            )
+            indent = 2 if args.pretty else None
+            text = json.dumps(result.document, ensure_ascii=False, indent=indent)
+            if indent is not None:
+                text += "\n"
+            _write_text(args.output, text)
+            for diagnostic in result.diagnostics:
+                print(
+                    f"{diagnostic.severity.title()} [{diagnostic.code}]: {diagnostic.message}",
+                    file=sys.stderr,
+                )
+            return 0
+
         if args.command == "ir2dxf":
-            result = convert_ir_to_dxf_text(load_ir_json(args.input, validate=True), validate=True)
+            result = convert_ir_to_dxf_text(
+                load_ir_json(args.input, validate=True), validate=True
+            )
             _write_text(args.output, result.dxf_text)
             for warning in result.warnings:
                 print(f"Warning: {warning}", file=sys.stderr)
             return 0
-    except (IRValidationError, ValueError, json.JSONDecodeError) as exc:
-        print(f"Error: {exc}")
+    except (
+        IRValidationError,
+        ImporterError,
+        OSError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
+        print(f"Error: {exc}", file=sys.stderr)
         return 2
 
     parser.error(f"Unknown command: {args.command}")

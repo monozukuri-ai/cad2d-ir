@@ -219,7 +219,10 @@ def test_ir_to_dxf_roundtrip_with_blocks_mtext_insert_hatch() -> None:
                 "kind": "HATCH",
                 "solid": True,
                 "loops": [
-                    {"vertices": [[0, 0], [4, 0, 0.2], [4, 3], [0, 3]], "is_outer": True},
+                    {
+                        "vertices": [[0, 0], [4, 0, 0.2], [4, 3], [0, 3]],
+                        "is_outer": True,
+                    },
                 ],
             },
         ],

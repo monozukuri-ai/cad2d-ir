@@ -1,22 +1,19 @@
 [project]
 name = "cad2d-ir"
-version = "0.1.0"
-description = "Intermediate representation (IR) for 2D CAD and DXF converters"
+version = "0.2.0"
+description = "Intermediate representation (IR) and importers for 2D CAD formats"
 readme = "README.md"
 license = { text = "MIT" }
 authors = [
     { name = "neka-nat", email = "nekanat.stock@gmail.com" }
 ]
-requires-python = ">=3.10"
-keywords = ["cad", "dxf", "geometry", "2d", "intermediate-representation"]
+requires-python = ">=3.13"
+keywords = ["cad", "dxf", "dwg", "jww", "sxf", "geometry", "2d", "intermediate-representation"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
-    "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering",
     "Topic :: Software Development :: Libraries",
@@ -24,6 +21,12 @@ classifiers = [
 dependencies = [
     "jsonschema>=4.23.0",
 ]
+
+[project.optional-dependencies]
+dwg = ["ezdwg>=0.9,<1"]
+jww = ["ezjww>=0.2.5,<0.3"]
+sxf = ["ezsxf>=0.1,<0.2"]
+all = ["ezdwg>=0.9,<1", "ezjww>=0.2.5,<0.3", "ezsxf>=0.1,<0.2"]
 
 [project.urls]
 Homepage = "https://github.com/neka-nat/cad2d-ir"

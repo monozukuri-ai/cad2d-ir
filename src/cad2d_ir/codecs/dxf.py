@@ -4,11 +4,13 @@ from pathlib import Path
 import re
 from typing import Any
 
+from cad2d_ir.constants import CURRENT_IR_VERSION
 from cad2d_ir.schema import validate_ir
 
 DXFPair = tuple[int, str]
 
 _INSUNITS_TO_IR = {
+    0: "unitless",
     1: "inch",
     2: "ft",
     4: "mm",
@@ -17,6 +19,8 @@ _INSUNITS_TO_IR = {
 }
 
 _IR_TO_INSUNITS = {
+    "unitless": 0,
+    "unknown": 0,
     "inch": 1,
     "ft": 2,
     "mm": 4,
@@ -70,16 +74,18 @@ def _warn(warnings: list[str] | None, message: str) -> None:
 def read_dxf_file(
     path: str | Path,
     *,
-    ir_version: str = "0.1.0",
+    ir_version: str = CURRENT_IR_VERSION,
     validate: bool = True,
     warnings: list[str] | None = None,
 ) -> dict[str, Any]:
-    return dxf_to_ir(
+    document = dxf_to_ir(
         Path(path).read_text(encoding="utf-8"),
         ir_version=ir_version,
         validate=validate,
         warnings=warnings,
     )
+    document["source"] = {"format": "dxf", "name": Path(path).name}
+    return document
 
 
 def write_dxf_file(
@@ -89,13 +95,15 @@ def write_dxf_file(
     validate: bool = True,
     warnings: list[str] | None = None,
 ) -> None:
-    Path(path).write_text(ir_to_dxf(ir_document, validate=validate, warnings=warnings), encoding="utf-8")
+    Path(path).write_text(
+        ir_to_dxf(ir_document, validate=validate, warnings=warnings), encoding="utf-8"
+    )
 
 
 def dxf_to_ir(
     dxf_text: str,
     *,
-    ir_version: str = "0.1.0",
+    ir_version: str = CURRENT_IR_VERSION,
     validate: bool = True,
     warnings: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -114,6 +122,7 @@ def dxf_to_ir(
             "angle_unit": "deg",
             "coord_space": "world",
         },
+        "source": {"format": "dxf"},
         "entities": entities,
     }
     if blocks:
@@ -138,14 +147,27 @@ def ir_to_dxf(
     units = _IR_TO_INSUNITS.get(header.get("units", "mm"), 4)
 
     pairs: list[DXFPair] = []
-    pairs.extend([(0, "SECTION"), (2, "HEADER"), (9, "$ACADVER"), (1, "AC1024"), (9, "$INSUNITS"), (70, str(units)), (0, "ENDSEC")])
+    pairs.extend(
+        [
+            (0, "SECTION"),
+            (2, "HEADER"),
+            (9, "$ACADVER"),
+            (1, "AC1024"),
+            (9, "$INSUNITS"),
+            (70, str(units)),
+            (0, "ENDSEC"),
+        ]
+    )
     blocks = ir_document.get("tables", {}).get("blocks", {})
     if isinstance(blocks, dict) and blocks:
         pairs.extend(_blocks_to_pairs(blocks, warnings=warnings))
 
     constraints = ir_document.get("constraints")
     if isinstance(constraints, list) and constraints:
-        _warn(warnings, "IR constraints are not representable in plain DXF and were omitted.")
+        _warn(
+            warnings,
+            "IR constraints are not representable in plain DXF and were omitted.",
+        )
     pairs.extend([(0, "SECTION"), (2, "ENTITIES")])
 
     for entity in ir_document.get("entities", []):
@@ -167,7 +189,9 @@ def _parse_pairs(dxf_text: str) -> list[DXFPair]:
         try:
             code = int(code_text)
         except ValueError as exc:
-            raise ValueError(f"Invalid DXF group code at line {index + 1}: {code_text}") from exc
+            raise ValueError(
+                f"Invalid DXF group code at line {index + 1}: {code_text}"
+            ) from exc
         pairs.append((code, value))
     return pairs
 
@@ -213,7 +237,9 @@ def _header_units(header_pairs: list[DXFPair]) -> str:
     return _INSUNITS_TO_IR.get(insunits, "mm")
 
 
-def _entities_to_ir(entity_pairs: list[DXFPair], *, warnings: list[str] | None = None) -> list[dict[str, Any]]:
+def _entities_to_ir(
+    entity_pairs: list[DXFPair], *, warnings: list[str] | None = None
+) -> list[dict[str, Any]]:
     records = _pairs_to_records(entity_pairs)
     return _records_to_entities(records, warnings=warnings, context="ENTITIES")
 
@@ -303,6 +329,10 @@ def _records_to_entities(
             entity = _circle_from_pairs(pairs, serial)
         elif kind == "ARC":
             entity = _arc_from_pairs(pairs, serial)
+        elif kind == "POINT":
+            entity = _point_from_pairs(pairs, serial)
+        elif kind == "ELLIPSE":
+            entity = _ellipse_from_pairs(pairs, serial)
         elif kind == "LWPOLYLINE":
             entity = _lwpolyline_from_pairs(pairs, serial)
         elif kind == "TEXT":
@@ -321,7 +351,9 @@ def _records_to_entities(
             if lookahead < len(records) and records[lookahead][0] == "SEQEND":
                 lookahead += 1
             consumed = max(1, lookahead - record_index)
-            entity = _insert_from_pairs(pairs, serial, attributes if attributes else None)
+            entity = _insert_from_pairs(
+                pairs, serial, attributes if attributes else None
+            )
         elif kind == "HATCH":
             entity = _hatch_from_pairs(pairs, serial)
         elif kind == "SPLINE":
@@ -330,6 +362,7 @@ def _records_to_entities(
             entity = _dimension_from_pairs(pairs, serial, warnings=warnings)
 
         if entity is not None:
+            entity.setdefault("source", {"format": "dxf"})["kind"] = kind
             entities.append(entity)
             serial += 1
         else:
@@ -346,7 +379,9 @@ def _common_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
     if not clean_id or not clean_id[0].isalpha():
         clean_id = f"E{clean_id}"
 
-    entity: dict[str, Any] = {"id": clean_id}
+    entity: dict[str, Any] = {"id": clean_id, "source": {"format": "dxf"}}
+    if handle:
+        entity["source"]["id"] = handle
     layer = _first_string(pairs, 8)
     if layer:
         entity["layer"] = layer
@@ -398,6 +433,26 @@ def _arc_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
     entity["radius"] = _required_float(pairs, 40)
     entity["start_angle"] = _required_float(pairs, 50)
     entity["end_angle"] = _required_float(pairs, 51)
+    return entity
+
+
+def _point_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
+    entity = _common_from_pairs(pairs, idx)
+    entity["kind"] = "POINT"
+    entity["position"] = [_required_float(pairs, 10), _required_float(pairs, 20)]
+    return entity
+
+
+def _ellipse_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
+    entity = _common_from_pairs(pairs, idx)
+    entity["kind"] = "ELLIPSE"
+    entity["center"] = [_required_float(pairs, 10), _required_float(pairs, 20)]
+    entity["major_axis"] = [_required_float(pairs, 11), _required_float(pairs, 21)]
+    entity["ratio"] = _required_float(pairs, 40)
+    start_param = _first_float(pairs, 41, default=0.0)
+    end_param = _first_float(pairs, 42, default=6.283185307179586)
+    entity["start_param"] = 0.0 if start_param is None else start_param
+    entity["end_param"] = 6.283185307179586 if end_param is None else end_param
     return entity
 
 
@@ -495,7 +550,9 @@ def _mtext_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
     return entity
 
 
-def _insert_from_pairs(pairs: list[DXFPair], idx: int, attributes: dict[str, str] | None) -> dict[str, Any]:
+def _insert_from_pairs(
+    pairs: list[DXFPair], idx: int, attributes: dict[str, str] | None
+) -> dict[str, Any]:
     entity = _common_from_pairs(pairs, idx)
     entity["kind"] = "INSERT"
     block_name = _first_string(pairs, 2)
@@ -592,7 +649,10 @@ def _dimension_from_pairs(
     dim_kind = _DIM_KIND_FROM_DXF.get(dim_type)
     if dim_kind is None:
         dim_kind = "LINEAR"
-        _warn(warnings, f"[DIMENSION] Unsupported dimension type {dim_type}; mapped to LINEAR.")
+        _warn(
+            warnings,
+            f"[DIMENSION] Unsupported dimension type {dim_type}; mapped to LINEAR.",
+        )
     entity["dim_kind"] = dim_kind
 
     style = _first_string(pairs, 3)
@@ -641,7 +701,9 @@ def _dimension_from_pairs(
 
 
 def _parse_hatch_loops(pairs: list[DXFPair]) -> list[dict[str, Any]]:
-    loop_count_index = next((i for i, (code, _) in enumerate(pairs) if code == 91), None)
+    loop_count_index = next(
+        (i for i, (code, _) in enumerate(pairs) if code == 91), None
+    )
     if loop_count_index is None:
         return []
 
@@ -720,7 +782,9 @@ def _line_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     p2 = entity["p2"]
     pairs = [(0, "LINE")]
     pairs.extend(_common_to_pairs(entity))
-    pairs.extend([(10, _num(p1[0])), (20, _num(p1[1])), (11, _num(p2[0])), (21, _num(p2[1]))])
+    pairs.extend(
+        [(10, _num(p1[0])), (20, _num(p1[1])), (11, _num(p2[0])), (21, _num(p2[1]))]
+    )
     return pairs
 
 
@@ -728,7 +792,9 @@ def _circle_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     center = entity["center"]
     pairs = [(0, "CIRCLE")]
     pairs.extend(_common_to_pairs(entity))
-    pairs.extend([(10, _num(center[0])), (20, _num(center[1])), (40, _num(entity["radius"]))])
+    pairs.extend(
+        [(10, _num(center[0])), (20, _num(center[1])), (40, _num(entity["radius"]))]
+    )
     return pairs
 
 
@@ -743,6 +809,38 @@ def _arc_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
             (40, _num(entity["radius"])),
             (50, _num(entity["start_angle"])),
             (51, _num(entity["end_angle"])),
+        ]
+    )
+    return pairs
+
+
+def _point_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
+    position = entity["position"]
+    pairs = [(0, "POINT")]
+    pairs.extend(_common_to_pairs(entity))
+    pairs.extend([(10, _num(position[0])), (20, _num(position[1]))])
+    return pairs
+
+
+def _ellipse_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
+    center = entity["center"]
+    major_axis = entity["major_axis"]
+    start_param = entity["start_param"]
+    end_param = entity["end_param"]
+    if entity.get("ccw") is False:
+        start_param, end_param = end_param, start_param
+
+    pairs = [(0, "ELLIPSE")]
+    pairs.extend(_common_to_pairs(entity))
+    pairs.extend(
+        [
+            (10, _num(center[0])),
+            (20, _num(center[1])),
+            (11, _num(major_axis[0])),
+            (21, _num(major_axis[1])),
+            (40, _num(entity["ratio"])),
+            (41, _num(start_param)),
+            (42, _num(end_param)),
         ]
     )
     return pairs
@@ -838,7 +936,11 @@ def _mtext_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     return pairs
 
 
-def _insert_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
+def _insert_to_pairs(
+    entity: dict[str, Any],
+    *,
+    warnings: list[str] | None = None,
+) -> list[DXFPair]:
     insert = entity["insert"]
     pairs = [(0, "INSERT")]
     pairs.extend(_common_to_pairs(entity))
@@ -849,6 +951,12 @@ def _insert_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
             (20, _num(insert[1])),
         ]
     )
+
+    if "transform" in entity:
+        _warn(
+            warnings,
+            f"[INSERT:{entity.get('id', '?')}] affine transform is not representable by plain DXF INSERT and was omitted.",
+        )
 
     rotation = float(entity.get("rotation", 0.0))
     if rotation != 0.0:
@@ -967,10 +1075,22 @@ def _spline_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     return pairs
 
 
-def _dimension_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
+def _dimension_to_pairs(
+    entity: dict[str, Any],
+    *,
+    warnings: list[str] | None = None,
+) -> list[DXFPair]:
     definition = entity.get("definition")
     if not isinstance(definition, dict):
         definition = {}
+
+    dim_kind = str(entity.get("dim_kind", "LINEAR"))
+    if dim_kind == "GENERIC":
+        _warn(
+            warnings,
+            f"[DIMENSION:{entity.get('id', '?')}] GENERIC dimension has no lossless DXF DIMENSION mapping and was omitted.",
+        )
+        return []
 
     pairs = [(0, "DIMENSION")]
     pairs.extend(_common_to_pairs(entity))
@@ -981,7 +1101,6 @@ def _dimension_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     style = entity.get("style", "Standard")
     pairs.append((3, str(style)))
 
-    dim_kind = str(entity.get("dim_kind", "LINEAR"))
     dim_code = _DIM_KIND_TO_DXF.get(dim_kind, 0)
     pairs.append((70, str(dim_code)))
 
@@ -1000,7 +1119,12 @@ def _dimension_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
         pairs.append((21, _num(text_midpoint[1])))
         pairs.append((31, "0"))
 
-    for key, x_code, y_code in (("p1", 13, 23), ("p2", 14, 24), ("p3", 15, 25), ("p4", 16, 26)):
+    for key, x_code, y_code in (
+        ("p1", 13, 23),
+        ("p2", 14, 24),
+        ("p3", 15, 25),
+        ("p4", 16, 26),
+    ):
         point = _dimension_point(points, definition, key, default=None)
         if point is not None:
             pairs.append((x_code, _num(point[0])))
@@ -1024,7 +1148,9 @@ def _dimension_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     return pairs
 
 
-def _entity_to_pairs(entity: dict[str, Any], *, warnings: list[str] | None = None) -> list[DXFPair]:
+def _entity_to_pairs(
+    entity: dict[str, Any], *, warnings: list[str] | None = None
+) -> list[DXFPair]:
     kind = entity.get("kind")
     if kind == "LINE":
         return _line_to_pairs(entity)
@@ -1032,6 +1158,10 @@ def _entity_to_pairs(entity: dict[str, Any], *, warnings: list[str] | None = Non
         return _circle_to_pairs(entity)
     if kind == "ARC":
         return _arc_to_pairs(entity)
+    if kind == "POINT":
+        return _point_to_pairs(entity)
+    if kind == "ELLIPSE":
+        return _ellipse_to_pairs(entity)
     if kind == "LWPOLYLINE":
         return _lwpolyline_to_pairs(entity)
     if kind == "TEXT":
@@ -1039,17 +1169,19 @@ def _entity_to_pairs(entity: dict[str, Any], *, warnings: list[str] | None = Non
     if kind == "MTEXT":
         return _mtext_to_pairs(entity)
     if kind == "INSERT":
-        return _insert_to_pairs(entity)
+        return _insert_to_pairs(entity, warnings=warnings)
     if kind == "HATCH":
         return _hatch_to_pairs(entity)
     if kind == "SPLINE":
         return _spline_to_pairs(entity)
     if kind == "DIMENSION":
-        return _dimension_to_pairs(entity)
+        return _dimension_to_pairs(entity, warnings=warnings)
     raise ValueError(f"Unsupported IR entity kind for DXF writer: {kind}")
 
 
-def _blocks_to_pairs(blocks: dict[str, Any], *, warnings: list[str] | None = None) -> list[DXFPair]:
+def _blocks_to_pairs(
+    blocks: dict[str, Any], *, warnings: list[str] | None = None
+) -> list[DXFPair]:
     pairs: list[DXFPair] = [(0, "SECTION"), (2, "BLOCKS")]
     for name, definition in blocks.items():
         base = definition.get("base_point", [0.0, 0.0])
@@ -1087,7 +1219,9 @@ def _common_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     color = entity.get("color")
     if isinstance(color, int):
         pairs.append((62, str(color)))
-    elif isinstance(color, str) and re.fullmatch(r"#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})", color):
+    elif isinstance(color, str) and re.fullmatch(
+        r"#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})", color
+    ):
         pairs.append((420, str(int(color[1:7], 16))))
 
     lineweight = entity.get("lineweight_mm")
@@ -1117,7 +1251,9 @@ def _default_spline_knots(control_point_count: int, degree: int) -> list[float]:
     edge = degree + 1
     interior = total - 2 * edge
     if interior < 0:
-        raise ValueError("Invalid SPLINE definition: too few control points for the degree")
+        raise ValueError(
+            "Invalid SPLINE definition: too few control points for the degree"
+        )
 
     knots = [0.0] * edge
     if interior > 0:
@@ -1148,7 +1284,9 @@ def _first_int(pairs: list[DXFPair], code: int, default: int | None) -> int | No
     return int(float(value))
 
 
-def _first_float(pairs: list[DXFPair], code: int, default: float | None) -> float | None:
+def _first_float(
+    pairs: list[DXFPair], code: int, default: float | None
+) -> float | None:
     value = _first_string(pairs, code)
     if value is None:
         return default

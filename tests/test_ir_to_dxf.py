@@ -15,8 +15,20 @@ def test_ir_to_dxf_writes_mvp_entities_and_roundtrips() -> None:
         "entities": [
             {"id": "E1", "kind": "LINE", "p1": [0, 0], "p2": [5, 0]},
             {"id": "E2", "kind": "CIRCLE", "center": [3, 3], "radius": 2},
-            {"id": "E3", "kind": "ARC", "center": [1, 1], "radius": 1, "start_angle": 0, "end_angle": 180},
-            {"id": "E4", "kind": "LWPOLYLINE", "vertices": [[0, 0], [1, 0, 0.1], [1, 1]], "closed": True},
+            {
+                "id": "E3",
+                "kind": "ARC",
+                "center": [1, 1],
+                "radius": 1,
+                "start_angle": 0,
+                "end_angle": 180,
+            },
+            {
+                "id": "E4",
+                "kind": "LWPOLYLINE",
+                "vertices": [[0, 0], [1, 0, 0.1], [1, 1]],
+                "closed": True,
+            },
             {
                 "id": "E5",
                 "kind": "TEXT",

@@ -10,6 +10,8 @@
     "format": { "const": "cad2d-ir" },
     "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
 
+    "source": { "$ref": "#/$defs/SourceInfo" },
+
     "header": {
       "type": "object",
       "additionalProperties": false,
@@ -18,7 +20,7 @@
         "units": {
           "description": "Drawing units. If 'custom', interpret 'unit_scale_to_mm'.",
           "type": "string",
-          "enum": ["mm", "cm", "m", "inch", "ft", "custom"]
+          "enum": ["mm", "cm", "m", "inch", "ft", "unitless", "unknown", "custom"]
         },
         "unit_scale_to_mm": {
           "description": "Only used when units=custom. drawing_unit * unit_scale_to_mm = millimeter.",
@@ -131,7 +133,8 @@
       "type": "array",
       "minItems": 2,
       "maxItems": 2,
-      "items": [{ "type": "number" }, { "type": "number" }]
+      "prefixItems": [{ "type": "number" }, { "type": "number" }],
+      "items": false
     },
 
     "BBox2": {
@@ -148,14 +151,61 @@
       "type": "array",
       "minItems": 6,
       "maxItems": 6,
-      "items": [
+      "prefixItems": [
         { "type": "number" },
         { "type": "number" },
         { "type": "number" },
         { "type": "number" },
         { "type": "number" },
         { "type": "number" }
-      ]
+      ],
+      "items": false
+    },
+
+    "NonZeroNumber": {
+      "type": "number",
+      "not": { "const": 0 }
+    },
+
+    "SourceInfo": {
+      "description": "Drawing-level provenance for the imported source.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format"],
+      "properties": {
+        "format": { "type": "string", "enum": ["dxf", "dwg", "jww", "sxf", "unknown"] },
+        "version": { "type": "string" },
+        "name": { "type": "string" },
+        "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+        "metadata": { "type": "object" }
+      }
+    },
+
+    "EntitySource": {
+      "description": "Reference back to the source record that produced an IR entity.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format"],
+      "properties": {
+        "format": { "type": "string", "enum": ["dxf", "dwg", "jww", "sxf", "unknown"] },
+        "id": { "type": "string" },
+        "kind": { "type": "string" },
+        "metadata": { "type": "object" }
+      }
+    },
+
+    "Approximation": {
+      "description": "Records an intentional geometry approximation performed by an importer.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "source_kind"],
+      "properties": {
+        "method": { "type": "string", "enum": ["polyline", "spline", "other"] },
+        "source_kind": { "type": "string" },
+        "segments": { "type": "integer", "minimum": 1 },
+        "tolerance": { "type": "number", "minimum": 0 },
+        "metadata": { "type": "object" }
+      }
     },
 
     "Color": {
@@ -168,7 +218,6 @@
 
     "EntityCommon": {
       "type": "object",
-      "additionalProperties": false,
       "required": ["id", "kind"],
       "properties": {
         "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_\\-:.]{0,63}$" },
@@ -180,6 +229,8 @@
         "lineweight_mm": { "type": "number", "minimum": 0 },
 
         "visible": { "type": "boolean", "default": true },
+        "source": { "$ref": "#/$defs/EntitySource" },
+        "approximation": { "$ref": "#/$defs/Approximation" },
         "metadata": { "type": "object" }
       }
     },
@@ -191,7 +242,8 @@
         "color": { "$ref": "#/$defs/Color" },
         "linetype": { "type": "string" },
         "lineweight_mm": { "type": "number", "minimum": 0 },
-        "plot": { "type": "boolean", "default": true }
+        "plot": { "type": "boolean", "default": true },
+        "metadata": { "type": "object" }
       }
     },
 
@@ -253,18 +305,21 @@
           "type": "array",
           "minItems": 2,
           "maxItems": 2,
-          "items": [{ "type": "number" }, { "type": "number" }]
+          "prefixItems": [{ "type": "number" }, { "type": "number" }],
+          "items": false
         },
         {
           "type": "array",
           "minItems": 3,
           "maxItems": 3,
-          "items": [{ "type": "number" }, { "type": "number" }, { "type": "number" }]
+          "prefixItems": [{ "type": "number" }, { "type": "number" }, { "type": "number" }],
+          "items": false
         }
       ]
     },
 
     "EntityLine": {
+      "unevaluatedProperties": false,
       "allOf": [
         { "$ref": "#/$defs/EntityCommon" },
         {
@@ -280,6 +335,7 @@
     },
 
     "EntityCircle": {
+      "unevaluatedProperties": false,
       "allOf": [
         { "$ref": "#/$defs/EntityCommon" },
         {
@@ -295,6 +351,7 @@
     },
 
     "EntityArc": {
+      "unevaluatedProperties": false,
       "allOf": [
         { "$ref": "#/$defs/EntityCommon" },
         {
@@ -315,7 +372,55 @@
       ]
     },
 
+    "EntityPoint": {
+      "unevaluatedProperties": false,
+      "allOf": [
+        { "$ref": "#/$defs/EntityCommon" },
+        {
+          "type": "object",
+          "required": ["kind", "position"],
+          "properties": {
+            "kind": { "const": "POINT" },
+            "position": { "$ref": "#/$defs/Point2" },
+            "marker_code": { "type": "integer" },
+            "rotation": { "type": "number", "default": 0 },
+            "scale": { "type": "number", "exclusiveMinimum": 0 },
+            "temporary": { "type": "boolean", "default": false }
+          }
+        }
+      ]
+    },
+
+    "EntityEllipse": {
+      "unevaluatedProperties": false,
+      "allOf": [
+        { "$ref": "#/$defs/EntityCommon" },
+        {
+          "type": "object",
+          "required": ["kind", "center", "major_axis", "ratio", "start_param", "end_param"],
+          "properties": {
+            "kind": { "const": "ELLIPSE" },
+            "center": { "$ref": "#/$defs/Point2" },
+            "major_axis": {
+              "description": "Vector from center to the major-axis endpoint.",
+              "$ref": "#/$defs/Point2"
+            },
+            "ratio": {
+              "description": "Minor-axis radius divided by major-axis radius.",
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "maximum": 1
+            },
+            "start_param": { "description": "Ellipse start parameter in radians.", "type": "number" },
+            "end_param": { "description": "Ellipse end parameter in radians.", "type": "number" },
+            "ccw": { "type": "boolean", "default": true }
+          }
+        }
+      ]
+    },
+
     "EntityLWPolyline": {
+      "unevaluatedProperties": false,
       "allOf": [
         { "$ref": "#/$defs/EntityCommon" },
         {
@@ -335,6 +440,7 @@
     },
 
     "EntitySpline": {
+      "unevaluatedProperties": false,
       "allOf": [
         { "$ref": "#/$defs/EntityCommon" },
         {
@@ -366,6 +472,7 @@
     "TextAlignV": { "type": "string", "enum": ["baseline", "bottom", "middle", "top"] },
 
     "EntityText": {
+      "unevaluatedProperties": false,
       "allOf": [
         { "$ref": "#/$defs/EntityCommon" },
         {
@@ -397,6 +504,7 @@
     },
 
     "EntityMText": {
+      "unevaluatedProperties": false,
       "allOf": [
         { "$ref": "#/$defs/EntityCommon" },
         {
@@ -417,6 +525,7 @@
     },
 
     "EntityInsert": {
+      "unevaluatedProperties": false,
       "allOf": [
         { "$ref": "#/$defs/EntityCommon" },
         {
@@ -428,20 +537,25 @@
             "insert": { "$ref": "#/$defs/Point2" },
             "rotation": { "type": "number", "default": 0 },
             "scale": {
-              "description": "Uniform scale or [sx,sy].",
+              "description": "Non-zero uniform scale or [sx,sy]. Negative values represent mirroring.",
               "oneOf": [
-                { "type": "number", "exclusiveMinimum": 0 },
+                { "$ref": "#/$defs/NonZeroNumber" },
                 {
                   "type": "array",
                   "minItems": 2,
                   "maxItems": 2,
-                  "items": [
-                    { "type": "number", "exclusiveMinimum": 0 },
-                    { "type": "number", "exclusiveMinimum": 0 }
-                  ]
+                  "prefixItems": [
+                    { "$ref": "#/$defs/NonZeroNumber" },
+                    { "$ref": "#/$defs/NonZeroNumber" }
+                  ],
+                  "items": false
                 }
               ],
               "default": 1
+            },
+            "transform": {
+              "description": "Optional complete affine transform when insert/rotation/scale cannot express the source transform exactly.",
+              "$ref": "#/$defs/Affine2D"
             },
             "attributes": {
               "type": "object",
@@ -454,6 +568,7 @@
 
     "EntityHatch": {
       "description": "Simplified hatch: each loop is a closed polyline. Convert to DXF HATCH later.",
+      "unevaluatedProperties": false,
       "allOf": [
         { "$ref": "#/$defs/EntityCommon" },
         {
@@ -487,6 +602,7 @@
 
     "EntityDimension": {
       "description": "Semantic dimension (optional). Converting to DXF DIMENSION may require style and placement logic.",
+      "unevaluatedProperties": false,
       "allOf": [
         { "$ref": "#/$defs/EntityCommon" },
         {
@@ -496,7 +612,7 @@
             "kind": { "const": "DIMENSION" },
             "dim_kind": {
               "type": "string",
-              "enum": ["LINEAR", "ALIGNED", "ANGULAR", "RADIAL", "DIAMETER", "ORDINATE"]
+              "enum": ["GENERIC", "LINEAR", "ALIGNED", "ANGULAR", "RADIAL", "DIAMETER", "ORDINATE"]
             },
             "style": { "type": "string" },
             "definition": {
@@ -514,6 +630,8 @@
         { "$ref": "#/$defs/EntityLine" },
         { "$ref": "#/$defs/EntityCircle" },
         { "$ref": "#/$defs/EntityArc" },
+        { "$ref": "#/$defs/EntityPoint" },
+        { "$ref": "#/$defs/EntityEllipse" },
         { "$ref": "#/$defs/EntityLWPolyline" },
         { "$ref": "#/$defs/EntitySpline" },
         { "$ref": "#/$defs/EntityText" },

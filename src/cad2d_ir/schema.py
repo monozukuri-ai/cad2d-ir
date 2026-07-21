@@ -20,6 +20,8 @@ _SUPPORTED_KINDS = {
     "LINE",
     "CIRCLE",
     "ARC",
+    "POINT",
+    "ELLIPSE",
     "LWPOLYLINE",
     "SPLINE",
     "TEXT",
@@ -89,7 +91,10 @@ def validate_ir(
         schema = load_schema()
 
     if jsonschema is not None:
-        for validator_cls in (jsonschema.Draft202012Validator, jsonschema.Draft7Validator):
+        for validator_cls in (
+            jsonschema.Draft202012Validator,
+            jsonschema.Draft7Validator,
+        ):
             try:
                 validator = validator_cls(schema)
                 errors = sorted(
@@ -121,7 +126,10 @@ def _fallback_validate(document: Any) -> None:
         raise IRValidationError("format must be 'cad2d-ir'")
 
     version = document["version"]
-    if not isinstance(version, str) or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None:
+    if (
+        not isinstance(version, str)
+        or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None
+    ):
         raise IRValidationError("version must be semantic version format X.Y.Z")
 
     header = document["header"]
@@ -129,13 +137,15 @@ def _fallback_validate(document: Any) -> None:
         raise IRValidationError("header must be an object")
 
     units = header.get("units")
-    if units not in {"mm", "cm", "m", "inch", "ft", "custom"}:
+    if units not in {"mm", "cm", "m", "inch", "ft", "unitless", "unknown", "custom"}:
         raise IRValidationError("header.units is invalid")
 
     if units == "custom":
         scale = header.get("unit_scale_to_mm")
         if not isinstance(scale, (int, float)) or scale <= 0:
-            raise IRValidationError("header.unit_scale_to_mm must be > 0 for custom units")
+            raise IRValidationError(
+                "header.unit_scale_to_mm must be > 0 for custom units"
+            )
 
     if header.get("angle_unit") not in {"deg", "rad"}:
         raise IRValidationError("header.angle_unit must be 'deg' or 'rad'")
@@ -144,6 +154,7 @@ def _fallback_validate(document: Any) -> None:
         raise IRValidationError("header.coord_space must be 'world' or 'normalized'")
 
     _validate_tables(document.get("tables"))
+    _validate_source(document.get("source"), "source")
 
     entities = document["entities"]
     if not isinstance(entities, list):
@@ -175,13 +186,19 @@ def _validate_tables(tables: Any) -> None:
 
         base_point = block_def.get("base_point")
         if not isinstance(base_point, list) or len(base_point) != 2:
-            raise IRValidationError(f"tables.blocks.{block_name}.base_point must be [x, y]")
+            raise IRValidationError(
+                f"tables.blocks.{block_name}.base_point must be [x, y]"
+            )
         if not all(isinstance(v, (int, float)) for v in base_point):
-            raise IRValidationError(f"tables.blocks.{block_name}.base_point must contain only numbers")
+            raise IRValidationError(
+                f"tables.blocks.{block_name}.base_point must contain only numbers"
+            )
 
         block_entities = block_def.get("entities")
         if not isinstance(block_entities, list):
-            raise IRValidationError(f"tables.blocks.{block_name}.entities must be an array")
+            raise IRValidationError(
+                f"tables.blocks.{block_name}.entities must be an array"
+            )
         for idx, entity in enumerate(block_entities):
             _validate_entity(entity, f"tables.blocks.{block_name}.entities[{idx}]")
 
@@ -210,6 +227,31 @@ def _validate_entity(entity: Any, path: str) -> None:
         _require_positive_number(entity, "radius", path)
         _require_number(entity, "start_angle", path)
         _require_number(entity, "end_angle", path)
+    elif kind == "POINT":
+        _require_point2(entity, "position", path)
+        if "marker_code" in entity and not isinstance(entity["marker_code"], int):
+            raise IRValidationError(f"{path}.marker_code must be an integer")
+        if "rotation" in entity:
+            _require_number(entity, "rotation", path)
+        if "scale" in entity:
+            _require_positive_number(entity, "scale", path)
+        if "temporary" in entity and not isinstance(entity["temporary"], bool):
+            raise IRValidationError(f"{path}.temporary must be boolean")
+    elif kind == "ELLIPSE":
+        _require_point2(entity, "center", path)
+        _require_point2(entity, "major_axis", path)
+        if (
+            float(entity["major_axis"][0]) == 0.0
+            and float(entity["major_axis"][1]) == 0.0
+        ):
+            raise IRValidationError(f"{path}.major_axis must be non-zero")
+        _require_positive_number(entity, "ratio", path)
+        if float(entity["ratio"]) > 1.0:
+            raise IRValidationError(f"{path}.ratio must be <= 1")
+        _require_number(entity, "start_param", path)
+        _require_number(entity, "end_param", path)
+        if "ccw" in entity and not isinstance(entity["ccw"], bool):
+            raise IRValidationError(f"{path}.ccw must be boolean")
     elif kind == "LWPOLYLINE":
         vertices = entity.get("vertices")
         _require_vertices(vertices, path, min_vertices=2)
@@ -220,7 +262,12 @@ def _validate_entity(entity: Any, path: str) -> None:
             raise IRValidationError(f"{path}.text must be a string")
         if "halign" in entity and entity["halign"] not in {"left", "center", "right"}:
             raise IRValidationError(f"{path}.halign is invalid")
-        if "valign" in entity and entity["valign"] not in {"baseline", "bottom", "middle", "top"}:
+        if "valign" in entity and entity["valign"] not in {
+            "baseline",
+            "bottom",
+            "middle",
+            "top",
+        }:
             raise IRValidationError(f"{path}.valign is invalid")
     elif kind == "MTEXT":
         _require_point2(entity, "insert", path)
@@ -248,20 +295,32 @@ def _validate_entity(entity: Any, path: str) -> None:
         if "scale" in entity:
             scale = entity["scale"]
             if isinstance(scale, (int, float)):
-                if float(scale) <= 0:
-                    raise IRValidationError(f"{path}.scale must be > 0")
-            elif isinstance(scale, list) and len(scale) == 2 and all(isinstance(v, (int, float)) for v in scale):
-                if float(scale[0]) <= 0 or float(scale[1]) <= 0:
-                    raise IRValidationError(f"{path}.scale values must be > 0")
+                if float(scale) == 0:
+                    raise IRValidationError(f"{path}.scale must be non-zero")
+            elif (
+                isinstance(scale, list)
+                and len(scale) == 2
+                and all(isinstance(v, (int, float)) for v in scale)
+            ):
+                if float(scale[0]) == 0 or float(scale[1]) == 0:
+                    raise IRValidationError(f"{path}.scale values must be non-zero")
             else:
                 raise IRValidationError(f"{path}.scale must be number or [sx,sy]")
+        if "transform" in entity:
+            transform = entity["transform"]
+            if not isinstance(transform, list) or len(transform) != 6:
+                raise IRValidationError(f"{path}.transform must be [a,b,c,d,e,f]")
+            if not all(isinstance(value, (int, float)) for value in transform):
+                raise IRValidationError(f"{path}.transform must contain only numbers")
         if "attributes" in entity:
             attributes = entity["attributes"]
             if not isinstance(attributes, dict):
                 raise IRValidationError(f"{path}.attributes must be an object")
             for key, value in attributes.items():
                 if not isinstance(key, str) or not isinstance(value, str):
-                    raise IRValidationError(f"{path}.attributes must map string to string")
+                    raise IRValidationError(
+                        f"{path}.attributes must map string to string"
+                    )
     elif kind == "HATCH":
         loops = entity.get("loops")
         if not isinstance(loops, list) or len(loops) < 1:
@@ -272,7 +331,9 @@ def _validate_entity(entity: Any, path: str) -> None:
             vertices = loop.get("vertices")
             _require_vertices(vertices, f"{path}.loops[{loop_idx}]", min_vertices=3)
             if "is_outer" in loop and not isinstance(loop["is_outer"], bool):
-                raise IRValidationError(f"{path}.loops[{loop_idx}].is_outer must be boolean")
+                raise IRValidationError(
+                    f"{path}.loops[{loop_idx}].is_outer must be boolean"
+                )
         if "solid" in entity and not isinstance(entity["solid"], bool):
             raise IRValidationError(f"{path}.solid must be boolean")
         if "pattern" in entity and not isinstance(entity["pattern"], str):
@@ -283,10 +344,18 @@ def _validate_entity(entity: Any, path: str) -> None:
             raise IRValidationError(f"{path}.degree must be integer in [1, 7]")
         control_points = entity.get("control_points")
         if not isinstance(control_points, list) or len(control_points) < 2:
-            raise IRValidationError(f"{path}.control_points must contain at least 2 points")
+            raise IRValidationError(
+                f"{path}.control_points must contain at least 2 points"
+            )
         for cp in control_points:
-            if not isinstance(cp, list) or len(cp) != 2 or not all(isinstance(v, (int, float)) for v in cp):
-                raise IRValidationError(f"{path}.control_points must contain [x, y] points")
+            if (
+                not isinstance(cp, list)
+                or len(cp) != 2
+                or not all(isinstance(v, (int, float)) for v in cp)
+            ):
+                raise IRValidationError(
+                    f"{path}.control_points must contain [x, y] points"
+                )
 
         if "knots" in entity:
             knots = entity["knots"]
@@ -300,14 +369,19 @@ def _validate_entity(entity: Any, path: str) -> None:
             if not isinstance(weights, list) or not weights:
                 raise IRValidationError(f"{path}.weights must be a non-empty array")
             if not all(isinstance(v, (int, float)) and float(v) > 0 for v in weights):
-                raise IRValidationError(f"{path}.weights must contain only positive numbers")
+                raise IRValidationError(
+                    f"{path}.weights must contain only positive numbers"
+                )
             if len(weights) != len(control_points):
-                raise IRValidationError(f"{path}.weights length must match control_points length")
+                raise IRValidationError(
+                    f"{path}.weights length must match control_points length"
+                )
 
         if "closed" in entity and not isinstance(entity["closed"], bool):
             raise IRValidationError(f"{path}.closed must be boolean")
     elif kind == "DIMENSION":
         if entity.get("dim_kind") not in {
+            "GENERIC",
             "LINEAR",
             "ALIGNED",
             "ANGULAR",
@@ -321,6 +395,37 @@ def _validate_entity(entity: Any, path: str) -> None:
         definition = entity.get("definition")
         if not isinstance(definition, dict):
             raise IRValidationError(f"{path}.definition must be an object")
+
+    _validate_source(entity.get("source"), f"{path}.source")
+    approximation = entity.get("approximation")
+    if approximation is not None:
+        if not isinstance(approximation, dict):
+            raise IRValidationError(f"{path}.approximation must be an object")
+        if approximation.get("method") not in {"polyline", "spline", "other"}:
+            raise IRValidationError(f"{path}.approximation.method is invalid")
+        if (
+            not isinstance(approximation.get("source_kind"), str)
+            or not approximation["source_kind"]
+        ):
+            raise IRValidationError(
+                f"{path}.approximation.source_kind must be a non-empty string"
+            )
+        if "segments" in approximation:
+            segments = approximation["segments"]
+            if not isinstance(segments, int) or segments < 1:
+                raise IRValidationError(f"{path}.approximation.segments must be >= 1")
+
+
+def _validate_source(source: Any, path: str) -> None:
+    if source is None:
+        return
+    if not isinstance(source, dict):
+        raise IRValidationError(f"{path} must be an object")
+    if source.get("format") not in {"dxf", "dwg", "jww", "sxf", "unknown"}:
+        raise IRValidationError(f"{path}.format is invalid")
+    for key in ("version", "name", "sha256", "id", "kind"):
+        if key in source and not isinstance(source[key], str):
+            raise IRValidationError(f"{path}.{key} must be a string")
 
 
 def _validate_constraints(constraints: Any) -> None:
@@ -357,7 +462,9 @@ def _validate_constraints(constraints: Any) -> None:
             if not isinstance(ref.get("entity"), str) or not ref["entity"]:
                 raise IRValidationError(f"{ref_path}.entity must be a non-empty string")
             if not isinstance(ref.get("feature"), str) or not ref["feature"]:
-                raise IRValidationError(f"{ref_path}.feature must be a non-empty string")
+                raise IRValidationError(
+                    f"{ref_path}.feature must be a non-empty string"
+                )
 
         if "tolerance" in constraint:
             tolerance = constraint["tolerance"]
@@ -367,7 +474,9 @@ def _validate_constraints(constraints: Any) -> None:
 
 def _require_vertices(vertices: Any, path: str, *, min_vertices: int) -> None:
     if not isinstance(vertices, list) or len(vertices) < min_vertices:
-        raise IRValidationError(f"{path}.vertices must contain at least {min_vertices} vertices")
+        raise IRValidationError(
+            f"{path}.vertices must contain at least {min_vertices} vertices"
+        )
     for vertex in vertices:
         if not isinstance(vertex, list) or len(vertex) not in {2, 3}:
             raise IRValidationError(f"{path}.vertices must be [x,y] or [x,y,bulge]")
