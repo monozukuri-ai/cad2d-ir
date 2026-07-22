@@ -38,6 +38,31 @@ def test_validate_ir_rejects_missing_required_fields() -> None:
         validate_ir(document)
 
 
+def test_validate_ir_accepts_dgn_source_format() -> None:
+    document = {
+        "format": "cad2d-ir",
+        "version": "0.2.0",
+        "source": {"format": "dgn", "name": "sample.dgn"},
+        "header": {
+            "units": "mm",
+            "angle_unit": "deg",
+            "coord_space": "world",
+        },
+        "entities": [
+            {
+                "id": "E1",
+                "kind": "LINE",
+                "p1": [0.0, 0.0],
+                "p2": [10.0, 0.0],
+                "source": {"format": "dgn", "id": "1", "kind": "LINE"},
+            }
+        ],
+    }
+
+    validate_ir(document)
+    validate_ir(document, strict_jsonschema=True)
+
+
 def test_validate_ir_0_2_entities_and_provenance_with_strict_schema() -> None:
     document = {
         "format": "cad2d-ir",
