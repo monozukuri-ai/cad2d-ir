@@ -119,6 +119,15 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
     "DGN_ENTITY_CONVERSION_FAILED": DiagnosticCode(
         "error", "skipped", "DGN import", "A malformed DGN entity was skipped."
     ),
+    "DGN_3D_FLATTENED": DiagnosticCode(
+        "warning",
+        "projected",
+        "DGN import",
+        "A 3D design was projected to the IR XY plane.",
+    ),
+    "DGN_ENCODING_DETECTED": DiagnosticCode(
+        "info", "detected", "DGN import", "The file text encoding was selected."
+    ),
     "DGN_UNSUPPORTED_ENTITY": DiagnosticCode(
         "warning", "skipped", "DGN import", "An unsupported DGN entity was skipped."
     ),

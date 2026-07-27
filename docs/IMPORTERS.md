@@ -68,7 +68,7 @@ without routing through DXF.
 | line, line string | `LINE`, `LWPOLYLINE` | direct |
 | shape | closed `LWPOLYLINE` or solid `HATCH` | fill linkage and resolved V7 color retained |
 | ellipse, arc | `CIRCLE`, `ARC`, or `ELLIPSE` | native axes, rotation, and sweep retained |
-| text | `TEXT` | raw bytes, font ID, justification, and selected encoding retained |
+| text | `TEXT` | raw bytes, font ID, justification, selected encoding, horizontal alignment, and width factor retained |
 | cell | block table plus `INSERT` | design-space children remain exact; origin and native placement matrix are retained without double-transforming them |
 | B-spline curve | `SPLINE` | open interior knots are expanded to an exact clamped knot vector; closed non-uniform knots remain metadata and are diagnosed |
 | type-11 curve | `LWPOLYLINE` | control-polyline approximation is diagnosed |
@@ -76,10 +76,14 @@ without routing through DXF.
 
 V7 level numbers become deterministic layer names (`DGN_LEVEL_<n>`). V7
 line-style and line-weight indexes remain metadata because they do not have a
-reliable physical-mm mapping. V7 files do not store a text code page; callers
-should pass `encoding=` when non-ASCII text is expected. `ezdgn` currently
-rejects V7 3D in its semantic reader and only inspects the V8 CFB container, so
-those inputs fail explicitly instead of being silently flattened.
+reliable physical-mm mapping. V7 files do not store a text code page;
+`encoding="auto"` probes all text bytes once using ASCII, CP932, then Latin-1,
+and records the selected encoding in source metadata and statistics. An
+explicit `encoding=` remains available for project-specific code pages.
+`ezdgn` currently rejects V7 3D in its semantic reader and only inspects the V8
+CFB container, so current file imports fail explicitly. If a compatible native
+drawing model does report `dimension=3`, the adapter projects coordinates to XY
+and emits `DGN_3D_FLATTENED` rather than silently dropping Z.
 
 ## DWF adapter
 
@@ -92,7 +96,7 @@ markup entities are both imported.
 | line, polyline, polygon | `LINE`, `LWPOLYLINE`, `HATCH` | paper coordinates and resolved style retained |
 | circle, arc, ellipse | matching IR curve | orthogonal axes remain semantic; sheared bases are sampled and diagnosed |
 | PolyBezier | `SPLINE` | cubic controls and exact composite-Bezier knots retained |
-| text/glyph run | `TEXT` | placement, font metadata, bounds, and glyph-outline count retained |
+| text/glyph run | `TEXT` / `MTEXT` | MTEXT formatting codes are detected without stripping the source text; placement, font metadata, bounds, and glyph-outline count retained |
 | path | `LWPOLYLINE` / `HATCH` | line segments direct; Bezier/elliptical segments sampled and diagnosed |
 | triangle strips/contour fills | solid `HATCH` | sliding triangle topology, contours, and resolved fill color retained |
 | raster image | skipped | resource, diagnostic, and aggregate count expose the unsupported boundary |
@@ -106,6 +110,11 @@ retains its sheet index/name and the drawing-level source metadata contains the
 sheet table. Clip paths, opacity masks, and compositing groups are not applied
 to IR geometry; their counts remain entity metadata and an aggregate diagnostic
 discloses that appearance boundary.
+
+DWF RGBA colors remain eight-digit `#RRGGBBAA` values in IR. Renderers must
+composite or otherwise honor the alpha channel; reducing them to seven-character
+RGB is a consumer-side loss. Standalone legacy W2D 00.30/00.50 support remains
+an `ezdwf` parser boundary rather than an IR-adapter concern.
 
 ## SXF adapter
 

@@ -43,6 +43,9 @@ _TRIANGLE_KINDS = {
     "GOURAUD_POLYTRIANGLE",
     "TEXTURED_POLYTRIANGLE",
 }
+_MTEXT_FORMAT_CODE_RE = re.compile(
+    r"\\(?:P|~|[LlOoKk]|U\+[0-9A-Fa-f]{4}|[AaCcFfHhQqSsTtWwPp][^;\\{}]*;)"
+)
 
 
 @dataclass(slots=True)
@@ -522,13 +525,17 @@ def _convert_text(
     )
     style_name = _safe_name("DWF_TEXT", font_name)
     context.text_styles.setdefault(style_name, {"font": font_name, "height": height})
+    text = str(getattr(source_entity, "text", "") or "")
+    has_mtext_formatting = _MTEXT_FORMAT_CODE_RE.search(text) is not None
+    if has_mtext_formatting:
+        common["metadata"]["dwf"]["mtext_formatting_detected"] = True
     return {
         **common,
-        "kind": "TEXT",
+        "kind": "MTEXT" if has_mtext_formatting else "TEXT",
         "insert": insert,
         "height": height,
         "rotation": float(getattr(style, "font_rotation_degrees", 0.0) or 0.0),
-        "text": str(getattr(source_entity, "text", "") or ""),
+        "text": text,
         "style": style_name,
     }
 

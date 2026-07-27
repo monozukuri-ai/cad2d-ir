@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 from collections import Counter
 from dataclasses import dataclass, field
 import hashlib
@@ -21,6 +22,7 @@ from cad2d_ir.schema import validate_ir
 
 _EPSILON = 1.0e-12
 _COMPLEX_KINDS = {"COMPLEX_CHAIN", "COMPLEX_SHAPE", "TEXT_NODE"}
+_AUTO_TEXT_ENCODINGS = ("ascii", "cp932", "latin-1")
 # V7 control, group-data, tag, and application records are not drawables.
 _NON_GRAPHIC_ELEMENT_TYPES = frozenset({5, 8, 9, 10, 37, 66})
 _UNIT_MAP = {
@@ -48,6 +50,8 @@ _UNIT_MAP = {
 class _ConversionContext:
     drawing: Any
     options: ImportOptions
+    text_encoding: str
+    text_encoding_source: str
     diagnostics: list[ImportDiagnostic] = field(default_factory=list)
     layers: dict[str, dict[str, Any]] = field(default_factory=dict)
     linetypes: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -102,12 +106,66 @@ def dgn_drawing_to_ir(
 ) -> ImportResult:
     """Convert an ``ezdgn.Drawing``-compatible object directly to IR."""
     import_options = options or ImportOptions()
-    context = _ConversionContext(drawing=drawing, options=import_options)
 
     try:
         source_entities = tuple(drawing.entities)
+        all_source_entities = _all_entities(drawing)
     except Exception as exc:
         raise ImporterError(f"Failed to enumerate DGN entities: {exc}") from exc
+
+    text_samples = _dgn_text_samples(all_source_entities)
+    try:
+        selected_encoding, encoding_source = _select_dgn_text_encoding(
+            text_samples, import_options.encoding
+        )
+    except LookupError as exc:
+        raise ImporterError(
+            f"Unknown DGN text encoding: {import_options.encoding!r}"
+        ) from exc
+    context = _ConversionContext(
+        drawing=drawing,
+        options=import_options,
+        text_encoding=selected_encoding,
+        text_encoding_source=encoding_source,
+    )
+    if import_options.encoding.strip().lower() == "auto" and text_samples:
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="DGN_ENCODING_DETECTED",
+                severity="info",
+                message=(
+                    f"DGN text encoding selected as {selected_encoding} "
+                    f"({encoding_source})."
+                ),
+                action="detected",
+                details={
+                    "encoding": selected_encoding,
+                    "source": encoding_source,
+                    "text_elements_probed": len(text_samples),
+                },
+            )
+        )
+
+    raw_scan = drawing.raw_scan
+    format_info = raw_scan.format
+    dimension = getattr(format_info, "dimension", None)
+    if _is_three_dimensional(dimension):
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="DGN_3D_FLATTENED",
+                severity="warning",
+                message=(
+                    "Projected 3D DGN geometry to the IR XY plane; "
+                    "Z coordinates are not represented."
+                ),
+                action="projected",
+                details={
+                    "source_dimension": dimension,
+                    "target_dimension": 2,
+                    "projection_plane": "xy",
+                },
+            )
+        )
 
     entities = _convert_sequence(source_entities, context)
     _collect_unsupported_graphics(context)
@@ -129,15 +187,15 @@ def dgn_drawing_to_ir(
             )
         )
 
-    raw_scan = drawing.raw_scan
-    format_info = raw_scan.format
     source: dict[str, Any] = {
         "format": "dgn",
         "version": str(getattr(format_info, "kind", "V7")),
         "metadata": {
+            "encoding": selected_encoding,
+            "encoding_source": encoding_source,
             "dgn": {
                 "parser_version": parser_version,
-                "dimension": getattr(format_info, "dimension", None),
+                "dimension": dimension,
                 "master_unit": unit_name,
                 "sub_unit": getattr(settings, "sub_unit_name", None),
                 "uor_per_master": getattr(settings, "uor_per_master", None),
@@ -149,7 +207,7 @@ def dgn_drawing_to_ir(
                 "active_color_table_index": getattr(
                     drawing, "active_color_table_index", None
                 ),
-            }
+            },
         },
     }
     if source_name is not None:
@@ -199,6 +257,8 @@ def dgn_drawing_to_ir(
     statistics: dict[str, Any] = {
         "source_format": "dgn",
         "source_version": str(getattr(format_info, "kind", "V7")),
+        "encoding": selected_encoding,
+        "encoding_source": encoding_source,
         "source_elements": len(getattr(drawing, "elements", ())),
         "source_entities": len(_all_entities(drawing)),
         "source_entity_counts": dict(sorted(source_kinds.items())),
@@ -419,12 +479,11 @@ def _convert_text(
     context: _ConversionContext,
 ) -> dict[str, Any]:
     raw = bytes(getattr(source_entity, "text_bytes"))
-    encoding = context.options.encoding
-    selected_encoding = "ascii" if encoding == "auto" else encoding
+    selected_encoding = context.text_encoding
     try:
         text = raw.decode(selected_encoding)
     except (LookupError, UnicodeDecodeError) as exc:
-        if encoding != "auto" and context.options.strict:
+        if context.options.strict:
             raise ValueError(
                 f"text cannot be decoded as {selected_encoding}: {exc}"
             ) from exc
@@ -455,13 +514,14 @@ def _convert_text(
         source_entity, "length_multiplier_master", "length_multiplier_raw"
     )
     font_id = int(getattr(source_entity, "font_id", 0))
+    justification = int(getattr(source_entity, "justification", 0))
     style_name = f"DGN_FONT_{font_id}"
     context.text_styles.setdefault(style_name, {"font": style_name, "height": height})
     metadata = common["metadata"]["dgn"]
     metadata.update(
         {
             "font_id": font_id,
-            "justification": int(getattr(source_entity, "justification", 0)),
+            "justification": justification,
             "editable_fields": int(getattr(source_entity, "editable_fields", 0)),
             "text_encoding": selected_encoding,
             "text_raw_hex": raw.hex(),
@@ -476,6 +536,9 @@ def _convert_text(
         "text": text,
         "style": style_name,
     }
+    halign = _dgn_text_halign(justification)
+    if halign is not None:
+        result["halign"] = halign
     if height > _EPSILON and width > _EPSILON:
         result["width_factor"] = width / height
     return result
@@ -717,6 +780,54 @@ def _append_summary_diagnostics(context: _ConversionContext) -> None:
 
 def _all_entities(drawing: Any) -> tuple[Any, ...]:
     return tuple(getattr(drawing, "all_entities", getattr(drawing, "entities", ())))
+
+
+def _dgn_text_samples(source_entities: Iterable[Any]) -> tuple[bytes, ...]:
+    samples: list[bytes] = []
+    for source_entity in source_entities:
+        if _kind(source_entity) != "TEXT":
+            continue
+        try:
+            samples.append(bytes(getattr(source_entity, "text_bytes")))
+        except (AttributeError, TypeError, ValueError):
+            # Leave malformed text handling to the normal per-entity conversion path.
+            continue
+    return tuple(samples)
+
+
+def _select_dgn_text_encoding(
+    samples: Sequence[bytes], requested: str
+) -> tuple[str, str]:
+    normalized = requested.strip().lower()
+    if normalized != "auto":
+        return codecs.lookup(normalized).name, "explicit"
+
+    for candidate in _AUTO_TEXT_ENCODINGS:
+        try:
+            for sample in samples:
+                sample.decode(candidate, errors="strict")
+        except UnicodeDecodeError:
+            continue
+        if candidate == "latin-1":
+            return candidate, "latin-1-fallback"
+        return candidate, f"{candidate}-probe"
+    raise AssertionError("latin-1 must decode every byte sequence")
+
+
+def _is_three_dimensional(dimension: Any) -> bool:
+    if dimension == 3:
+        return True
+    return str(dimension).strip().lower() in {"3", "3d"}
+
+
+def _dgn_text_halign(justification: int) -> str | None:
+    if 0 <= justification <= 5:
+        return "left"
+    if 6 <= justification <= 8:
+        return "center"
+    if 9 <= justification <= 14:
+        return "right"
+    return None
 
 
 def _children(context: _ConversionContext, source_entity: Any) -> tuple[Any, ...]:

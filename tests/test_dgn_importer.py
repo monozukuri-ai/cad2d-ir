@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from cad2d_ir.importers.base import ImportOptions
+from cad2d_ir.importers.base import ImporterError, ImportOptions
 from cad2d_ir.importers.dgn import dgn_drawing_to_ir
 from cad2d_ir.schema import validate_ir
 
@@ -43,6 +43,27 @@ def _entity(kind: str, index: int, element_type: int, **values: Any) -> SimpleNa
     }
     defaults.update(values)
     return SimpleNamespace(**defaults)
+
+
+def _text_entity(
+    index: int,
+    text_bytes: bytes,
+    *,
+    justification: int = 0,
+) -> SimpleNamespace:
+    return _entity(
+        "TEXT",
+        index,
+        17,
+        text_bytes=text_bytes,
+        origin_master=(0.0, 0.0),
+        height_multiplier_master=2.0,
+        length_multiplier_master=1.5,
+        rotation_degrees=0.0,
+        font_id=0,
+        justification=justification,
+        editable_fields=0,
+    )
 
 
 class _Drawing:
@@ -208,7 +229,10 @@ def test_dgn_native_entities_hierarchy_and_styles_map_to_ir() -> None:
         "LINE",
     ]
     assert document["entities"][3]["text"] == "寸法"
+    assert document["entities"][3]["halign"] == "center"
     assert document["entities"][3]["width_factor"] == pytest.approx(0.75)
+    assert document["source"]["metadata"]["encoding"] == "cp932"
+    assert document["source"]["metadata"]["encoding_source"] == "explicit"
     insert = document["entities"][4]
     assert insert["block"].startswith("DGN_DETAIL_5")
     assert insert["insert"] == [20.0, 10.0]
@@ -237,31 +261,118 @@ def test_dgn_native_entities_hierarchy_and_styles_map_to_ir() -> None:
     validate_ir(document, strict_jsonschema=True)
 
 
-def test_dgn_unknown_units_and_auto_text_decode_are_diagnosed() -> None:
-    text = _entity(
-        "TEXT",
-        1,
-        17,
-        text_bytes=b"\x82",
-        origin_master=(0.0, 0.0),
-        height_multiplier_master=1.0,
-        length_multiplier_master=1.0,
-        rotation_degrees=0.0,
-        font_id=0,
-        justification=0,
-        editable_fields=0,
+def test_dgn_auto_text_encoding_is_probed_once_for_the_whole_file() -> None:
+    drawing = _Drawing(
+        (
+            _text_entity(1, b"ASCII"),
+            _text_entity(2, "寸法".encode("cp932")),
+        ),
+        {},
     )
-    drawing = _Drawing((text,), {})
+
+    result = dgn_drawing_to_ir(drawing)
+
+    assert [entity["text"] for entity in result.document["entities"]] == [
+        "ASCII",
+        "寸法",
+    ]
+    assert result.document["source"]["metadata"]["encoding"] == "cp932"
+    assert result.document["source"]["metadata"]["encoding_source"] == "cp932-probe"
+    assert result.statistics["encoding"] == "cp932"
+    assert result.statistics["encoding_source"] == "cp932-probe"
+    assert [diagnostic.code for diagnostic in result.diagnostics] == [
+        "DGN_ENCODING_DETECTED"
+    ]
+    assert result.diagnostics[0].details == {
+        "encoding": "cp932",
+        "source": "cp932-probe",
+        "text_elements_probed": 2,
+    }
+
+
+def test_dgn_auto_text_encoding_falls_back_to_latin1() -> None:
+    drawing = _Drawing((_text_entity(1, b"\x82"),), {})
     drawing.design_settings.master_unit_name = "mu"
 
     result = dgn_drawing_to_ir(drawing)
 
     assert result.document["header"]["units"] == "unknown"
-    assert result.document["entities"][0]["text"] == "�"
+    assert result.document["entities"][0]["text"] == "\x82"
+    assert result.document["source"]["metadata"]["encoding"] == "latin-1"
+    assert result.statistics["encoding_source"] == "latin-1-fallback"
     assert {diagnostic.code for diagnostic in result.diagnostics} == {
-        "DGN_TEXT_DECODE_REPLACED",
+        "DGN_ENCODING_DETECTED",
         "DGN_UNKNOWN_UNITS",
     }
+
+
+def test_dgn_explicit_decode_keeps_strict_and_replacement_behavior() -> None:
+    drawing = _Drawing((_text_entity(1, "寸法".encode("cp932")),), {})
+
+    with pytest.raises(ImporterError, match="cannot be decoded as ascii"):
+        dgn_drawing_to_ir(drawing, options=ImportOptions(encoding="ascii"))
+
+    result = dgn_drawing_to_ir(
+        drawing,
+        options=ImportOptions(encoding="ascii", strict=False),
+    )
+
+    assert "�" in result.document["entities"][0]["text"]
+    assert [diagnostic.code for diagnostic in result.diagnostics] == [
+        "DGN_TEXT_DECODE_REPLACED"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("justification", "expected"),
+    [
+        (0, "left"),
+        (3, "left"),
+        (6, "center"),
+        (8, "center"),
+        (9, "right"),
+        (14, "right"),
+    ],
+)
+def test_dgn_text_justification_maps_to_halign(
+    justification: int, expected: str
+) -> None:
+    drawing = _Drawing(
+        (_text_entity(1, b"alignment", justification=justification),), {}
+    )
+
+    result = dgn_drawing_to_ir(drawing)
+
+    assert result.document["entities"][0]["halign"] == expected
+    assert result.document["entities"][0]["width_factor"] == pytest.approx(0.75)
+
+
+def test_dgn_3d_design_is_projected_with_a_loss_diagnostic() -> None:
+    line = _entity(
+        "LINE",
+        1,
+        3,
+        start_master=(1.0, 2.0, 3.0),
+        end_master=(4.0, 5.0, 6.0),
+    )
+    drawing = _Drawing((line,), {})
+    drawing.raw_scan.format.dimension = 3
+
+    result = dgn_drawing_to_ir(drawing)
+
+    assert result.document["entities"][0]["p1"] == [1.0, 2.0]
+    assert result.document["entities"][0]["p2"] == [4.0, 5.0]
+    assert result.document["source"]["metadata"]["dgn"]["dimension"] == 3
+    assert [diagnostic.code for diagnostic in result.diagnostics] == [
+        "DGN_3D_FLATTENED"
+    ]
+    assert result.diagnostics[0].action == "projected"
+    assert result.diagnostics[0].details == {
+        "source_dimension": 3,
+        "target_dimension": 2,
+        "projection_plane": "xy",
+    }
+    validate_ir(result.document, strict_jsonschema=True)
 
 
 def test_dgn_control_records_are_not_reported_as_unsupported_graphics() -> None:

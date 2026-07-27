@@ -69,7 +69,7 @@ cad2d-ir dxf2ir drawing.dxf --encoding cp932 -o drawing.json
 # Auto-detected DXF/DWG/DGN/DWF/DWFx/JWW/SFC/P21 -> IR
 cad2d-ir import drawing.JWW -o drawing.json --pretty
 cad2d-ir import drawing.dwg -o drawing.json --pretty
-cad2d-ir import drawing.dgn -o drawing.json --pretty --encoding cp932
+cad2d-ir import drawing.dgn -o drawing.json --pretty
 cad2d-ir import drawing.dwfx -o drawing.json --pretty
 cad2d-ir import drawing.p21 -o drawing.json --pretty
 
@@ -124,8 +124,10 @@ handles and retains deterministic `index` values in the entity map.
 - HATCH support focuses on polyline-style loops.
 - Ellipse start/end parameters are radians independently of
   `header.angle_unit`.
-- DGN import currently targets V7 2D. `ezdgn` rejects V7 3D and identifies but
-  does not decode V8 entity semantics.
+- DGN import currently targets V7 2D. Text encoding auto-detection probes ASCII,
+  CP932, then Latin-1 at file scope. `ezdgn` rejects V7 3D and identifies but
+  does not decode V8 entity semantics; compatible 3D models are projected with
+  an explicit loss diagnostic.
 - DWF/DWFx import preserves sheet identity in metadata while placing supported
   2D entities and markups in one IR modelspace. Raster payloads and complex
   brush semantics remain source metadata/diagnostics rather than invented IR

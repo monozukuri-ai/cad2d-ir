@@ -37,11 +37,15 @@ Format-specific helpers are also public:
 `DxfToIrResult` contains `document`, `diagnostics`,
 `warnings`, and an `encoding` convenience property for file input.
 
-DGN V7 does not store a text code page. `encoding="auto"` uses ASCII and emits
-`DGN_TEXT_DECODE_REPLACED` when bytes are not ASCII; pass the project encoding
-(for example `cp932`) when it is known. DWF and DWFx imports include all sheets
-and markup entities. Their source sheet remains in `metadata.dwf`; multiple
-sheets are disclosed with `DWF_MULTISHEET_FLATTENED`.
+DGN V7 does not store a text code page. `encoding="auto"` probes every text
+element once at file scope, selecting the first strict decoder in the chain
+ASCII, CP932, then Latin-1. The result is reported by `DGN_ENCODING_DETECTED`,
+`result.statistics["encoding"]`, and `document["source"]["metadata"]`; pass an
+explicit project encoding when it is known. An explicit encoding still fails in
+strict mode and uses replacement characters with `DGN_TEXT_DECODE_REPLACED`
+when `strict=False`. DWF and DWFx imports include all sheets and markup
+entities. Their source sheet remains in `metadata.dwf`; multiple sheets are
+disclosed with `DWF_MULTISHEET_FLATTENED`.
 
 ## High-level DXF export API
 

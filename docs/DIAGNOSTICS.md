@@ -13,8 +13,10 @@ entity/source identifiers and structured details.
 
 | Code | Default severity | Action | Adapter | Emitted when |
 |---|---|---|---|---|
+| `DGN_3D_FLATTENED` | warning | projected | DGN import | A native drawing model reports a 3D design whose coordinates are projected to the IR XY plane. |
 | `DGN_COMPLEX_FLATTENED` | warning | flattened | DGN import | A complex chain, complex shape, or text node was expanded while retaining parent provenance. |
 | `DGN_CURVE_APPROXIMATED` | warning | approximated | DGN import | A type-11 control curve was represented as a polyline, or closed non-uniform B-spline knots remained metadata. |
+| `DGN_ENCODING_DETECTED` | info | detected | DGN import | `encoding="auto"` selected ASCII, CP932, or Latin-1 by probing all DGN text elements. |
 | `DGN_ENTITY_CONVERSION_FAILED` | error | skipped | DGN import | A malformed DGN entity was skipped. |
 | `DGN_TEXT_DECODE_REPLACED` | warning | normalized | DGN import | DGN text bytes could not be decoded with the selected encoding. |
 | `DGN_UNKNOWN_UNITS` | warning | - | DGN import | The DGN master-unit label had no IR unit mapping. |

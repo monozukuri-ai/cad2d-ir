@@ -5,9 +5,13 @@
 - Added native MicroStation V7 2D DGN import through `ezdgn>=0.1.2,<0.2`,
   including levels/styles, cells as blocks and inserts, B-splines, text byte
   provenance, and explicit complex/curve approximation diagnostics.
+- Added file-scoped DGN text encoding probing (ASCII, CP932, then Latin-1),
+  horizontal text alignment, and an explicit 3D-to-XY projection diagnostic.
 - Added native 2D DWF and DWFx import through `ezdwf>=0.0.1,<0.1`, including
   multiple sheets, markups, paper units, core geometry, cubic Beziers, paths,
   fills, parser diagnostics, and explicit unsupported raster boundaries.
+- DWF text carrying MTEXT formatting codes is now emitted as `MTEXT` while
+  preserving the original formatting stream.
 - Added `dgn` and `dwf` optional extras, suffix detection, generic registry
   dispatch, public helpers, CLI format choices, schema provenance values, and
   packaged `all` dependency coverage.

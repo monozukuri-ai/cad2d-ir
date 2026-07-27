@@ -230,6 +230,38 @@ def test_dwf_native_geometry_markup_and_diagnostics_map_to_ir() -> None:
     validate_ir(document, strict_jsonschema=True)
 
 
+def test_dwf_text_with_mtext_formatting_is_emitted_as_mtext() -> None:
+    plain = _entity(
+        "TEXT",
+        1,
+        points=(_point(2, 3),),
+        text="plain label",
+    )
+    formatted_text = r"{\LLIVING ROOM\P\H0.6667x;\lHRWD FLOOR}"
+    formatted = _entity(
+        "TEXT",
+        2,
+        points=(_point(4, 5),),
+        text=formatted_text,
+    )
+    drawing = SimpleNamespace(
+        sheets=(_sheet((plain, formatted)),),
+        diagnostics=(),
+    )
+
+    result = dwf_drawing_to_ir(drawing)
+
+    assert [entity["kind"] for entity in result.document["entities"]] == [
+        "TEXT",
+        "MTEXT",
+    ]
+    mtext = result.document["entities"][1]
+    assert mtext["text"] == formatted_text
+    assert mtext["source"]["kind"] == "TEXT"
+    assert mtext["metadata"]["dwf"]["mtext_formatting_detected"] is True
+    validate_ir(result.document, strict_jsonschema=True)
+
+
 def test_dwfx_dip_units_use_custom_ir_scale() -> None:
     line = _entity("LINE", 1, points=(_point(0, 0), _point(96, 96)))
     line.clips = (object(),)
