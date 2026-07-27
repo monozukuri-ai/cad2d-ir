@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.0
+
+- Added native MicroStation V7 2D DGN import through `ezdgn>=0.1.2,<0.2`,
+  including levels/styles, cells as blocks and inserts, B-splines, text byte
+  provenance, and explicit complex/curve approximation diagnostics.
+- Added native 2D DWF and DWFx import through `ezdwf>=0.0.1,<0.1`, including
+  multiple sheets, markups, paper units, core geometry, cubic Beziers, paths,
+  fills, parser diagnostics, and explicit unsupported raster boundaries.
+- Added `dgn` and `dwf` optional extras, suffix detection, generic registry
+  dispatch, public helpers, CLI format choices, schema provenance values, and
+  packaged `all` dependency coverage.
+
 ## 0.5.0
 
 - Resolved DWG header units from `$INSUNITS` via `ezdwg`

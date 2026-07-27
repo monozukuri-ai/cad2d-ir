@@ -14,6 +14,9 @@ def test_detect_source_format_is_case_insensitive() -> None:
     assert detect_source_format("drawing.DXF") == "dxf"
     assert detect_source_format("drawing.JWW") == "jww"
     assert detect_source_format("drawing.DWG") == "dwg"
+    assert detect_source_format("drawing.DGN") == "dgn"
+    assert detect_source_format("drawing.DWF") == "dwf"
+    assert detect_source_format("drawing.DWFX") == "dwf"
     assert detect_source_format("drawing.SFC") == "sxf"
 
     with pytest.raises(UnsupportedSourceFormatError):
@@ -40,10 +43,10 @@ def test_generic_file_import_and_cli_support_dxf(tmp_path: Path) -> None:
     assert written["entities"][0]["kind"] == "LINE"
 
 
-def test_registry_dispatches_dwg_and_sxf_adapters(
+def test_registry_dispatches_optional_adapters(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from cad2d_ir.importers import dwg, sxf
+    from cad2d_ir.importers import dgn, dwf, dwg, sxf
 
     calls: list[tuple[str, Path]] = []
 
@@ -55,14 +58,33 @@ def test_registry_dispatches_dwg_and_sxf_adapters(
         calls.append(("sxf", path))
         return "sxf-result"
 
+    def fake_dgn(path: Path, *, options: object) -> str:
+        calls.append(("dgn", path))
+        return "dgn-result"
+
+    def fake_dwf(path: Path, *, options: object) -> str:
+        calls.append(("dwf", path))
+        return "dwf-result"
+
     monkeypatch.setattr(dwg, "convert_dwg_file_to_ir", fake_dwg)
+    monkeypatch.setattr(dgn, "convert_dgn_file_to_ir", fake_dgn)
+    monkeypatch.setattr(dwf, "convert_dwf_file_to_ir", fake_dwf)
     monkeypatch.setattr(sxf, "convert_sxf_file_to_ir", fake_sxf)
 
     dwg_path = tmp_path / "drawing.dwg"
+    dgn_path = tmp_path / "drawing.dgn"
+    dwf_path = tmp_path / "drawing.dwfx"
     sxf_path = tmp_path / "drawing.p21"
     assert convert_file_to_ir(dwg_path) == "dwg-result"
+    assert convert_file_to_ir(dgn_path) == "dgn-result"
+    assert convert_file_to_ir(dwf_path) == "dwf-result"
     assert convert_file_to_ir(sxf_path) == "sxf-result"
-    assert calls == [("dwg", dwg_path), ("sxf", sxf_path)]
+    assert calls == [
+        ("dwg", dwg_path),
+        ("dgn", dgn_path),
+        ("dwf", dwf_path),
+        ("sxf", sxf_path),
+    ]
 
 
 def test_ir2dxf_cli_accepts_target_version_and_dimension_mode(

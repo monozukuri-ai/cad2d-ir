@@ -15,6 +15,8 @@ uv run pytest -q
 uv run ruff check src tests
 uv run cad2d-ir --help
 uv run --extra dwg cad2d-ir import path/to/sample.dwg -o /tmp/sample.json
+uv run --extra dgn cad2d-ir import path/to/sample.dgn -o /tmp/sample.json
+uv run --extra dwf cad2d-ir import path/to/sample.dwfx -o /tmp/sample.json
 uv run --extra jww cad2d-ir import path/to/sample.jww -o /tmp/sample.json
 uv run --extra sxf cad2d-ir import path/to/sample.sfc -o /tmp/sample.json
 uv run python scripts/sync_packaged_schema.py

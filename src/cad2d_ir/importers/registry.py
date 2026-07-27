@@ -16,6 +16,9 @@ from cad2d_ir.importers.base import (
 _SUFFIX_TO_FORMAT = {
     ".dxf": "dxf",
     ".dwg": "dwg",
+    ".dgn": "dgn",
+    ".dwf": "dwf",
+    ".dwfx": "dwf",
     ".jww": "jww",
     ".p21": "sxf",
     ".sfc": "sxf",
@@ -103,6 +106,16 @@ def import_file(
         from cad2d_ir.importers.dwg import convert_dwg_file_to_ir
 
         return convert_dwg_file_to_ir(source_path, options=import_options)
+
+    if normalized_format == "dgn":
+        from cad2d_ir.importers.dgn import convert_dgn_file_to_ir
+
+        return convert_dgn_file_to_ir(source_path, options=import_options)
+
+    if normalized_format == "dwf":
+        from cad2d_ir.importers.dwf import convert_dwf_file_to_ir
+
+        return convert_dwf_file_to_ir(source_path, options=import_options)
 
     if normalized_format == "sxf":
         from cad2d_ir.importers.sxf import convert_sxf_file_to_ir

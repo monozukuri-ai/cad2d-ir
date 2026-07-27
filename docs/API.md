@@ -6,7 +6,8 @@ Use `cad2d_ir.api` for file imports and diagnostic-aware DXF export.
 
 ### `convert_file_to_ir(path, *, source_format="auto", ir_version="0.2.0", validate=True, strict=True, curve_segments=96, encoding="auto")`
 
-Dispatches to the DXF, DWG, JWW, or SXF adapter and returns `ImportResult`:
+Dispatches to the DXF, DWG, DGN, DWF/DWFx, JWW, or SXF adapter and returns
+`ImportResult`:
 
 - `document`: imported IR document
 - `diagnostics`: structured `ImportDiagnostic` records
@@ -27,12 +28,20 @@ Format-specific helpers are also public:
 
 - `convert_dxf_file_to_ir(path, *, encoding="auto", ...)`
 - `convert_dwg_file_to_ir(path, ...)`
+- `convert_dgn_file_to_ir(path, *, encoding="auto", ...)`
+- `convert_dwf_file_to_ir(path, ...)`
 - `convert_jww_file_to_ir(path, ...)`
 - `convert_sxf_file_to_ir(path, ...)`
 - `convert_dxf_text_to_ir(dxf_text, ...)`
 
 `DxfToIrResult` contains `document`, `diagnostics`,
 `warnings`, and an `encoding` convenience property for file input.
+
+DGN V7 does not store a text code page. `encoding="auto"` uses ASCII and emits
+`DGN_TEXT_DECODE_REPLACED` when bytes are not ASCII; pass the project encoding
+(for example `cp932`) when it is known. DWF and DWFx imports include all sheets
+and markup entities. Their source sheet remains in `metadata.dwf`; multiple
+sheets are disclosed with `DWF_MULTISHEET_FLATTENED`.
 
 ## High-level DXF export API
 

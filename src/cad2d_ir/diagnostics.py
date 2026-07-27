@@ -116,6 +116,63 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "DWG import",
         "A $INSUNITS code without an IR units mapping fell back to unknown.",
     ),
+    "DGN_ENTITY_CONVERSION_FAILED": DiagnosticCode(
+        "error", "skipped", "DGN import", "A malformed DGN entity was skipped."
+    ),
+    "DGN_UNSUPPORTED_ENTITY": DiagnosticCode(
+        "warning", "skipped", "DGN import", "An unsupported DGN entity was skipped."
+    ),
+    "DGN_CURVE_APPROXIMATED": DiagnosticCode(
+        "warning", "approximated", "DGN import", "Source geometry was approximated."
+    ),
+    "DGN_COMPLEX_FLATTENED": DiagnosticCode(
+        "warning", "flattened", "DGN import", "A complex element was flattened."
+    ),
+    "DGN_TEXT_DECODE_REPLACED": DiagnosticCode(
+        "warning",
+        "normalized",
+        "DGN import",
+        "Undecodable DGN text bytes were replaced.",
+    ),
+    "DGN_UNKNOWN_UNITS": DiagnosticCode(
+        "warning", None, "DGN import", "The DGN master unit was not mapped to IR units."
+    ),
+    "DWF_ENTITY_CONVERSION_FAILED": DiagnosticCode(
+        "error", "skipped", "DWF import", "A malformed DWF entity was skipped."
+    ),
+    "DWF_APPEARANCE_EFFECTS_FLATTENED": DiagnosticCode(
+        "warning",
+        "flattened",
+        "DWF import",
+        "Clipping, opacity-mask, or compositing effects were not applied to geometry.",
+    ),
+    "DWF_UNSUPPORTED_ENTITY": DiagnosticCode(
+        "warning", "skipped", "DWF import", "An unsupported DWF entity was skipped."
+    ),
+    "DWF_CURVE_APPROXIMATED": DiagnosticCode(
+        "warning", "approximated", "DWF import", "Source geometry was approximated."
+    ),
+    "DWF_DRAWING_WARNING": DiagnosticCode(
+        "warning", None, "DWF import", "The DWF parser reported a diagnostic."
+    ),
+    "DWF_MULTISHEET_FLATTENED": DiagnosticCode(
+        "warning",
+        "flattened",
+        "DWF import",
+        "Multiple sheets were flattened into IR modelspace.",
+    ),
+    "DWF_MIXED_SHEET_UNITS": DiagnosticCode(
+        "warning",
+        None,
+        "DWF import",
+        "Sheets with different units were preserved without scaling.",
+    ),
+    "DWF_COLOR_GRADIENT_FLATTENED": DiagnosticCode(
+        "warning",
+        "flattened",
+        "DWF import",
+        "Per-vertex colors were preserved only as metadata.",
+    ),
     "SXF_DIMENSION_CONVERSION_FAILED": DiagnosticCode(
         "error", "skipped", "SXF import", "A malformed SXF dimension was skipped."
     ),

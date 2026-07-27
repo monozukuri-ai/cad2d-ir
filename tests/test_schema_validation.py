@@ -38,11 +38,12 @@ def test_validate_ir_rejects_missing_required_fields() -> None:
         validate_ir(document)
 
 
-def test_validate_ir_accepts_dgn_source_format() -> None:
+@pytest.mark.parametrize("source_format", ["dgn", "dwf"])
+def test_validate_ir_accepts_new_source_formats(source_format: str) -> None:
     document = {
         "format": "cad2d-ir",
         "version": "0.2.0",
-        "source": {"format": "dgn", "name": "sample.dgn"},
+        "source": {"format": source_format, "name": f"sample.{source_format}"},
         "header": {
             "units": "mm",
             "angle_unit": "deg",
@@ -54,7 +55,7 @@ def test_validate_ir_accepts_dgn_source_format() -> None:
                 "kind": "LINE",
                 "p1": [0.0, 0.0],
                 "p2": [10.0, 0.0],
-                "source": {"format": "dgn", "id": "1", "kind": "LINE"},
+                "source": {"format": source_format, "id": "1", "kind": "LINE"},
             }
         ],
     }

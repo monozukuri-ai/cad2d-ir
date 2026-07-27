@@ -1,7 +1,9 @@
 from cad2d_ir.api import (
     DxfToIrResult,
     IrToDxfResult,
+    convert_dgn_file_to_ir,
     convert_dwg_file_to_ir,
+    convert_dwf_file_to_ir,
     convert_dxf_file_to_ir,
     convert_dxf_text_to_ir,
     convert_file_to_ir,
@@ -38,7 +40,7 @@ from cad2d_ir.importers import (
 )
 from cad2d_ir.schema import IRValidationError, load_schema, validate_ir
 
-__version__ = "0.6.1"
+__version__ = "0.7.0"
 
 __all__ = [
     "__version__",
@@ -56,7 +58,9 @@ __all__ = [
     "MissingOptionalDependencyError",
     "UnsupportedSourceFormatError",
     "SUPPORTED_DXF_TARGET_VERSIONS",
+    "convert_dgn_file_to_ir",
     "convert_dwg_file_to_ir",
+    "convert_dwf_file_to_ir",
     "convert_dxf_file_to_ir",
     "convert_dxf_text_to_ir",
     "convert_file_to_ir",

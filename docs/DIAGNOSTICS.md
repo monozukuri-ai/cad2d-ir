@@ -13,6 +13,12 @@ entity/source identifiers and structured details.
 
 | Code | Default severity | Action | Adapter | Emitted when |
 |---|---|---|---|---|
+| `DGN_COMPLEX_FLATTENED` | warning | flattened | DGN import | A complex chain, complex shape, or text node was expanded while retaining parent provenance. |
+| `DGN_CURVE_APPROXIMATED` | warning | approximated | DGN import | A type-11 control curve was represented as a polyline, or closed non-uniform B-spline knots remained metadata. |
+| `DGN_ENTITY_CONVERSION_FAILED` | error | skipped | DGN import | A malformed DGN entity was skipped. |
+| `DGN_TEXT_DECODE_REPLACED` | warning | normalized | DGN import | DGN text bytes could not be decoded with the selected encoding. |
+| `DGN_UNKNOWN_UNITS` | warning | - | DGN import | The DGN master-unit label had no IR unit mapping. |
+| `DGN_UNSUPPORTED_ENTITY` | warning | skipped | DGN import | An unsupported DGN graphic entity was skipped. |
 | `DWG_CURVE_APPROXIMATED` | warning | approximated | DWG import | Source geometry was approximated. |
 | `DWG_ENTITY_CONVERSION_FAILED` | error | skipped | DWG import | A malformed DWG entity was skipped. |
 | `DWG_HEADER_UNITS_UNREADABLE` | warning | - | DWG import | The DWG header variables could not be decoded for units. |
@@ -22,6 +28,14 @@ entity/source identifiers and structured details.
 | `DWG_UNRESOLVED_BLOCK_REFERENCE` | warning | - | DWG import | A referenced DWG block was not resolved. |
 | `DWG_UNSUPPORTED_ENTITY` | warning | skipped | DWG import | An unsupported DWG entity was skipped. |
 | `DWG_ZERO_INSERT_SCALE_NORMALIZED` | warning | normalized | DWG import | A zero insert scale was replaced. |
+| `DWF_APPEARANCE_EFFECTS_FLATTENED` | warning | flattened | DWF import | Clipping, opacity-mask, or compositing effects remain metadata counts and are not applied to IR geometry. |
+| `DWF_COLOR_GRADIENT_FLATTENED` | warning | flattened | DWF import | Per-vertex colors were retained only as metadata. |
+| `DWF_CURVE_APPROXIMATED` | warning | approximated | DWF import | A path curve or sheared ellipse was sampled as a polyline. |
+| `DWF_DRAWING_WARNING` | warning | - | DWF import | The native DWF parser reported a diagnostic. |
+| `DWF_ENTITY_CONVERSION_FAILED` | error | skipped | DWF import | A malformed DWF entity was skipped. |
+| `DWF_MIXED_SHEET_UNITS` | warning | - | DWF import | Sheets used different paper units, so coordinates were retained per sheet with unknown document units. |
+| `DWF_MULTISHEET_FLATTENED` | warning | flattened | DWF import | Multiple sheets were placed in one IR modelspace with sheet metadata retained. |
+| `DWF_UNSUPPORTED_ENTITY` | warning | skipped | DWF import | An unsupported DWF entity, such as a raster image, was skipped. |
 | `DXF_CONSTRAINTS_OMITTED` | warning | skipped | DXF export | IR-only constraints were omitted. |
 | `DXF_DECODE_REPLACED` | warning | normalized | DXF import | Undecodable input bytes were replaced while decoding. |
 | `DXF_DIMENSION_BLOCK_GENERATED` | info | normalized | DXF export | A required DIMENSION geometry block was generated. |

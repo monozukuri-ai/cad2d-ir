@@ -13,7 +13,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.6.1"
+version = "0.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
@@ -21,9 +21,17 @@ dependencies = [
 
 [package.optional-dependencies]
 all = [
+    { name = "ezdgn" },
+    { name = "ezdwf" },
     { name = "ezdwg" },
     { name = "ezjww" },
     { name = "ezsxf" },
+]
+dgn = [
+    { name = "ezdgn" },
+]
+dwf = [
+    { name = "ezdwf" },
 ]
 dwg = [
     { name = "ezdwg" },
@@ -45,6 +53,10 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "ezdgn", marker = "extra == 'all'", specifier = ">=0.1.2,<0.2" },
+    { name = "ezdgn", marker = "extra == 'dgn'", specifier = ">=0.1.2,<0.2" },
+    { name = "ezdwf", marker = "extra == 'all'", specifier = ">=0.0.1,<0.1" },
+    { name = "ezdwf", marker = "extra == 'dwf'", specifier = ">=0.0.1,<0.1" },
     { name = "ezdwg", marker = "extra == 'all'", specifier = ">=0.11,<1" },
     { name = "ezdwg", marker = "extra == 'dwg'", specifier = ">=0.11,<1" },
     { name = "ezjww", marker = "extra == 'all'", specifier = ">=0.2.6,<0.3" },
@@ -53,7 +65,7 @@ requires-dist = [
     { name = "ezsxf", marker = "extra == 'sxf'", specifier = ">=0.1,<0.2" },
     { name = "jsonschema", specifier = ">=4.23.0" },
 ]
-provides-extras = ["dwg", "jww", "sxf", "all"]
+provides-extras = ["dwg", "dgn", "dwf", "jww", "sxf", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -200,6 +212,30 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/50/79/66800aadf48771f6b62f7eb014e352e5d06856655206165d775e675a02c9/exceptiongroup-1.3.1.tar.gz", hash = "sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219", size = 30371, upload-time = "2025-11-21T23:01:54.787Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8a/0e/97c33bf5009bdbac74fd2beace167cab3f978feb69cc36f1ef79360d6c4e/exceptiongroup-1.3.1-py3-none-any.whl", hash = "sha256:a7a39a3bd276781e98394987d3a5701d0c4edffb633bb7a5144577f82c773598", size = 16740, upload-time = "2025-11-21T23:01:53.443Z" },
+]
+
+[[package]]
+name = "ezdgn"
+version = "0.1.2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/36/89/1612f48abeb088219c4c4fd9dbdcafb9d3d489d852e2d1acc1ab8ea2cbdd/ezdgn-0.1.2.tar.gz", hash = "sha256:9f877128fea61bf75d5cfbc3ae737032a9e8a400a0c2b890782a65c6232c73de", size = 79749, upload-time = "2026-07-22T05:22:46.82Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e6/dc/43683144350d0728d24dc86709c96ee4cd60a135f8121b857b23c08bce99/ezdgn-0.1.2-cp310-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:d9d41a25c7530fe29588b00d14ca105e26241e9bda36eb18a93d952e00af5917", size = 756535, upload-time = "2026-07-22T05:22:40.16Z" },
+    { url = "https://files.pythonhosted.org/packages/2c/84/3bd878ac6ddd26c38523a1538932dd8b0b3b0ead56f0d289917b989f1963/ezdgn-0.1.2-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:4906647a7466b80c9c1f97d4079ff5dc390d39b06ec82e5b8b98ebdda0108fec", size = 436728, upload-time = "2026-07-22T05:22:42.154Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/9c/ba9a1fcf60f6a2d5bee1561e5209182453a0fce73050f22a510215be4892/ezdgn-0.1.2-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:38492ae445ff5dc2840c26f62b2993efeedf713b7c202de4518dd68ecdc0492a", size = 444767, upload-time = "2026-07-22T05:22:43.849Z" },
+    { url = "https://files.pythonhosted.org/packages/d5/d9/e795102da55a8c9b8f35d62742a11380ffc4b19c190d2e4d9fdd81a4e1a1/ezdgn-0.1.2-cp310-abi3-win_amd64.whl", hash = "sha256:1ee40c571bbf00f4f625aaa3d95e4b2a627ad5a59b4f23bfa4d450e0863a5d37", size = 295407, upload-time = "2026-07-22T05:22:45.54Z" },
+]
+
+[[package]]
+name = "ezdwf"
+version = "0.0.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/5e/4b/38bd3304943d51de9d0ced29451fefbc0ab805d5f424f22913376ff09b9f/ezdwf-0.0.1.tar.gz", hash = "sha256:9308ac8d41522600c5aa46421d3c495820ed6c1463d90f7c83a5e7a22446d7bc", size = 144094, upload-time = "2026-07-26T16:36:47.26Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/dd/b0/49c26be7ef8b4d22d51ec09cec4deab4a6c3078cb91a20d257e41aa28dea/ezdwf-0.0.1-cp310-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:232050fb32096cefa5028f530edadff8bb67e34f827f05ebaf64bfc006477041", size = 1983738, upload-time = "2026-07-26T16:36:40.194Z" },
+    { url = "https://files.pythonhosted.org/packages/01/36/d3d57b8e9993780deb4cae049eaf621db705d854cd9b5eb135c6733ff255/ezdwf-0.0.1-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:a171f93e44f7492ee27422598864e61f330a80f0e697911739cd39c8754fe860", size = 1066832, upload-time = "2026-07-26T16:36:42.164Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/91/32ba4f9fda6f1728ae886ae95fb2440716c24860651a3ba4b2c9f93cd6da/ezdwf-0.0.1-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f4d5838ef5c42e72c4832a4d577928cba5f9a3e5f21ae395ca61250429de05b3", size = 1098649, upload-time = "2026-07-26T16:36:43.864Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/7f/2390d17ae60bafa1d9bb0cac782dceb2c5545d5e5d3ae0b8eff1e5784c56/ezdwf-0.0.1-cp310-abi3-win_amd64.whl", hash = "sha256:7fdf08605f2aad891e011bec0550cb358f357d09e2519c2a4341fb9f9633883f", size = 940917, upload-time = "2026-07-26T16:36:45.593Z" },
 ]
 
 [[package]]

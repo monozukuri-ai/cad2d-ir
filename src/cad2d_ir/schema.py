@@ -436,7 +436,15 @@ def _validate_source(source: Any, path: str) -> None:
         return
     if not isinstance(source, dict):
         raise IRValidationError(f"{path} must be an object")
-    if source.get("format") not in {"dxf", "dwg", "dgn", "jww", "sxf", "unknown"}:
+    if source.get("format") not in {
+        "dxf",
+        "dwg",
+        "dgn",
+        "dwf",
+        "jww",
+        "sxf",
+        "unknown",
+    }:
         raise IRValidationError(f"{path}.format is invalid")
     for key in ("version", "name", "sha256", "id", "kind"):
         if key in source and not isinstance(source[key], str):

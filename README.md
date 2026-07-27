@@ -6,7 +6,7 @@ for 2D CAD data.
 It provides:
 
 - a canonical JSON Schema for 2D CAD geometry and tables;
-- native DXF, DWG, JWW, and SXF import paths;
+- native DXF, DWG, DGN, DWF/DWFx, JWW, and SXF import paths;
 - DXF R12 (`AC1009`) and R2010 (`AC1024`) export;
 - structured import/export diagnostics;
 - deterministic IR-entity to DXF-handle correspondence.
@@ -16,6 +16,8 @@ It provides:
 ```bash
 pip install cad2d-ir
 pip install "cad2d-ir[dwg]"
+pip install "cad2d-ir[dgn]"
+pip install "cad2d-ir[dwf]"
 pip install "cad2d-ir[jww]"
 pip install "cad2d-ir[sxf]"
 pip install "cad2d-ir[all]"
@@ -46,6 +48,8 @@ Import adapters:
 |---|---|---|
 | DXF | built-in parser | core |
 | DWG | native `ezdwg` model | `cad2d-ir[dwg]` |
+| DGN V7 2D | native `ezdgn` model | `cad2d-ir[dgn]` |
+| DWF/DWFx 2D | normalized `ezdwf` sheet model | `cad2d-ir[dwf]` |
 | JWW | native `ezjww` model | `cad2d-ir[jww]` |
 | SXF SFC/P21 | backend-neutral `ezsxf` drawing | `cad2d-ir[sxf]` |
 
@@ -62,9 +66,11 @@ cad2d-ir validate examples/ir/minimal.json
 cad2d-ir dxf2ir drawing.dxf -o drawing.json --pretty
 cad2d-ir dxf2ir drawing.dxf --encoding cp932 -o drawing.json
 
-# Auto-detected DXF/DWG/JWW/SFC/P21 -> IR
+# Auto-detected DXF/DWG/DGN/DWF/DWFx/JWW/SFC/P21 -> IR
 cad2d-ir import drawing.JWW -o drawing.json --pretty
 cad2d-ir import drawing.dwg -o drawing.json --pretty
+cad2d-ir import drawing.dgn -o drawing.json --pretty --encoding cp932
+cad2d-ir import drawing.dwfx -o drawing.json --pretty
 cad2d-ir import drawing.p21 -o drawing.json --pretty
 
 # IR -> R2010 or R12 DXF
@@ -118,6 +124,12 @@ handles and retains deterministic `index` values in the entity map.
 - HATCH support focuses on polyline-style loops.
 - Ellipse start/end parameters are radians independently of
   `header.angle_unit`.
+- DGN import currently targets V7 2D. `ezdgn` rejects V7 3D and identifies but
+  does not decode V8 entity semantics.
+- DWF/DWFx import preserves sheet identity in metadata while placing supported
+  2D entities and markups in one IR modelspace. Raster payloads and complex
+  brush semantics remain source metadata/diagnostics rather than invented IR
+  geometry.
 
 See:
 
