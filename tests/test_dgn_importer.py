@@ -229,7 +229,7 @@ def test_dgn_native_entities_hierarchy_and_styles_map_to_ir() -> None:
         "LINE",
     ]
     assert document["entities"][3]["text"] == "寸法"
-    assert document["entities"][3]["halign"] == "center"
+    assert document["entities"][3]["halign"] == "left"
     assert document["entities"][3]["width_factor"] == pytest.approx(0.75)
     assert document["source"]["metadata"]["encoding"] == "cp932"
     assert document["source"]["metadata"]["encoding_source"] == "explicit"
@@ -323,28 +323,23 @@ def test_dgn_explicit_decode_keeps_strict_and_replacement_behavior() -> None:
     ]
 
 
-@pytest.mark.parametrize(
-    ("justification", "expected"),
-    [
-        (0, "left"),
-        (3, "left"),
-        (6, "center"),
-        (8, "center"),
-        (9, "right"),
-        (14, "right"),
-    ],
-)
-def test_dgn_text_justification_maps_to_halign(
-    justification: int, expected: str
+@pytest.mark.parametrize("justification", [0, 3, 6, 8, 9, 14])
+def test_dgn_text_halign_stays_left_for_all_justifications(
+    justification: int,
 ) -> None:
+    # The stored V7 origin is the bottom-left corner of the string regardless
+    # of the justification code, so re-anchoring by justification would shift
+    # the text; the code is only preserved in metadata.
     drawing = _Drawing(
         (_text_entity(1, b"alignment", justification=justification),), {}
     )
 
     result = dgn_drawing_to_ir(drawing)
 
-    assert result.document["entities"][0]["halign"] == expected
-    assert result.document["entities"][0]["width_factor"] == pytest.approx(0.75)
+    entity = result.document["entities"][0]
+    assert entity["halign"] == "left"
+    assert entity["metadata"]["dgn"]["justification"] == justification
+    assert entity["width_factor"] == pytest.approx(0.75)
 
 
 def test_dgn_3d_design_is_projected_with_a_loss_diagnostic() -> None:

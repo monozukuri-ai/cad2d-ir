@@ -68,7 +68,7 @@ without routing through DXF.
 | line, line string | `LINE`, `LWPOLYLINE` | direct |
 | shape | closed `LWPOLYLINE` or solid `HATCH` | fill linkage and resolved V7 color retained |
 | ellipse, arc | `CIRCLE`, `ARC`, or `ELLIPSE` | native axes, rotation, and sweep retained |
-| text | `TEXT` | raw bytes, font ID, justification, selected encoding, horizontal alignment, and width factor retained |
+| text | `TEXT` | raw bytes, font ID, justification, selected encoding, and width factor retained; anchored left because the stored V7 origin is the string's bottom-left corner |
 | cell | block table plus `INSERT` | design-space children remain exact; origin and native placement matrix are retained without double-transforming them |
 | B-spline curve | `SPLINE` | open interior knots are expanded to an exact clamped knot vector; closed non-uniform knots remain metadata and are diagnosed |
 | type-11 curve | `LWPOLYLINE` | control-polyline approximation is diagnosed |

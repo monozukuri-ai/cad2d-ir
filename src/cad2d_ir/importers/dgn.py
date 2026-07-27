@@ -535,10 +535,12 @@ def _convert_text(
         "rotation": float(getattr(source_entity, "rotation_degrees", 0.0)),
         "text": text,
         "style": style_name,
+        # The stored V7 origin is always the bottom-left corner of the string
+        # regardless of the justification code (dgnlib: DGNElemText.origin
+        # "Bottom left corner of text."), so the IR anchor stays left; the
+        # justification code is preserved in metadata.
+        "halign": "left",
     }
-    halign = _dgn_text_halign(justification)
-    if halign is not None:
-        result["halign"] = halign
     if height > _EPSILON and width > _EPSILON:
         result["width_factor"] = width / height
     return result
@@ -818,16 +820,6 @@ def _is_three_dimensional(dimension: Any) -> bool:
     if dimension == 3:
         return True
     return str(dimension).strip().lower() in {"3", "3d"}
-
-
-def _dgn_text_halign(justification: int) -> str | None:
-    if 0 <= justification <= 5:
-        return "left"
-    if 6 <= justification <= 8:
-        return "center"
-    if 9 <= justification <= 14:
-        return "right"
-    return None
 
 
 def _children(context: _ConversionContext, source_entity: Any) -> tuple[Any, ...]:
