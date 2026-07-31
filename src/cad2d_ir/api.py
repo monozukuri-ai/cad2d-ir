@@ -191,7 +191,7 @@ def convert_dgn_file_to_ir(
     curve_segments: int = 96,
     encoding: str = "auto",
 ) -> ImportResult:
-    """Convert a V7 2D DGN file directly to IR without an intermediate DXF."""
+    """Convert a V7 or V8 DGN file directly to IR without an intermediate DXF."""
     from cad2d_ir.importers.dgn import convert_dgn_file_to_ir as import_dgn
 
     return import_dgn(

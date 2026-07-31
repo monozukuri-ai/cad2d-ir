@@ -19,7 +19,7 @@ The registry in `cad2d_ir.importers.registry` currently dispatches:
 | DXF | `.dxf` | implemented | built in |
 | JWW | `.jww` | implemented | `ezjww>=0.2.6,<0.3` |
 | DWG | `.dwg` | implemented | `ezdwg>=0.11,<1` |
-| DGN | `.dgn` | implemented (V7 2D) | `ezdgn>=0.1.2,<0.2` |
+| DGN | `.dgn` | implemented (V7 2D, V8) | `ezdgn>=0.2.1,<0.3` |
 | DWF | `.dwf`, `.dwfx` | implemented (2D) | `ezdwf>=0.0.1,<0.1` |
 | SXF | `.sxf`, `.sfc`, `.p21` | implemented | `ezsxf>=0.1,<0.2` |
 
@@ -59,9 +59,11 @@ DWG units come from the `$INSUNITS` header variable (`ezdwg` >= 0.11 `Document.h
 
 ## DGN adapter
 
-The DGN adapter consumes the native `ezdgn.readfile()` V7 2D model. It uses
-master-unit coordinates where available and falls back to precise UOR values
-without routing through DXF.
+The DGN adapter opens files with `ezdgn.open_document()` and routes each
+generation to its own mapping: the V7 2D drawing model documented below, and a
+native V8 document model (`cad2d_ir.importers.dgn_v8`). Both use master-unit
+coordinates where available and fall back to precise UOR values without
+routing through DXF.
 
 | DGN source | IR mapping | Fidelity handling |
 | --- | --- | --- |
@@ -80,10 +82,37 @@ reliable physical-mm mapping. V7 files do not store a text code page;
 `encoding="auto"` probes all text bytes once using ASCII, CP932, then Latin-1,
 and records the selected encoding in source metadata and statistics. An
 explicit `encoding=` remains available for project-specific code pages.
-`ezdgn` currently rejects V7 3D in its semantic reader and only inspects the V8
-CFB container, so current file imports fail explicitly. If a compatible native
-drawing model does report `dimension=3`, the adapter projects coordinates to XY
-and emits `DGN_3D_FLATTENED` rather than silently dropping Z.
+`ezdgn` still rejects V7 3D in its semantic reader, so those file imports fail
+explicitly. If a compatible native drawing model does report `dimension=3`,
+the adapter projects coordinates to XY and emits `DGN_3D_FLATTENED` rather
+than silently dropping Z.
+
+### V8 mapping
+
+The V8 path converts one model per file: the first model containing drawable
+entities. Additional models are reported with `DGN_V8_EXTRA_MODELS_SKIPPED`,
+and 3D models are projected to XY with `DGN_3D_FLATTENED`.
+
+| V8 source | IR mapping | Fidelity handling |
+| --- | --- | --- |
+| line, line string | `LINE`, `LWPOLYLINE` | direct |
+| shape | closed `LWPOLYLINE` | fill linkages are not semantically decoded yet, so shapes stay outlines with their linkage kind codes in metadata |
+| ellipse, arc | `CIRCLE`, `ARC`, or `ELLIPSE` | native axes, rotation, and sweep retained |
+| text | `TEXT` | the stored V8 origin is the justification-dependent user origin (unlike V7's bottom-left corner), so both `halign` and `valign` derive from the justification code; per-element encoding, raw bytes, and 3D orientation remain metadata |
+| text node | child `TEXT` entities | text children are lifted directly from the entity view |
+| point string | one `POINT` per vertex | per-point orientation retained as metadata |
+| cell | block table plus `INSERT` | design-space children remain exact; the native placement matrix and translation stay metadata |
+| shared-cell instance | skipped | definitions are not decoded yet; `DGN_SHARED_CELL_UNRESOLVED` reports the count and names |
+| B-spline curve | `LWPOLYLINE` | the stream does not expose order or knots yet, so the pole control polyline stands in and is diagnosed |
+| type-11 curve | `LWPOLYLINE` | control-polyline approximation is diagnosed |
+| complex chain/shape | child IR entities | parent element indexes retained and flattening diagnosed |
+| dimension | skipped | only a bounded anchor is decoded upstream |
+
+V8 level IDs become `DGN_LEVEL_<n>` layer names; level name tables and the
+active color table live in control objects that are not decoded yet, so
+entities carry their color index as metadata without a resolved RGB. V8 text
+arrives already decoded by `ezdgn` (UTF-8, Windows-1252, or the escaped
+Windows-1252 marker), so the `encoding=` option does not apply to V8 input.
 
 ## DWF adapter
 
@@ -136,7 +165,8 @@ SFC `typed_features` allow dimension kinds and source curve kinds to be recovere
 The implementation was exercised against the current local upstream corpora with strict parsing and IR schema validation:
 
 - DWG: 55 files spanning AC1014 through AC1027; 143 decoded source entities, 139 top-level entities, two recovered block-body entities, and zero failures.
-- DGN: three V7 2D files; 321 top-level IR entities and zero conversion failures. The V7 3D seed and V8 fixture were both rejected explicitly at the documented parser boundary.
+- DGN: three V7 2D files; 321 top-level IR entities and zero conversion failures. The V7 3D seed was rejected explicitly at the documented parser boundary.
+- DGN V8: the ODA-authored GDAL fixture (53 drawable source entities across 14 kinds, 3D model); 43 strict-mode top-level IR entities plus 4 block-body entities in 2 blocks, zero conversion failures, and explicit skip diagnostics for the dimension anchor and the shared-cell instance.
 - DWF: seven supported DWF 6 package/DWFx files; 24,360 IR entities and zero conversion failures. Standalone W2D 00.30 and 00.50 files were recognized and rejected explicitly as unsupported versions.
 - SFC: 20 files; 46,305 source/typed features, 49,929 IR entities, 1,491 semantic dimensions, zero skipped entities, and zero failures.
 - P21: 20 files; 538,130 generic STEP entities, 57,094 IR entities, zero skipped entities, and zero failures.

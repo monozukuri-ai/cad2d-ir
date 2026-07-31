@@ -1,6 +1,24 @@
 # Changelog
 
-## 0.7.1
+## 0.8.0
+
+- Added native MicroStation V8 DGN import through `ezdgn>=0.2.1,<0.3`. `.dgn`
+  files now route through `ezdgn.open_document()`: V7 keeps its existing
+  mapping, while V8 models map lines, line strings, shapes, ellipses, arcs,
+  type-11 curves, texts, text nodes, point strings, cells, and complex
+  chains/shapes into IR with model metadata provenance.
+- V8 text maps both `halign` and `valign` from the justification code: the
+  stored V8 origin is the justification-dependent user origin, unlike V7's
+  fixed bottom-left corner (verified against the ODA-authored GDAL fixture
+  and the GDAL DGNv8 driver anchor mapping).
+- Multi-model V8 files convert the first model with drawable entities and
+  report the rest (`DGN_V8_EXTRA_MODELS_SKIPPED`); 3D models are projected
+  with `DGN_3D_FLATTENED`; shared-cell instances are skipped explicitly
+  (`DGN_SHARED_CELL_UNRESOLVED`) until definitions are decoded upstream; V8
+  B-spline curves fall back to their pole control polylines because the
+  stream does not expose order or knots yet.
+
+## 0.7.2
 
 - Added file-scoped DGN text encoding probing (ASCII, CP932, then Latin-1)
   with a `DGN_ENCODING_DETECTED` diagnostic, an explicit 3D-to-XY projection

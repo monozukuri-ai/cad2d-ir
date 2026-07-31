@@ -48,7 +48,7 @@ Import adapters:
 |---|---|---|
 | DXF | built-in parser | core |
 | DWG | native `ezdwg` model | `cad2d-ir[dwg]` |
-| DGN V7 2D | native `ezdgn` model | `cad2d-ir[dgn]` |
+| DGN V7 2D / V8 | native `ezdgn` models | `cad2d-ir[dgn]` |
 | DWF/DWFx 2D | normalized `ezdwf` sheet model | `cad2d-ir[dwf]` |
 | JWW | native `ezjww` model | `cad2d-ir[jww]` |
 | SXF SFC/P21 | backend-neutral `ezsxf` drawing | `cad2d-ir[sxf]` |
@@ -124,10 +124,12 @@ handles and retains deterministic `index` values in the entity map.
 - HATCH support focuses on polyline-style loops.
 - Ellipse start/end parameters are radians independently of
   `header.angle_unit`.
-- DGN import currently targets V7 2D. Text encoding auto-detection probes ASCII,
-  CP932, then Latin-1 at file scope. `ezdgn` rejects V7 3D and identifies but
-  does not decode V8 entity semantics; compatible 3D models are projected with
-  an explicit loss diagnostic.
+- DGN import covers V7 2D and native V8 documents. V7 text encoding
+  auto-detection probes ASCII, CP932, then Latin-1 at file scope; V8 text
+  arrives already decoded per element. `ezdgn` rejects V7 3D; V8 3D models
+  and multi-model files are reduced to one projected model with explicit
+  loss diagnostics, and V8 shared-cell definitions, fills, color tables,
+  and spline knots are not decoded yet.
 - DWF/DWFx import preserves sheet identity in metadata while placing supported
   2D entities and markups in one IR modelspace. Raster payloads and complex
   brush semantics remain source metadata/diagnostics rather than invented IR

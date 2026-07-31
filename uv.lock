@@ -13,7 +13,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.7.2"
+version = "0.8.0"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
@@ -53,8 +53,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "ezdgn", marker = "extra == 'all'", specifier = ">=0.1.2,<0.2" },
-    { name = "ezdgn", marker = "extra == 'dgn'", specifier = ">=0.1.2,<0.2" },
+    { name = "ezdgn", marker = "extra == 'all'", specifier = ">=0.2.1,<0.3" },
+    { name = "ezdgn", marker = "extra == 'dgn'", specifier = ">=0.2.1,<0.3" },
     { name = "ezdwf", marker = "extra == 'all'", specifier = ">=0.0.1,<0.1" },
     { name = "ezdwf", marker = "extra == 'dwf'", specifier = ">=0.0.1,<0.1" },
     { name = "ezdwg", marker = "extra == 'all'", specifier = ">=0.11,<1" },
@@ -216,14 +216,14 @@ wheels = [
 
 [[package]]
 name = "ezdgn"
-version = "0.1.2"
+version = "0.2.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/36/89/1612f48abeb088219c4c4fd9dbdcafb9d3d489d852e2d1acc1ab8ea2cbdd/ezdgn-0.1.2.tar.gz", hash = "sha256:9f877128fea61bf75d5cfbc3ae737032a9e8a400a0c2b890782a65c6232c73de", size = 79749, upload-time = "2026-07-22T05:22:46.82Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/96/20/c9413c3f7e8b64a0fe989d8a82676c6187c6aa85154153ce8f3d849995f8/ezdgn-0.2.1.tar.gz", hash = "sha256:cbf5bdf80222cd8d3deeb47d4e691f0cb6679f7407e45f17974ee29d7ce2ff83", size = 130092, upload-time = "2026-07-31T10:13:15.871Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e6/dc/43683144350d0728d24dc86709c96ee4cd60a135f8121b857b23c08bce99/ezdgn-0.1.2-cp310-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:d9d41a25c7530fe29588b00d14ca105e26241e9bda36eb18a93d952e00af5917", size = 756535, upload-time = "2026-07-22T05:22:40.16Z" },
-    { url = "https://files.pythonhosted.org/packages/2c/84/3bd878ac6ddd26c38523a1538932dd8b0b3b0ead56f0d289917b989f1963/ezdgn-0.1.2-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:4906647a7466b80c9c1f97d4079ff5dc390d39b06ec82e5b8b98ebdda0108fec", size = 436728, upload-time = "2026-07-22T05:22:42.154Z" },
-    { url = "https://files.pythonhosted.org/packages/b7/9c/ba9a1fcf60f6a2d5bee1561e5209182453a0fce73050f22a510215be4892/ezdgn-0.1.2-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:38492ae445ff5dc2840c26f62b2993efeedf713b7c202de4518dd68ecdc0492a", size = 444767, upload-time = "2026-07-22T05:22:43.849Z" },
-    { url = "https://files.pythonhosted.org/packages/d5/d9/e795102da55a8c9b8f35d62742a11380ffc4b19c190d2e4d9fdd81a4e1a1/ezdgn-0.1.2-cp310-abi3-win_amd64.whl", hash = "sha256:1ee40c571bbf00f4f625aaa3d95e4b2a627ad5a59b4f23bfa4d450e0863a5d37", size = 295407, upload-time = "2026-07-22T05:22:45.54Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/c3/efb8c95671467f4e7ca1eac369be0052a42b45e61ce4ce3ccfb0468a69c5/ezdgn-0.2.1-cp310-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:f79044221f20583582ef2acb003fac51e37ef9f2cb3772bb5fe065f9ebbc4471", size = 981580, upload-time = "2026-07-31T10:13:10.601Z" },
+    { url = "https://files.pythonhosted.org/packages/09/f7/747d1c3fa788b595c2beb1d0d1a2ba13aee9bdf83aa74d0462f9e4ffb3f6/ezdgn-0.2.1-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:3c424046358d9f14f38a6b56b74b26a71d8fb72828457eeef9c425e9f94f9e58", size = 559463, upload-time = "2026-07-31T10:13:12.312Z" },
+    { url = "https://files.pythonhosted.org/packages/98/c7/8ea07c85b3394ab2ec6f8167d5fbd4e04ce92403acfa8dea39be1ec56ac6/ezdgn-0.2.1-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:36dca7765d5039a6a14fdbf7ac4981bef178a3b6a7476b22ec2a08d5eb3caae0", size = 568106, upload-time = "2026-07-31T10:13:13.615Z" },
+    { url = "https://files.pythonhosted.org/packages/31/a1/296a1eb31d363d1e12b1a920c349210c278c6178fe3a0551aa631233a16e/ezdgn-0.2.1-cp310-abi3-win_amd64.whl", hash = "sha256:22f99fe02311631ff1a6e8ff3966081ae33f2e0919b3f78d51b6d3ac59a79a24", size = 418335, upload-time = "2026-07-31T10:13:14.783Z" },
 ]
 
 [[package]]

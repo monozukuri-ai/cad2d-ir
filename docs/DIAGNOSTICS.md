@@ -18,9 +18,11 @@ entity/source identifiers and structured details.
 | `DGN_CURVE_APPROXIMATED` | warning | approximated | DGN import | A type-11 control curve was represented as a polyline, or closed non-uniform B-spline knots remained metadata. |
 | `DGN_ENCODING_DETECTED` | info | detected | DGN import | `encoding="auto"` selected ASCII, CP932, or Latin-1 by probing all DGN text elements. |
 | `DGN_ENTITY_CONVERSION_FAILED` | error | skipped | DGN import | A malformed DGN entity was skipped. |
+| `DGN_SHARED_CELL_UNRESOLVED` | warning | skipped | DGN import | V8 shared-cell instances were skipped because shared-cell definitions are not decoded yet. |
 | `DGN_TEXT_DECODE_REPLACED` | warning | normalized | DGN import | DGN text bytes could not be decoded with the selected encoding. |
 | `DGN_UNKNOWN_UNITS` | warning | - | DGN import | The DGN master-unit label had no IR unit mapping. |
 | `DGN_UNSUPPORTED_ENTITY` | warning | skipped | DGN import | An unsupported DGN graphic entity was skipped. |
+| `DGN_V8_EXTRA_MODELS_SKIPPED` | warning | skipped | DGN import | A multi-model V8 file was reduced to the first model containing drawable entities. |
 | `DWG_CURVE_APPROXIMATED` | warning | approximated | DWG import | Source geometry was approximated. |
 | `DWG_ENTITY_CONVERSION_FAILED` | error | skipped | DWG import | A malformed DWG entity was skipped. |
 | `DWG_HEADER_UNITS_UNREADABLE` | warning | - | DWG import | The DWG header variables could not be decoded for units. |

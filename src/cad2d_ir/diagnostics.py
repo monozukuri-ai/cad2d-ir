@@ -146,6 +146,18 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
     "DGN_UNKNOWN_UNITS": DiagnosticCode(
         "warning", None, "DGN import", "The DGN master unit was not mapped to IR units."
     ),
+    "DGN_V8_EXTRA_MODELS_SKIPPED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "DGN import",
+        "A multi-model V8 file was reduced to one converted model.",
+    ),
+    "DGN_SHARED_CELL_UNRESOLVED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "DGN import",
+        "V8 shared-cell instances were skipped; definitions are not decoded.",
+    ),
     "DWF_ENTITY_CONVERSION_FAILED": DiagnosticCode(
         "error", "skipped", "DWF import", "A malformed DWF entity was skipped."
     ),

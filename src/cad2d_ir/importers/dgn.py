@@ -1,4 +1,8 @@
-"""Native MicroStation V7 DGN to CAD 2D IR importer backed by :mod:`ezdgn`."""
+"""Native MicroStation DGN to CAD 2D IR importer backed by :mod:`ezdgn`.
+
+This module routes ``.dgn`` files to the matching generation and hosts the V7
+mapping; the V8 mapping lives in :mod:`cad2d_ir.importers.dgn_v8`.
+"""
 
 from __future__ import annotations
 
@@ -73,7 +77,7 @@ def convert_dgn_file_to_ir(
     *,
     options: ImportOptions | None = None,
 ) -> ImportResult:
-    """Read a V7 2D DGN file with ``ezdgn`` and convert it directly to IR."""
+    """Read a V7 or V8 DGN file with ``ezdgn`` and convert it directly to IR."""
     try:
         import ezdgn
     except ImportError as exc:
@@ -84,16 +88,19 @@ def convert_dgn_file_to_ir(
 
     source_path = Path(path)
     try:
-        drawing = ezdgn.readfile(source_path)
+        document = ezdgn.open_document(source_path)
     except Exception as exc:
         raise ImporterError(f"Failed to read DGN file {source_path}: {exc}") from exc
-    return dgn_drawing_to_ir(
-        drawing,
-        source_name=source_path.name,
-        source_sha256=_sha256_file(source_path),
-        parser_version=str(getattr(ezdgn, "__version__", "unknown")),
-        options=options,
-    )
+    provenance: dict[str, Any] = {
+        "source_name": source_path.name,
+        "source_sha256": _sha256_file(source_path),
+        "parser_version": str(getattr(ezdgn, "__version__", "unknown")),
+    }
+    if isinstance(document, ezdgn.V8Document):
+        from cad2d_ir.importers.dgn_v8 import dgn_v8_document_to_ir
+
+        return dgn_v8_document_to_ir(document, options=options, **provenance)
+    return dgn_drawing_to_ir(document, options=options, **provenance)
 
 
 def dgn_drawing_to_ir(
