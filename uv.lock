@@ -13,7 +13,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.8.0"
+version = "0.9.0"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
@@ -25,6 +25,7 @@ all = [
     { name = "ezdwf" },
     { name = "ezdwg" },
     { name = "ezjww" },
+    { name = "ezmi2d" },
     { name = "ezsxf" },
 ]
 dgn = [
@@ -38,6 +39,9 @@ dwg = [
 ]
 jww = [
     { name = "ezjww" },
+]
+mi = [
+    { name = "ezmi2d" },
 ]
 sxf = [
     { name = "ezsxf" },
@@ -61,11 +65,13 @@ requires-dist = [
     { name = "ezdwg", marker = "extra == 'dwg'", specifier = ">=0.11,<1" },
     { name = "ezjww", marker = "extra == 'all'", specifier = ">=0.2.6,<0.3" },
     { name = "ezjww", marker = "extra == 'jww'", specifier = ">=0.2.6,<0.3" },
+    { name = "ezmi2d", marker = "extra == 'all'", specifier = ">=0.2,<0.3" },
+    { name = "ezmi2d", marker = "extra == 'mi'", specifier = ">=0.2,<0.3" },
     { name = "ezsxf", marker = "extra == 'all'", specifier = ">=0.1,<0.2" },
     { name = "ezsxf", marker = "extra == 'sxf'", specifier = ">=0.1,<0.2" },
     { name = "jsonschema", specifier = ">=4.23.0" },
 ]
-provides-extras = ["dwg", "dgn", "dwf", "jww", "sxf", "all"]
+provides-extras = ["dwg", "dgn", "dwf", "jww", "mi", "sxf", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -258,6 +264,18 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/e7/08/25e1e45f216da9c889caa6d64ac3271526823c5a2d3b85d61931c6041036/ezjww-0.2.6-cp39-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:60edcb7d1039b44c24f4f1d2d68805e01db2fba5ee2ce119cafd535a59acff15", size = 815922, upload-time = "2026-07-21T08:11:43.952Z" },
     { url = "https://files.pythonhosted.org/packages/c5/d4/709fbf6c7ab6fda32adbe03aabefb790ddb50516291d1d89c564a90e0df9/ezjww-0.2.6-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:7c7ce618c7644cf9babccca14472cc2d6962b66e496a1a384062a41ae455610d", size = 453788, upload-time = "2026-07-21T08:12:12.007Z" },
     { url = "https://files.pythonhosted.org/packages/ca/b6/71ca9936d63c4b8f0eefc3bc70c8bfaa555263ba15df17a675d726946935/ezjww-0.2.6-cp39-abi3-win_amd64.whl", hash = "sha256:1bb58ea932a35a509082c45786d18eb61335a274d010ee3f045201b1b0f2cd79", size = 356208, upload-time = "2026-07-21T08:12:13.128Z" },
+]
+
+[[package]]
+name = "ezmi2d"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/59/aa/5b1f514c175087651aa428ad07108e3c7ff934a2f935c8a1a3e28726333b/ezmi2d-0.2.0.tar.gz", hash = "sha256:1c224102d83152ed74634172ed8b5631520d4551dedee3775cae572e1ba2fad9", size = 120810, upload-time = "2026-08-17T12:07:32.25Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2a/3f/263e9db03299803889a527e9e4d74741170efae7cfcd9f630d550a449d50/ezmi2d-0.2.0-cp310-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:9aa2509e9ae4aedfb65681573564bce6d7a5d6fb5a56c6163bb264ca5cae7cc5", size = 1087238, upload-time = "2026-08-17T12:07:25.012Z" },
+    { url = "https://files.pythonhosted.org/packages/0d/1c/601afa9cc8f811507fb19d18fdf1e34ef18e83ce2d3621b02d341df2d64f/ezmi2d-0.2.0-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:47f3eb4360d1ce913eca51eaf736247b3a5009970dabb47491564ba471a8084f", size = 596174, upload-time = "2026-08-17T12:07:26.664Z" },
+    { url = "https://files.pythonhosted.org/packages/6b/3a/f82bf84c6fe216495c58ac0771a9fd093cfbd7899c37b823ff999c52ecfa/ezmi2d-0.2.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:aca9a9dbbf371ed87f396a0ef69bf46333ab4c981280c61e806b7d257cb8ed1d", size = 606903, upload-time = "2026-08-17T12:07:28.384Z" },
+    { url = "https://files.pythonhosted.org/packages/c2/df/6508fa8fb29bc1ae1cab4044d64f5f71cc491f436b780f97998269aa78ab/ezmi2d-0.2.0-cp310-abi3-win_amd64.whl", hash = "sha256:76def5171b00610d18f190242740e90bb9c3b48eecf55d37d6c56264ce3c06b8", size = 460063, upload-time = "2026-08-17T12:07:30.347Z" },
 ]
 
 [[package]]

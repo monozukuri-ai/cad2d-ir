@@ -21,6 +21,7 @@ The registry in `cad2d_ir.importers.registry` currently dispatches:
 | DWG | `.dwg` | implemented | `ezdwg>=0.11,<1` |
 | DGN | `.dgn` | implemented (V7 2D, V8) | `ezdgn>=0.2.1,<0.3` |
 | DWF | `.dwf`, `.dwfx` | implemented (2D) | `ezdwf>=0.0.1,<0.1` |
+| MI | `.mi`, `.bi` | implemented (verified typed subset) | `ezmi2d>=0.2,<0.3` |
 | SXF | `.sxf`, `.sfc`, `.p21` | implemented | `ezsxf>=0.1,<0.2` |
 
 ## JWW vertical slice
@@ -145,6 +146,46 @@ composite or otherwise honor the alpha channel; reducing them to seven-character
 RGB is a consumer-side loss. Standalone legacy W2D 00.30/00.50 support remains
 an `ezdwf` parser boundary rather than an IR-adapter concern.
 
+## MI adapter
+
+The MI adapter consumes the public `ezmi2d.Document` model directly. It does
+not route through DXF and does not inspect private Rust records. MI source
+angles are radians; converted IR angles are degrees so the resulting document
+is compatible with the existing DXF export path, while the original unit is
+retained in header metadata.
+
+| MI source | IR mapping | Fidelity handling |
+| --- | --- | --- |
+| `LIN` | `LINE` | resolved endpoints map directly |
+| `ARC`, `FIL` | `ARC` | center, radius, normalized angles, and explicit `ccw` map directly; unknown orientation is not guessed |
+| `CIR` | `CIRCLE` | center and radius map directly |
+| `BSPL` | `SPLINE` | degree, controls, knots, optional weights, and presence-aware closure map when representable; verified evaluation is sampled only as a diagnosed fallback |
+| `TEX` | `TEXT` / `MTEXT` | decoded content, origin, height, rotation, alignment, width factor, font, transform, and mirror metadata are retained |
+| dimension families | `GENERIC DIMENSION` | typed reference points/IDs, text position, measurement, formatted text, property/style IDs, and tolerances remain in the flexible definition |
+| `LED` | `LWPOLYLINE` | vertices map to visible geometry; arrow type/size remain metadata and flattening is diagnosed |
+| `HAT` + `COC`/`PFA`/`HAPP` | patterned `HATCH` | ordered curve boundaries are sampled with an approximation record; outer/inner association and source pattern lines remain metadata |
+| `ASSE` part hierarchy | block table + `INSERT` | nested/shared definitions, sheets, signed scale, rotation, translation, and exact affine transforms are retained without world-space duplication |
+
+MI color codes 0 through 7 map to their named RGB values. Named linetypes are
+retained, but their physical dash lengths are not exposed by the parser, so
+linetype definitions use empty patterns and disclose that boundary. The source
+lineweight value is retained in metadata instead of being mislabeled as
+millimeters. Multiple source layers, unknown visibility codes, mirrored text,
+presence-aware spline flags, and hatch pattern definitions likewise stay in
+MI metadata with one aggregate `MI_SOURCE_SEMANTICS_PRESERVED` diagnostic.
+
+`ezmi2d` parser diagnostics are forwarded as `MI_PARSER_DIAGNOSTIC` without
+discarding their upstream code, action, severity, or byte/line span. Raw
+fallback entities and symbols without a lossless IR equivalent are skipped
+explicitly. Strict mode raises on malformed typed geometry or invalid assembly
+graphs; lenient mode skips the affected entity/instance and emits a stable
+diagnostic.
+
+Both `.mi` and `.bi` suffixes dispatch to this adapter. The `.bi` route means
+the gzip-wrapped product-generated MI envelope currently verified by
+`ezmi2d`; zlib, ZIP, UNIX `compress`, UNIX `pack`, and arbitrary historical BI
+encodings are not inferred.
+
 ## SXF adapter
 
 The SXF adapter parses either SFC or AP202/P21 and consumes `ezsxf._drawing.build_drawing()`. No DXF text is produced or reparsed.
@@ -168,10 +209,14 @@ The implementation was exercised against the current local upstream corpora with
 - DGN: three V7 2D files; 321 top-level IR entities and zero conversion failures. The V7 3D seed was rejected explicitly at the documented parser boundary.
 - DGN V8: the ODA-authored GDAL fixture (53 drawable source entities across 14 kinds, 3D model); 43 strict-mode top-level IR entities plus 4 block-body entities in 2 blocks, zero conversion failures, and explicit skip diagnostics for the dimension anchor and the shared-cell instance.
 - DWF: seven supported DWF 6 package/DWFx files; 24,360 IR entities and zero conversion failures. Standalone W2D 00.30 and 00.50 files were recognized and rejected explicitly as unsupported versions.
+- MI: three byte-stable synthetic `ezmi2d` v0.2.0 fixtures cover direct geometry, UTF-8 text, fillet/B-spline geometry, generic dimensions, leaders, associative hatches, nested/shared parts, and two sheet occurrences. Plain MI and a test-created gzip BI envelope pass strict JSON Schema validation. These adapter fixtures do not expand `ezmi2d`'s documented format-family or corpus guarantees.
 - SFC: 20 files; 46,305 source/typed features, 49,929 IR entities, 1,491 semantic dimensions, zero skipped entities, and zero failures.
 - P21: 20 files; 538,130 generic STEP entities, 57,094 IR entities, zero skipped entities, and zero failures.
 
-Every successful DGN/DWF result above also passed strict JSON Schema validation. These are development corpus observations, not format-wide coverage guarantees. The upstream corpora and parser versions should be rechecked when dependency bounds change.
+Every successful DGN/DWF result and each MI fixture above also passed strict
+JSON Schema validation. These are development corpus observations, not
+format-wide coverage guarantees. The upstream corpora and parser versions
+should be rechecked when dependency bounds change.
 
 ## Adding another importer
 

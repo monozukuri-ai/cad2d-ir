@@ -6,7 +6,7 @@ Use `cad2d_ir.api` for file imports and diagnostic-aware DXF export.
 
 ### `convert_file_to_ir(path, *, source_format="auto", ir_version="0.2.0", validate=True, strict=True, curve_segments=96, encoding="auto")`
 
-Dispatches to the DXF, DWG, DGN, DWF/DWFx, JWW, or SXF adapter and returns
+Dispatches to the DXF, DWG, DGN, DWF/DWFx, JWW, MI/BI, or SXF adapter and returns
 `ImportResult`:
 
 - `document`: imported IR document
@@ -31,6 +31,7 @@ Format-specific helpers are also public:
 - `convert_dgn_file_to_ir(path, *, encoding="auto", ...)`
 - `convert_dwf_file_to_ir(path, ...)`
 - `convert_jww_file_to_ir(path, ...)`
+- `convert_mi_file_to_ir(path, *, encoding="auto", ...)`
 - `convert_sxf_file_to_ir(path, ...)`
 - `convert_dxf_text_to_ir(dxf_text, ...)`
 
@@ -46,6 +47,15 @@ strict mode and uses replacement characters with `DGN_TEXT_DECODE_REPLACED`
 when `strict=False`. DWF and DWFx imports include all sheets and markup
 entities. Their source sheet remains in `metadata.dwf`; multiple sheets are
 disclosed with `DWF_MULTISHEET_FLATTENED`.
+
+MI input uses `ezmi2d`'s file-scoped encoding selection. `encoding="auto"`
+leaves BOM, declaration, MI-version, and heuristic selection to the parser;
+an explicit value is forwarded as the parser override. The selected name,
+selection source, declared name, parser version, container kind, logical and
+container sizes, and source spans are retained in `source.metadata.mi` or
+entity provenance. `.mi` and `.bi` suffixes dispatch to the same adapter;
+current `.bi` compatibility is limited to the verified gzip-wrapped MI
+container supported by `ezmi2d`.
 
 ## High-level DXF export API
 

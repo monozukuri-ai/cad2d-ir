@@ -228,6 +228,30 @@ def convert_dwf_file_to_ir(
     )
 
 
+def convert_mi_file_to_ir(
+    path: str | Path,
+    *,
+    ir_version: str = CURRENT_IR_VERSION,
+    validate: bool = True,
+    strict: bool = True,
+    curve_segments: int = 96,
+    encoding: str = "auto",
+) -> ImportResult:
+    """Convert an MI text file or supported gzip-wrapped BI file directly to IR."""
+    from cad2d_ir.importers.mi import convert_mi_file_to_ir as import_mi
+
+    return import_mi(
+        path,
+        options=ImportOptions(
+            ir_version=ir_version,
+            validate=validate,
+            strict=strict,
+            curve_segments=curve_segments,
+            encoding=encoding,
+        ),
+    )
+
+
 def convert_sxf_file_to_ir(
     path: str | Path,
     *,

@@ -10,6 +10,7 @@ from cad2d_ir.api import (
     convert_ir_file_to_dxf,
     convert_ir_to_dxf_text,
     convert_jww_file_to_ir,
+    convert_mi_file_to_ir,
     convert_sxf_file_to_ir,
     dump_ir_json,
     load_ir_json,
@@ -40,7 +41,7 @@ from cad2d_ir.importers import (
 )
 from cad2d_ir.schema import IRValidationError, load_schema, validate_ir
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 __all__ = [
     "__version__",
@@ -67,6 +68,7 @@ __all__ = [
     "convert_ir_file_to_dxf",
     "convert_ir_to_dxf_text",
     "convert_jww_file_to_ir",
+    "convert_mi_file_to_ir",
     "convert_sxf_file_to_ir",
     "dxf_to_ir",
     "dump_ir_json",

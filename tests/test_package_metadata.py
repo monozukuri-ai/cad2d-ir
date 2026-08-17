@@ -25,11 +25,13 @@ def test_release_metadata_keeps_license_and_adapter_extras() -> None:
     assert project["optional-dependencies"]["dgn"] == ["ezdgn>=0.2.1,<0.3"]
     assert project["optional-dependencies"]["dwf"] == ["ezdwf>=0.0.1,<0.1"]
     assert project["optional-dependencies"]["jww"] == ["ezjww>=0.2.6,<0.3"]
+    assert project["optional-dependencies"]["mi"] == ["ezmi2d>=0.2,<0.3"]
     assert project["optional-dependencies"]["sxf"] == ["ezsxf>=0.1,<0.2"]
     assert project["optional-dependencies"]["all"] == [
         "ezdwg>=0.11,<1",
         "ezdgn>=0.2.1,<0.3",
         "ezdwf>=0.0.1,<0.1",
         "ezjww>=0.2.6,<0.3",
+        "ezmi2d>=0.2,<0.3",
         "ezsxf>=0.1,<0.2",
     ]

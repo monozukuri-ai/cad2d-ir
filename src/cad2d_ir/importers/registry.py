@@ -20,6 +20,8 @@ _SUFFIX_TO_FORMAT = {
     ".dwf": "dwf",
     ".dwfx": "dwf",
     ".jww": "jww",
+    ".mi": "mi",
+    ".bi": "mi",
     ".p21": "sxf",
     ".sfc": "sxf",
     ".sxf": "sxf",
@@ -116,6 +118,11 @@ def import_file(
         from cad2d_ir.importers.dwf import convert_dwf_file_to_ir
 
         return convert_dwf_file_to_ir(source_path, options=import_options)
+
+    if normalized_format == "mi":
+        from cad2d_ir.importers.mi import convert_mi_file_to_ir
+
+        return convert_mi_file_to_ir(source_path, options=import_options)
 
     if normalized_format == "sxf":
         from cad2d_ir.importers.sxf import convert_sxf_file_to_ir

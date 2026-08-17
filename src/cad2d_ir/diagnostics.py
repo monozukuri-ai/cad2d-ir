@@ -194,6 +194,54 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "DWF import",
         "Per-vertex colors were preserved only as metadata.",
     ),
+    "MI_PARSER_DIAGNOSTIC": DiagnosticCode(
+        "warning", "forwarded", "MI import", "The ezmi2d parser reported a diagnostic."
+    ),
+    "MI_ENTITY_CONVERSION_FAILED": DiagnosticCode(
+        "error", "skipped", "MI import", "A malformed typed MI entity was skipped."
+    ),
+    "MI_UNSUPPORTED_ENTITY": DiagnosticCode(
+        "warning",
+        "skipped",
+        "MI import",
+        "An MI raw fallback entity without a typed mapping was skipped.",
+    ),
+    "MI_UNSUPPORTED_ANNOTATION": DiagnosticCode(
+        "warning",
+        "skipped",
+        "MI import",
+        "An MI annotation without a lossless IR equivalent was skipped.",
+    ),
+    "MI_ANNOTATION_FLATTENED": DiagnosticCode(
+        "warning",
+        "flattened",
+        "MI import",
+        "An MI annotation was represented by simpler IR geometry.",
+    ),
+    "MI_CURVE_APPROXIMATED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "MI import",
+        "An MI curve or curved hatch boundary was sampled as a polyline.",
+    ),
+    "MI_SOURCE_SEMANTICS_PRESERVED": DiagnosticCode(
+        "warning",
+        "preserved_metadata",
+        "MI import",
+        "Source semantics without an exact operational IR field remain in metadata.",
+    ),
+    "MI_UNKNOWN_UNITS": DiagnosticCode(
+        "warning",
+        "preserved_metadata",
+        "MI import",
+        "The MI drawing unit was not mapped to an IR unit.",
+    ),
+    "MI_INSTANCE_SKIPPED": DiagnosticCode(
+        "error",
+        "skipped",
+        "MI import",
+        "An unresolved, cyclic, or non-affine assembly instance was skipped.",
+    ),
     "SXF_DIMENSION_CONVERSION_FAILED": DiagnosticCode(
         "error", "skipped", "SXF import", "A malformed SXF dimension was skipped."
     ),

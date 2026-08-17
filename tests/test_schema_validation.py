@@ -38,7 +38,7 @@ def test_validate_ir_rejects_missing_required_fields() -> None:
         validate_ir(document)
 
 
-@pytest.mark.parametrize("source_format", ["dgn", "dwf"])
+@pytest.mark.parametrize("source_format", ["dgn", "dwf", "mi"])
 def test_validate_ir_accepts_new_source_formats(source_format: str) -> None:
     document = {
         "format": "cad2d-ir",

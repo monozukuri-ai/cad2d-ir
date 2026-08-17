@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.9.0
+
+- Added native MI import through `ezmi2d>=0.2,<0.3`, with `.mi` and
+  gzip-wrapped `.bi` registry/CLI dispatch, a public
+  `convert_mi_file_to_ir()` helper, an optional `mi` extra, and MI provenance
+  values in the canonical and packaged schemas.
+- Mapped lines, arcs/fillets, circles, B-splines, text, generic dimensions,
+  leaders, and associative hatches directly from the typed parser model.
+  Source radians normalize to IR degrees; approximations and unsupported
+  annotation boundaries use stable structured diagnostics.
+- Preserved nested/shared MI parts and sheet occurrences as block definitions
+  and INSERTs, including exact affine-transform fallback. Added byte-stable
+  synthetic fixtures for geometry, UTF-8 text, annotations, and assemblies.
+
 ## 0.8.0
 
 - Added native MicroStation V8 DGN import through `ezdgn>=0.2.1,<0.3`. `.dgn`

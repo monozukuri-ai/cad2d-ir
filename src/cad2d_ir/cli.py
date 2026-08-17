@@ -61,7 +61,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     import_parser = subparsers.add_parser(
         "import",
-        help="Import a supported CAD file (DXF, DWG, DGN, DWF, JWW, or SXF) to IR JSON",
+        help=(
+            "Import a supported CAD file "
+            "(DXF, DWG, DGN, DWF, JWW, MI/BI, or SXF) to IR JSON"
+        ),
     )
     import_parser.add_argument("input", type=Path, help="Path to source CAD file")
     import_parser.add_argument("-o", "--output", type=Path, help="Output IR JSON path")
@@ -69,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--format",
         dest="source_format",
         default="auto",
-        choices=("auto", "dxf", "dwg", "dgn", "dwf", "jww", "sxf"),
+        choices=("auto", "dxf", "dwg", "dgn", "dwf", "jww", "mi", "sxf"),
         help="Source format (default: detect from filename)",
     )
     import_parser.add_argument(
@@ -92,7 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
     import_parser.add_argument(
         "--encoding",
         default="auto",
-        help="DXF or DGN text encoding (default: auto)",
+        help="DXF, DGN, or MI text encoding (default: auto)",
     )
 
     ir2dxf_parser = subparsers.add_parser("ir2dxf", help="Convert IR JSON to DXF file")

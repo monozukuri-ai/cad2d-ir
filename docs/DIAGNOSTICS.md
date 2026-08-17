@@ -68,6 +68,15 @@ entity/source identifiers and structured details.
 | `JWW_UNSUPPORTED_ENTITY` | warning | skipped | JWW import | An unsupported JWW entity was skipped. |
 | `JWW_ZERO_BLOCK_SCALE_NORMALIZED` | warning | normalized | JWW import | A zero block scale was replaced. |
 | `JWW_ZERO_FLATNESS_NORMALIZED` | warning | normalized | JWW import | A zero ellipse flatness was replaced. |
+| `MI_ANNOTATION_FLATTENED` | warning | flattened | MI import | An MI annotation such as a leader was represented by simpler IR geometry while its source semantics remain in metadata. |
+| `MI_CURVE_APPROXIMATED` | warning | approximated | MI import | An MI spline fallback or curved hatch boundary was sampled as a polyline. |
+| `MI_ENTITY_CONVERSION_FAILED` | error | skipped | MI import | A malformed typed MI entity was skipped in lenient mode. |
+| `MI_INSTANCE_SKIPPED` | error | skipped | MI import | An unresolved, cyclic, or non-affine MI assembly instance was skipped in lenient mode. |
+| `MI_PARSER_DIAGNOSTIC` | warning | forwarded | MI import | An `ezmi2d` diagnostic was forwarded with its upstream code, action, and source span in `details`. The instance severity follows the upstream diagnostic. |
+| `MI_SOURCE_SEMANTICS_PRESERVED` | warning | preserved_metadata | MI import | MI semantics without an exact operational IR field, such as unscaled lineweight values or hatch pattern definitions, were retained in metadata. |
+| `MI_UNKNOWN_UNITS` | warning | preserved_metadata | MI import | The MI drawing-unit label had no IR unit mapping. |
+| `MI_UNSUPPORTED_ANNOTATION` | warning | skipped | MI import | An MI annotation without a lossless IR equivalent was skipped while referenced graphics remained available. |
+| `MI_UNSUPPORTED_ENTITY` | warning | skipped | MI import | An `ezmi2d.UnsupportedEntity` raw fallback had no typed mapping and was skipped. |
 | `SXF_CURVE_APPROXIMATED` | warning | approximated | SXF import | Source geometry was approximated. |
 | `SXF_DIMENSION_CONVERSION_FAILED` | error | skipped | SXF import | A malformed SXF dimension was skipped. |
 | `SXF_DRAWING_WARNING` | warning | - | SXF import | The SXF drawing backend reported a warning. |

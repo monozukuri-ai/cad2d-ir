@@ -17,6 +17,8 @@ def test_detect_source_format_is_case_insensitive() -> None:
     assert detect_source_format("drawing.DGN") == "dgn"
     assert detect_source_format("drawing.DWF") == "dwf"
     assert detect_source_format("drawing.DWFX") == "dwf"
+    assert detect_source_format("drawing.MI") == "mi"
+    assert detect_source_format("drawing.BI") == "mi"
     assert detect_source_format("drawing.SFC") == "sxf"
 
     with pytest.raises(UnsupportedSourceFormatError):
@@ -46,7 +48,7 @@ def test_generic_file_import_and_cli_support_dxf(tmp_path: Path) -> None:
 def test_registry_dispatches_optional_adapters(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from cad2d_ir.importers import dgn, dwf, dwg, sxf
+    from cad2d_ir.importers import dgn, dwf, dwg, mi, sxf
 
     calls: list[tuple[str, Path]] = []
 
@@ -66,23 +68,31 @@ def test_registry_dispatches_optional_adapters(
         calls.append(("dwf", path))
         return "dwf-result"
 
+    def fake_mi(path: Path, *, options: object) -> str:
+        calls.append(("mi", path))
+        return "mi-result"
+
     monkeypatch.setattr(dwg, "convert_dwg_file_to_ir", fake_dwg)
     monkeypatch.setattr(dgn, "convert_dgn_file_to_ir", fake_dgn)
     monkeypatch.setattr(dwf, "convert_dwf_file_to_ir", fake_dwf)
+    monkeypatch.setattr(mi, "convert_mi_file_to_ir", fake_mi)
     monkeypatch.setattr(sxf, "convert_sxf_file_to_ir", fake_sxf)
 
     dwg_path = tmp_path / "drawing.dwg"
     dgn_path = tmp_path / "drawing.dgn"
     dwf_path = tmp_path / "drawing.dwfx"
+    mi_path = tmp_path / "drawing.mi"
     sxf_path = tmp_path / "drawing.p21"
     assert convert_file_to_ir(dwg_path) == "dwg-result"
     assert convert_file_to_ir(dgn_path) == "dgn-result"
     assert convert_file_to_ir(dwf_path) == "dwf-result"
+    assert convert_file_to_ir(mi_path) == "mi-result"
     assert convert_file_to_ir(sxf_path) == "sxf-result"
     assert calls == [
         ("dwg", dwg_path),
         ("dgn", dgn_path),
         ("dwf", dwf_path),
+        ("mi", mi_path),
         ("sxf", sxf_path),
     ]
 
