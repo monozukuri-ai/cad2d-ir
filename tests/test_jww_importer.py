@@ -285,3 +285,50 @@ def test_jww_generic_dimension_is_visible_in_dxf_and_mapped_one_to_many() -> Non
         and diagnostic.entity_id == dimension["id"]
         for diagnostic in exported.diagnostics
     )
+
+
+def test_jww_parser_diagnostics_are_mapped_to_stable_codes() -> None:
+    source = _document()
+    source["diagnostics"] = [
+        {
+            "code": "ENTITY_LIST_TRUNCATED",
+            "severity": "error",
+            "message": "JWW entity list could not be read to its end",
+            "action": "skipped",
+            "details": {
+                "byte_offset": 1234,
+                "expected_entities": 500,
+                "parsed_entities": 120,
+                "error": "unexpected EOF while reading bytes",
+            },
+        },
+        {
+            "code": "CP932_DECODE_REPLACED",
+            "severity": "warning",
+            "message": "CP932 decoding replaced 1 undecodable character sequence(s) in x.",
+            "action": "normalized",
+            "details": {"field": "entity.text.content", "byte_offset": 10},
+        },
+        {"code": "SOMETHING_NEW", "severity": "info", "message": "ignored"},
+    ]
+
+    result = jww_document_to_ir(source)
+
+    codes = [diagnostic.code for diagnostic in result.diagnostics]
+    assert "JWW_ENTITY_LIST_TRUNCATED" in codes
+    assert "JWW_DECODE_REPLACED" in codes
+    truncated = next(
+        diagnostic
+        for diagnostic in result.diagnostics
+        if diagnostic.code == "JWW_ENTITY_LIST_TRUNCATED"
+    )
+    assert truncated.severity == "error"
+    assert truncated.action == "skipped"
+    assert "120 of 500" in truncated.message
+    assert truncated.details == {
+        "byte_offset": 1234,
+        "expected_entities": 500,
+        "parsed_entities": 120,
+        "error": "unexpected EOF while reading bytes",
+    }
+    validate_ir(result.document)

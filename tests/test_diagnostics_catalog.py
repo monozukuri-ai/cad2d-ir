@@ -16,7 +16,7 @@ def _diagnostic_codes_used_in_source() -> set[str]:
                 continue
             function = node.func
             name = function.id if isinstance(function, ast.Name) else None
-            if name not in {"ImportDiagnostic", "_diagnose"}:
+            if name not in {"ImportDiagnostic", "_diagnose", "_import_diagnose"}:
                 continue
             code_keyword = next(
                 (keyword for keyword in node.keywords if keyword.arg == "code"),

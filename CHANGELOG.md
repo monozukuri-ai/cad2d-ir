@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.9.2
+
+- DXF import is now best-effort per entity: a malformed record (missing group
+  codes, unparsable numbers, degenerate geometry such as a zero-radius CIRCLE)
+  is skipped with the new `DXF_ENTITY_CONVERSION_FAILED` diagnostic instead of
+  rejecting the whole drawing. Non-positive TEXT/MTEXT heights are replaced by
+  a unit-based default (`DXF_TEXT_HEIGHT_DEFAULTED`).
+- HATCH boundary paths of edge type (line/arc/ellipse/spline edges — the form
+  AutoCAD writes for most hatches) are imported. Line and arc edges keep exact
+  geometry through bulges (clockwise arcs honour the DXF complementary-angle
+  convention); ellipse/spline edges are approximated
+  (`DXF_HATCH_EDGE_APPROXIMATED`) and unusable loops are skipped
+  (`DXF_HATCH_LOOP_SKIPPED`). Previously such hatches failed the import with
+  "HATCH requires at least one polyline loop".
+- DXF text splitting only recognizes CR/LF breaks, ignores leading blank lines,
+  data after `EOF` (`DXF_TRAILING_DATA_IGNORED`) and a single unpaired trailing
+  line from truncated or padded files (`DXF_TRAILING_LINE_IGNORED`) instead of
+  raising "DXF text must contain an even number of lines".
+- Fixed HATCH group 70 handling: pattern hatches (`70` = 0) were imported as
+  solid fills and re-exported as SOLID.
+- Added `cad2d_ir.schema.validate_entity()` for per-entity validation.
+- JWW import maps `ezjww` parser diagnostics onto stable codes: a main entity
+  list that `ezjww>=0.2.8` could only read partially is reported as
+  `JWW_ENTITY_LIST_TRUNCATED` (error) instead of failing the import, and CP932
+  replacements surface as `JWW_DECODE_REPLACED`.
+
 ## 0.9.1
 
 - DWG import enumerates entities through `ezdwg.Document.entities()` (with a

@@ -45,10 +45,13 @@ entity/source identifiers and structured details.
 | `DXF_DECODE_REPLACED` | warning | normalized | DXF import | Undecodable input bytes were replaced while decoding. |
 | `DXF_DIMENSION_BLOCK_GENERATED` | info | normalized | DXF export | A required DIMENSION geometry block was generated. |
 | `DXF_ENCODING_DETECTED` | info | detected | DXF import | The file encoding was selected. |
+| `DXF_ENTITY_CONVERSION_FAILED` | error | skipped | DXF import | A malformed DXF entity (missing group codes, unparsable numbers, degenerate geometry) was skipped instead of rejecting the file. |
 | `DXF_GENERIC_DIMENSION_DEFAULTED` | warning | normalized | DXF export | Missing GENERIC dimension text placement was defaulted. |
 | `DXF_GENERIC_DIMENSION_EXPLODED` | info | exploded | DXF export | A GENERIC dimension was expanded to primitives. |
 | `DXF_GENERIC_DIMENSION_GEOMETRY_MISSING` | warning | skipped | DXF export | A GENERIC dimension had no renderable geometry. |
 | `DXF_GENERIC_DIMENSION_SKIPPED` | warning | skipped | DXF export | A GENERIC dimension was intentionally omitted. |
+| `DXF_HATCH_EDGE_APPROXIMATED` | warning | approximated | DXF import | HATCH ellipse/spline boundary edges were approximated by polyline segments (line and arc edges stay exact). |
+| `DXF_HATCH_LOOP_SKIPPED` | warning | skipped | DXF import | A HATCH boundary loop could not be reconstructed (unknown edge type or too few vertices) and was skipped. |
 | `DXF_IMPORT_WARNING` | warning | - | DXF import | Legacy wrapper for a DXF parser warning. |
 | `DXF_INSERT_TRANSFORM_OMITTED` | warning | skipped | DXF export | An affine INSERT transform was omitted. |
 | `DXF_R12_ELLIPSE_APPROXIMATED` | warning | approximated | DXF R12 export | ELLIPSE was approximated by a polyline. |
@@ -61,9 +64,14 @@ entity/source identifiers and structured details.
 | `DXF_R12_SPLINE_APPROXIMATED` | warning | approximated | DXF R12 export | SPLINE was approximated by a polyline. |
 | `DXF_R12_TRUE_COLOR_APPROXIMATED` | warning | approximated | DXF R12 export | True color was approximated by an ACI color. |
 | `DXF_TABLE_DEFAULTED` | info | normalized | DXF export | A required table record was synthesized. |
+| `DXF_TEXT_HEIGHT_DEFAULTED` | warning | normalized | DXF import | A TEXT/MTEXT record carried a non-positive height, which was replaced by a unit-based default (2.5 mm equivalent). |
+| `DXF_TRAILING_DATA_IGNORED` | info | skipped | DXF import | Lines after the `0`/`EOF` marker were ignored. |
+| `DXF_TRAILING_LINE_IGNORED` | warning | skipped | DXF import | The text ended with an unpaired line (truncated file or stray data) that was ignored. |
 | `DXF_UNKNOWN_ENTITY_SKIPPED` | warning | skipped | DXF export | An unknown IR entity kind was skipped. |
 | `JWW_CURVE_APPROXIMATED` | warning | approximated | JWW import | Source geometry was approximated. |
+| `JWW_DECODE_REPLACED` | warning | normalized | JWW import | `ezjww` replaced undecodable CP932 byte sequences in a JWW string with U+FFFD (details carry field and byte offset). |
 | `JWW_ENTITY_CONVERSION_FAILED` | error | skipped | JWW import | A malformed JWW entity was skipped. |
+| `JWW_ENTITY_LIST_TRUNCATED` | error | skipped | JWW import | `ezjww` could not read the main entity list to its end (truncated upload, unknown record layout, corrupt tag); entities parsed before the error were kept, the rest and all block definitions were skipped. |
 | `JWW_TEXT_HEIGHT_DEFAULTED` | warning | normalized | JWW import | A non-positive text height was replaced. |
 | `JWW_UNRESOLVED_BLOCK_REFERENCE` | warning | - | JWW import | A referenced JWW block was not resolved. |
 | `JWW_UNSUPPORTED_ENTITY` | warning | skipped | JWW import | An unsupported JWW entity was skipped. |

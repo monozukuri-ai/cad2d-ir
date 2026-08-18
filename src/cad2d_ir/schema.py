@@ -204,6 +204,15 @@ def _validate_tables(tables: Any) -> None:
         )
 
 
+def validate_entity(entity: Any, path: str = "entity") -> None:
+    """Validate a single IR entity object (structure and geometry constraints only).
+
+    Importers use this to drop malformed entities individually instead of failing a
+    whole document; ``path`` only labels the raised :class:`IRValidationError`.
+    """
+    _validate_entity(entity, path)
+
+
 def _validate_entity_scope(entities: list[Any], path: str) -> None:
     seen_ids: dict[str, int] = {}
     for idx, entity in enumerate(entities):

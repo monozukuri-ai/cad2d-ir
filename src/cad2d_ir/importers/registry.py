@@ -80,7 +80,8 @@ def import_file(
         )
         metadata = document.get("source", {}).get("metadata", {})
         skipped = sum(
-            diagnostic.code == "DXF_IMPORT_WARNING" for diagnostic in diagnostics
+            diagnostic.code in {"DXF_IMPORT_WARNING", "DXF_ENTITY_CONVERSION_FAILED"}
+            for diagnostic in diagnostics
         )
         return ImportResult(
             document=document,

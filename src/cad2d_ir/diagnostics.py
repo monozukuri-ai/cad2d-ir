@@ -56,6 +56,36 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "DXF import",
         "Undecodable input bytes were replaced while decoding.",
     ),
+    "DXF_TRAILING_DATA_IGNORED": DiagnosticCode(
+        "info", "skipped", "DXF import", "Lines after the EOF marker were ignored."
+    ),
+    "DXF_TRAILING_LINE_IGNORED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "DXF import",
+        "An unpaired trailing line (truncated file or stray data) was ignored.",
+    ),
+    "DXF_ENTITY_CONVERSION_FAILED": DiagnosticCode(
+        "error", "skipped", "DXF import", "A malformed DXF entity was skipped."
+    ),
+    "DXF_HATCH_EDGE_APPROXIMATED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "DXF import",
+        "HATCH ellipse/spline boundary edges were approximated by polyline segments.",
+    ),
+    "DXF_TEXT_HEIGHT_DEFAULTED": DiagnosticCode(
+        "warning",
+        "normalized",
+        "DXF import",
+        "A non-positive TEXT/MTEXT height was replaced by a unit-based default.",
+    ),
+    "DXF_HATCH_LOOP_SKIPPED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "DXF import",
+        "A HATCH boundary loop could not be reconstructed and was skipped.",
+    ),
     "JWW_ENTITY_CONVERSION_FAILED": DiagnosticCode(
         "error", "skipped", "JWW import", "A malformed JWW entity was skipped."
     ),
@@ -79,6 +109,18 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
     ),
     "JWW_UNRESOLVED_BLOCK_REFERENCE": DiagnosticCode(
         "warning", None, "JWW import", "A referenced JWW block was not resolved."
+    ),
+    "JWW_ENTITY_LIST_TRUNCATED": DiagnosticCode(
+        "error",
+        "skipped",
+        "JWW import",
+        "The JWW entity list ended early; entities read before the error were kept.",
+    ),
+    "JWW_DECODE_REPLACED": DiagnosticCode(
+        "warning",
+        "normalized",
+        "JWW import",
+        "Undecodable CP932 bytes in a JWW string were replaced.",
     ),
     "DWG_ENTITY_CONVERSION_FAILED": DiagnosticCode(
         "error", "skipped", "DWG import", "A malformed DWG entity was skipped."

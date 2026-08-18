@@ -107,6 +107,16 @@ _IR_TO_INSUNITS = {
 # consistent between the DXF codec and the other format adapters.
 INSUNITS_TO_IR_UNITS = _INSUNITS_TO_IR
 
+# Replacement height for TEXT/MTEXT records that carry a non-positive height
+# (some exporters write 0 to mean "use the style height"), per drawing unit.
+_DEFAULT_TEXT_HEIGHT_BY_UNIT = {
+    "mm": 2.5,
+    "cm": 0.25,
+    "m": 0.0025,
+    "inch": 0.1,
+    "ft": 0.01,
+}
+
 _TEXT_HALIGN_TO_DXF = {"left": 0, "center": 1, "right": 2}
 _TEXT_VALIGN_TO_DXF = {"baseline": 0, "bottom": 1, "middle": 2, "top": 3}
 _TEXT_HALIGN_FROM_DXF = {value: key for key, value in _TEXT_HALIGN_TO_DXF.items()}
@@ -172,6 +182,37 @@ def _diagnose(
         _warn(warnings, message)
 
 
+def _import_diagnose(
+    diagnostics: list[ImportDiagnostic] | None,
+    warnings: list[str] | None,
+    *,
+    code: str,
+    severity: Literal["info", "warning", "error"],
+    message: str,
+    source_id: str | None = None,
+    source_kind: str | None = None,
+    action: str | None = None,
+    details: dict[str, Any] | None = None,
+) -> None:
+    """Record a structured import diagnostic (and mirror warnings/errors as text)."""
+    if diagnostics is not None:
+        from cad2d_ir.importers.base import ImportDiagnostic
+
+        diagnostics.append(
+            ImportDiagnostic(
+                code=code,
+                severity=severity,
+                message=message,
+                source_id=source_id,
+                source_kind=source_kind,
+                action=action,
+                details=details,
+            )
+        )
+    if severity in {"warning", "error"}:
+        _warn(warnings, message)
+
+
 def read_dxf_file(
     path: str | Path,
     *,
@@ -228,6 +269,7 @@ def read_dxf_file(
         ir_version=ir_version,
         validate=validate,
         warnings=warnings,
+        diagnostics=import_diagnostics,
     )
     document["source"] = {
         "format": "dxf",
@@ -305,13 +347,34 @@ def dxf_to_ir(
     ir_version: str = CURRENT_IR_VERSION,
     validate: bool = True,
     warnings: list[str] | None = None,
+    diagnostics: list[ImportDiagnostic] | None = None,
 ) -> dict[str, Any]:
-    pairs = _parse_pairs(dxf_text)
+    """Parse DXF text into an IR document.
+
+    Parsing is best-effort: malformed entities are skipped with a structured
+    diagnostic (``DXF_ENTITY_CONVERSION_FAILED``) instead of failing the whole
+    file, and trailing garbage after ``EOF`` or an unpaired final line is ignored.
+    """
+    pairs = _parse_pairs(dxf_text, warnings=warnings, diagnostics=diagnostics)
     sections = _split_sections(pairs)
+    if not sections:
+        # Lenient pairing must not turn arbitrary bytes into an empty drawing.
+        raise ValueError("Not a DXF document: no SECTION record found")
 
     units = _header_units(sections.get("HEADER", []))
-    entities = _entities_to_ir(sections.get("ENTITIES", []), warnings=warnings)
-    blocks = _blocks_to_ir(sections.get("BLOCKS", []), warnings=warnings)
+    default_text_height = _DEFAULT_TEXT_HEIGHT_BY_UNIT.get(units, 2.5)
+    entities = _entities_to_ir(
+        sections.get("ENTITIES", []),
+        warnings=warnings,
+        diagnostics=diagnostics,
+        default_text_height=default_text_height,
+    )
+    blocks = _blocks_to_ir(
+        sections.get("BLOCKS", []),
+        warnings=warnings,
+        diagnostics=diagnostics,
+        default_text_height=default_text_height,
+    )
     tables = _tables_to_ir(sections.get("TABLES", []))
     if blocks:
         tables["blocks"] = blocks
@@ -681,13 +744,34 @@ def _add_record_handles(
     return result, primary_handle
 
 
-def _parse_pairs(dxf_text: str) -> list[DXFPair]:
-    raw_lines = dxf_text.splitlines()
-    if len(raw_lines) % 2 != 0:
-        raise ValueError("DXF text must contain an even number of lines")
+_DXF_LINE_BREAK = re.compile(r"\r\n|\n|\r")
+
+
+def _parse_pairs(
+    dxf_text: str,
+    *,
+    warnings: list[str] | None = None,
+    diagnostics: list[ImportDiagnostic] | None = None,
+) -> list[DXFPair]:
+    """Split DXF text into (group code, value) pairs.
+
+    Only CR/LF line breaks are recognized (``str.splitlines`` would also break on
+    form feeds and other separators that legitimately occur inside string values).
+    Leading blank lines, anything after the ``0``/``EOF`` pair and a single unpaired
+    trailing line (truncated upload, stray newline, padding) are ignored instead of
+    rejecting the file.
+    """
+    raw_lines = _DXF_LINE_BREAK.split(dxf_text)
+    while raw_lines and raw_lines[-1].strip() == "":
+        raw_lines.pop()
+    start = 0
+    while start < len(raw_lines) and raw_lines[start].strip() == "":
+        start += 1
 
     pairs: list[DXFPair] = []
-    for index in range(0, len(raw_lines), 2):
+    line_count = len(raw_lines)
+    index = start
+    while index + 1 < line_count:
         code_text = raw_lines[index].strip()
         value = raw_lines[index + 1].rstrip("\r\n")
         try:
@@ -697,6 +781,35 @@ def _parse_pairs(dxf_text: str) -> list[DXFPair]:
                 f"Invalid DXF group code at line {index + 1}: {code_text}"
             ) from exc
         pairs.append((code, value))
+        index += 2
+        if code == 0 and value.strip().upper() == "EOF":
+            trailing = line_count - index
+            if trailing:
+                _import_diagnose(
+                    diagnostics,
+                    warnings,
+                    code="DXF_TRAILING_DATA_IGNORED",
+                    severity="info",
+                    message=f"Ignored {trailing} line(s) after the DXF EOF marker.",
+                    action="skipped",
+                    details={"lines": trailing},
+                )
+            return pairs
+
+    if index < line_count:
+        dangling = raw_lines[index].strip()
+        _import_diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_TRAILING_LINE_IGNORED",
+            severity="warning",
+            message=(
+                "DXF text ends with an unpaired line (truncated file or stray data); "
+                f"ignored line {index + 1}: {dangling[:40]!r}."
+            ),
+            action="skipped",
+            details={"line": index + 1},
+        )
     return pairs
 
 
@@ -832,16 +945,28 @@ def _style_from_table_pairs(pairs: list[DXFPair]) -> dict[str, Any]:
 
 
 def _entities_to_ir(
-    entity_pairs: list[DXFPair], *, warnings: list[str] | None = None
+    entity_pairs: list[DXFPair],
+    *,
+    warnings: list[str] | None = None,
+    diagnostics: list[ImportDiagnostic] | None = None,
+    default_text_height: float = 2.5,
 ) -> list[dict[str, Any]]:
     records = _pairs_to_records(entity_pairs)
-    return _records_to_entities(records, warnings=warnings, context="ENTITIES")
+    return _records_to_entities(
+        records,
+        warnings=warnings,
+        diagnostics=diagnostics,
+        context="ENTITIES",
+        default_text_height=default_text_height,
+    )
 
 
 def _blocks_to_ir(
     block_pairs: list[DXFPair],
     *,
     warnings: list[str] | None = None,
+    diagnostics: list[ImportDiagnostic] | None = None,
+    default_text_height: float = 2.5,
 ) -> dict[str, dict[str, Any]]:
     records = _pairs_to_records(block_pairs)
     blocks: dict[str, dict[str, Any]] = {}
@@ -877,7 +1002,9 @@ def _blocks_to_ir(
             "entities": _records_to_entities(
                 entity_records,
                 warnings=warnings,
+                diagnostics=diagnostics,
                 context=f"BLOCK:{name}",
+                default_text_height=default_text_height,
             ),
         }
     return blocks
@@ -902,12 +1029,42 @@ def _pairs_to_records(pairs: list[DXFPair]) -> list[tuple[str, list[DXFPair]]]:
     return records
 
 
+_CONVERTIBLE_DXF_KINDS = frozenset(
+    {
+        "LINE",
+        "CIRCLE",
+        "ARC",
+        "POINT",
+        "ELLIPSE",
+        "LWPOLYLINE",
+        "POLYLINE",
+        "TEXT",
+        "MTEXT",
+        "INSERT",
+        "HATCH",
+        "SPLINE",
+        "DIMENSION",
+    }
+)
+
+
 def _records_to_entities(
     records: list[tuple[str, list[DXFPair]]],
     *,
     warnings: list[str] | None = None,
+    diagnostics: list[ImportDiagnostic] | None = None,
     context: str = "ENTITIES",
+    default_text_height: float = 2.5,
 ) -> list[dict[str, Any]]:
+    """Convert entity records to IR entities.
+
+    Conversion is best-effort per entity: a malformed record (missing group codes,
+    unparsable numbers, degenerate geometry that fails IR validation, ...) is
+    reported through ``DXF_ENTITY_CONVERSION_FAILED`` and skipped, so a single bad
+    entity no longer rejects the whole drawing.
+    """
+    from cad2d_ir.schema import IRValidationError, validate_entity
+
     entities: list[dict[str, Any]] = []
     used_ids: set[str] = set()
     record_index = 0
@@ -918,20 +1075,11 @@ def _records_to_entities(
         consumed = 1
         entity: dict[str, Any] | None = None
 
-        if kind == "LINE":
-            entity = _line_from_pairs(pairs, serial)
-        elif kind == "CIRCLE":
-            entity = _circle_from_pairs(pairs, serial)
-        elif kind == "ARC":
-            entity = _arc_from_pairs(pairs, serial)
-        elif kind == "POINT":
-            entity = _point_from_pairs(pairs, serial)
-        elif kind == "ELLIPSE":
-            entity = _ellipse_from_pairs(pairs, serial)
-        elif kind == "LWPOLYLINE":
-            entity = _lwpolyline_from_pairs(pairs, serial)
-        elif kind == "POLYLINE":
-            vertex_pairs: list[list[DXFPair]] = []
+        # Compound records (POLYLINE/VERTEX/SEQEND, INSERT/ATTRIB/SEQEND) consume
+        # their trailing records even when the head record turns out malformed.
+        vertex_pairs: list[list[DXFPair]] = []
+        attributes: dict[str, str] = {}
+        if kind == "POLYLINE":
             lookahead = record_index + 1
             while lookahead < len(records) and records[lookahead][0] == "VERTEX":
                 vertex_pairs.append(records[lookahead][1])
@@ -939,13 +1087,7 @@ def _records_to_entities(
             if lookahead < len(records) and records[lookahead][0] == "SEQEND":
                 lookahead += 1
             consumed = max(1, lookahead - record_index)
-            entity = _polyline_from_pairs(pairs, vertex_pairs, serial)
-        elif kind == "TEXT":
-            entity = _text_from_pairs(pairs, serial)
-        elif kind == "MTEXT":
-            entity = _mtext_from_pairs(pairs, serial)
         elif kind == "INSERT":
-            attributes: dict[str, str] = {}
             lookahead = record_index + 1
             while lookahead < len(records) and records[lookahead][0] == "ATTRIB":
                 attrib_pairs = records[lookahead][1]
@@ -956,23 +1098,90 @@ def _records_to_entities(
             if lookahead < len(records) and records[lookahead][0] == "SEQEND":
                 lookahead += 1
             consumed = max(1, lookahead - record_index)
-            entity = _insert_from_pairs(
-                pairs, serial, attributes if attributes else None
+
+        if kind not in _CONVERTIBLE_DXF_KINDS:
+            _warn(warnings, f"[{context}] Unsupported DXF entity skipped: {kind}")
+            record_index += consumed
+            continue
+
+        try:
+            if kind == "LINE":
+                entity = _line_from_pairs(pairs, serial)
+            elif kind == "CIRCLE":
+                entity = _circle_from_pairs(pairs, serial)
+            elif kind == "ARC":
+                entity = _arc_from_pairs(pairs, serial)
+            elif kind == "POINT":
+                entity = _point_from_pairs(pairs, serial)
+            elif kind == "ELLIPSE":
+                entity = _ellipse_from_pairs(pairs, serial)
+            elif kind == "LWPOLYLINE":
+                entity = _lwpolyline_from_pairs(pairs, serial)
+            elif kind == "POLYLINE":
+                entity = _polyline_from_pairs(pairs, vertex_pairs, serial)
+            elif kind == "TEXT":
+                entity = _text_from_pairs(pairs, serial)
+            elif kind == "MTEXT":
+                entity = _mtext_from_pairs(pairs, serial)
+            elif kind == "INSERT":
+                entity = _insert_from_pairs(
+                    pairs, serial, attributes if attributes else None
+                )
+            elif kind == "HATCH":
+                entity = _hatch_from_pairs(
+                    pairs, serial, warnings=warnings, diagnostics=diagnostics
+                )
+            elif kind == "SPLINE":
+                entity = _spline_from_pairs(pairs, serial)
+            elif kind == "DIMENSION":
+                entity = _dimension_from_pairs(pairs, serial, warnings=warnings)
+            if entity is not None:
+                entity.setdefault("source", {"format": "dxf"})["kind"] = kind
+                if kind in {"TEXT", "MTEXT"}:
+                    height = entity.get("height")
+                    if not isinstance(height, (int, float)) or not height > 0:
+                        entity["height"] = default_text_height
+                        _import_diagnose(
+                            diagnostics,
+                            warnings,
+                            code="DXF_TEXT_HEIGHT_DEFAULTED",
+                            severity="warning",
+                            message=(
+                                f"[{context}] {kind} {entity['id']}: non-positive text "
+                                f"height replaced with {default_text_height}."
+                            ),
+                            source_id=str(entity["id"]),
+                            source_kind=kind,
+                            action="normalized",
+                        )
+                validate_entity(entity, f"{context}.{kind}")
+        except (
+            IRValidationError,
+            ValueError,
+            KeyError,
+            TypeError,
+            IndexError,
+            OverflowError,
+            ZeroDivisionError,
+        ) as exc:
+            handle = _first_string(pairs, 5)
+            _import_diagnose(
+                diagnostics,
+                warnings,
+                code="DXF_ENTITY_CONVERSION_FAILED",
+                severity="error",
+                message=f"[{context}] Skipped malformed DXF {kind}: {exc}",
+                source_id=handle,
+                source_kind=kind,
+                action="skipped",
             )
-        elif kind == "HATCH":
-            entity = _hatch_from_pairs(pairs, serial)
-        elif kind == "SPLINE":
-            entity = _spline_from_pairs(pairs, serial)
-        elif kind == "DIMENSION":
-            entity = _dimension_from_pairs(pairs, serial, warnings=warnings)
+            record_index += consumed
+            continue
 
         if entity is not None:
-            entity.setdefault("source", {"format": "dxf"})["kind"] = kind
             _make_entity_id_unique(entity, used_ids)
             entities.append(entity)
             serial += 1
-        else:
-            _warn(warnings, f"[{context}] Unsupported DXF entity skipped: {kind}")
         record_index += consumed
 
     return entities
@@ -1224,22 +1433,60 @@ def _insert_from_pairs(
     return entity
 
 
-def _hatch_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
+def _hatch_from_pairs(
+    pairs: list[DXFPair],
+    idx: int,
+    *,
+    warnings: list[str] | None = None,
+    diagnostics: list[ImportDiagnostic] | None = None,
+) -> dict[str, Any]:
     entity = _common_from_pairs(pairs, idx)
     entity["kind"] = "HATCH"
 
-    solid = (_first_int(pairs, 70, default=1) or 1) == 1
-    if not solid:
+    # Group 70: 1 = solid fill, 0 = pattern fill (a bare ``or 1`` used to coerce 0
+    # into "solid", which turned pattern hatches into solid fills on re-export).
+    if _first_int(pairs, 70, default=1) == 0:
         entity["solid"] = False
 
     pattern = _first_string(pairs, 2)
     if pattern and pattern.upper() != "SOLID":
         entity["pattern"] = pattern
 
-    loops = _parse_hatch_loops(pairs)
+    loops, notes = _parse_hatch_loops(pairs)
     if not loops:
-        raise ValueError("HATCH requires at least one polyline loop")
+        raise ValueError("HATCH has no usable boundary loop")
     entity["loops"] = loops
+    entity_id = str(entity["id"])
+    if notes.approximated_edges:
+        _import_diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_HATCH_EDGE_APPROXIMATED",
+            severity="warning",
+            message=(
+                f"HATCH {entity_id}: {notes.approximated_edges} elliptic/spline "
+                "boundary edge(s) were approximated by polyline segments."
+            ),
+            source_id=entity_id,
+            source_kind="HATCH",
+            action="approximated",
+            details={"edges": notes.approximated_edges},
+        )
+    if notes.skipped_loops:
+        _import_diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_HATCH_LOOP_SKIPPED",
+            severity="warning",
+            message=(
+                f"HATCH {entity_id}: {notes.skipped_loops} boundary loop(s) could not "
+                "be reconstructed and were skipped."
+            ),
+            source_id=entity_id,
+            source_kind="HATCH",
+            action="skipped",
+            details={"loops": notes.skipped_loops},
+        )
     return entity
 
 
@@ -1346,18 +1593,46 @@ def _dimension_from_pairs(
     return entity
 
 
-def _parse_hatch_loops(pairs: list[DXFPair]) -> list[dict[str, Any]]:
+# Segments used to approximate one full ellipse/spline edge of a HATCH boundary.
+_HATCH_CURVE_SEGMENTS = 32
+# Codes that terminate the search for the next boundary edge / loop.
+_HATCH_LOOP_END_CODES = frozenset({92, 97, 75, 76, 98})
+
+
+@dataclass
+class _HatchLoopNotes:
+    approximated_edges: int = 0
+    skipped_loops: int = 0
+
+
+# One boundary edge, normalized to polyline form: ``points`` are the vertices
+# from the edge start onwards ([x, y] or [x, y, bulge], bulge applying to the
+# segment towards the next vertex) and ``end`` is the edge end point.
+_HatchEdge = tuple[list[list[float]], list[float]]
+
+
+def _parse_hatch_loops(
+    pairs: list[DXFPair],
+) -> tuple[list[dict[str, Any]], _HatchLoopNotes]:
+    """Parse HATCH boundary paths (group 91 onwards) into IR loops.
+
+    Both polyline paths (flag bit 2) and edge paths (line/arc/ellipse/spline
+    edges, the form AutoCAD writes for most hatches) are supported. Arcs keep
+    exact geometry through bulges; ellipses and splines are approximated.
+    Loops that cannot be reconstructed are skipped and counted in the notes.
+    """
+    notes = _HatchLoopNotes()
     loop_count_index = next(
         (i for i, (code, _) in enumerate(pairs) if code == 91), None
     )
     if loop_count_index is None:
-        return []
+        return [], notes
 
     num_loops = int(float(pairs[loop_count_index][1]))
     cursor = loop_count_index + 1
     loops: list[dict[str, Any]] = []
 
-    for loop_index in range(num_loops):
+    for _ in range(num_loops):
         while cursor < len(pairs) and pairs[cursor][0] != 92:
             cursor += 1
         if cursor >= len(pairs):
@@ -1365,62 +1640,357 @@ def _parse_hatch_loops(pairs: list[DXFPair]) -> list[dict[str, Any]]:
 
         path_flags = int(float(pairs[cursor][1]))
         cursor += 1
-        if not (path_flags & 2):
-            while cursor < len(pairs) and pairs[cursor][0] not in {92, 75, 76, 98}:
-                cursor += 1
-            continue
-
-        has_bulge = 0
-        while cursor < len(pairs):
-            code, value = pairs[cursor]
-            if code == 72:
-                has_bulge = int(float(value))
-                cursor += 1
-            elif code == 73:
-                cursor += 1
-            elif code == 93:
-                vertex_count = int(float(value))
-                cursor += 1
-                break
+        try:
+            if path_flags & 2:
+                vertices, cursor = _parse_hatch_polyline_path(pairs, cursor)
             else:
-                cursor += 1
-        else:
-            break
-
-        vertices: list[list[float]] = []
-        for _ in range(vertex_count):
-            x: float | None = None
-            y: float | None = None
-            bulge: float | None = None
-
-            while cursor < len(pairs):
-                code, value = pairs[cursor]
-                if code == 10 and x is None:
-                    x = _to_float(value)
-                    cursor += 1
-                    continue
-                if code == 20 and y is None:
-                    y = _to_float(value)
-                    cursor += 1
-                    continue
-                if code == 42 and has_bulge:
-                    bulge = _to_float(value)
-                    cursor += 1
-                    continue
-                if x is not None and y is not None:
-                    break
-                cursor += 1
-
-            if x is None or y is None:
-                break
-            if has_bulge and bulge is not None:
-                vertices.append([x, y, bulge])
-            else:
-                vertices.append([x, y])
+                vertices, cursor, approximated = _parse_hatch_edge_path(pairs, cursor)
+                notes.approximated_edges += approximated
+        except (ValueError, IndexError, KeyError, ZeroDivisionError, OverflowError):
+            vertices = []
 
         if len(vertices) >= 3:
-            loops.append({"vertices": vertices, "is_outer": loop_index == 0})
-    return loops
+            loops.append({"vertices": vertices, "is_outer": not loops})
+        else:
+            notes.skipped_loops += 1
+    return loops, notes
+
+
+def _parse_hatch_polyline_path(
+    pairs: list[DXFPair], cursor: int
+) -> tuple[list[list[float]], int]:
+    """Parse a polyline boundary path (cursor is right after its 92 flag)."""
+    has_bulge = 0
+    vertex_count: int | None = None
+    while cursor < len(pairs):
+        code, value = pairs[cursor]
+        if code == 72:
+            has_bulge = int(float(value))
+            cursor += 1
+        elif code == 73:
+            cursor += 1
+        elif code == 93:
+            vertex_count = int(float(value))
+            cursor += 1
+            break
+        elif code in _HATCH_LOOP_END_CODES:
+            break
+        else:
+            cursor += 1
+    if vertex_count is None:
+        return [], cursor
+
+    vertices: list[list[float]] = []
+    for _ in range(vertex_count):
+        x: float | None = None
+        y: float | None = None
+        bulge: float | None = None
+
+        while cursor < len(pairs):
+            code, value = pairs[cursor]
+            if code == 10 and x is None:
+                x = _to_float(value)
+                cursor += 1
+                continue
+            if code == 20 and y is None:
+                y = _to_float(value)
+                cursor += 1
+                continue
+            if code == 42 and has_bulge:
+                bulge = _to_float(value)
+                cursor += 1
+                continue
+            if x is not None and y is not None:
+                break
+            if code in _HATCH_LOOP_END_CODES:
+                break
+            cursor += 1
+
+        if x is None or y is None:
+            break
+        if has_bulge and bulge is not None and bulge != 0.0:
+            vertices.append([x, y, bulge])
+        else:
+            vertices.append([x, y])
+    return vertices, cursor
+
+
+def _parse_hatch_edge_path(
+    pairs: list[DXFPair], cursor: int
+) -> tuple[list[list[float]], int, int]:
+    """Parse an edge boundary path (cursor is right after its 92 flag).
+
+    Returns the loop vertices, the new cursor and the number of edges that had
+    to be approximated (ellipse/spline edges).
+    """
+    edge_count: int | None = None
+    while cursor < len(pairs):
+        code, value = pairs[cursor]
+        if code == 93:
+            edge_count = int(float(value))
+            cursor += 1
+            break
+        if code in _HATCH_LOOP_END_CODES:
+            break
+        cursor += 1
+    if edge_count is None:
+        return [], cursor, 0
+
+    edges: list[_HatchEdge] = []
+    approximated = 0
+    for _ in range(edge_count):
+        while cursor < len(pairs) and pairs[cursor][0] != 72:
+            if pairs[cursor][0] in _HATCH_LOOP_END_CODES:
+                return _assemble_hatch_edges(edges), cursor, approximated
+            cursor += 1
+        if cursor >= len(pairs):
+            break
+        edge_type = int(float(pairs[cursor][1]))
+        cursor += 1
+        edge: _HatchEdge | None
+        if edge_type == 1:
+            edge, cursor = _parse_hatch_line_edge(pairs, cursor)
+        elif edge_type == 2:
+            edge, cursor = _parse_hatch_arc_edge(pairs, cursor)
+        elif edge_type == 3:
+            edge, cursor = _parse_hatch_ellipse_edge(pairs, cursor)
+            approximated += 1
+        elif edge_type == 4:
+            edge, cursor = _parse_hatch_spline_edge(pairs, cursor)
+            approximated += 1
+        else:
+            # Unknown edge type: the remaining edge data cannot be delimited safely.
+            return [], cursor, approximated
+        if edge is not None:
+            edges.append(edge)
+    return _assemble_hatch_edges(edges), cursor, approximated
+
+
+def _take_hatch_edge_fields(
+    pairs: list[DXFPair], cursor: int, allowed: frozenset[int]
+) -> tuple[dict[int, float], int]:
+    """Consume the fixed group codes of a line/arc/ellipse edge (each at most once)."""
+    fields: dict[int, float] = {}
+    while cursor < len(pairs):
+        code, value = pairs[cursor]
+        if code not in allowed or code in fields:
+            break
+        fields[code] = _to_float(value)
+        cursor += 1
+    return fields, cursor
+
+
+_HATCH_LINE_EDGE_CODES = frozenset({10, 20, 30, 11, 21, 31})
+_HATCH_ARC_EDGE_CODES = frozenset({10, 20, 30, 40, 50, 51, 73})
+_HATCH_ELLIPSE_EDGE_CODES = frozenset({10, 20, 30, 11, 21, 31, 40, 50, 51, 73})
+
+
+def _parse_hatch_line_edge(
+    pairs: list[DXFPair], cursor: int
+) -> tuple[_HatchEdge | None, int]:
+    fields, cursor = _take_hatch_edge_fields(pairs, cursor, _HATCH_LINE_EDGE_CODES)
+    if not all(code in fields for code in (10, 20, 11, 21)):
+        return None, cursor
+    return ([[fields[10], fields[20]]], [fields[11], fields[21]]), cursor
+
+
+def _hatch_arc_point(
+    cx: float, cy: float, radius: float, angle_deg: float
+) -> list[float]:
+    angle = math.radians(angle_deg)
+    return [cx + radius * math.cos(angle), cy + radius * math.sin(angle)]
+
+
+def _parse_hatch_arc_edge(
+    pairs: list[DXFPair], cursor: int
+) -> tuple[_HatchEdge | None, int]:
+    fields, cursor = _take_hatch_edge_fields(pairs, cursor, _HATCH_ARC_EDGE_CODES)
+    if not all(code in fields for code in (10, 20, 40)):
+        return None, cursor
+    cx, cy, radius = fields[10], fields[20], fields[40]
+    if radius <= 0.0:
+        return None, cursor
+    start = fields.get(50, 0.0)
+    end = fields.get(51, 360.0)
+    ccw = int(fields.get(73, 1.0)) != 0
+    # DXF stores clockwise hatch arc edges with complementary angles (360 - angle),
+    # see ezdxf ArcEdge.load_tags; the arc then runs clockwise from -start to -end.
+    if ccw:
+        first, last, sign = start, end, 1.0
+    else:
+        first, last, sign = -start, -end, -1.0
+    sweep = (end - start) % 360.0
+    if sweep < 1e-9:
+        # Full circle: four quarter arcs (a loop needs at least 3 vertices).
+        quarter_bulge = sign * math.tan(math.radians(90.0) / 4.0)
+        points = [
+            _hatch_arc_point(cx, cy, radius, first + sign * 90.0 * step)
+            + [quarter_bulge]
+            for step in range(4)
+        ]
+        return (points, _hatch_arc_point(cx, cy, radius, first)), cursor
+    bulge = sign * math.tan(math.radians(sweep) / 4.0)
+    start_point = _hatch_arc_point(cx, cy, radius, first) + [bulge]
+    return ([start_point], _hatch_arc_point(cx, cy, radius, last)), cursor
+
+
+def _parse_hatch_ellipse_edge(
+    pairs: list[DXFPair], cursor: int
+) -> tuple[_HatchEdge | None, int]:
+    fields, cursor = _take_hatch_edge_fields(pairs, cursor, _HATCH_ELLIPSE_EDGE_CODES)
+    if not all(code in fields for code in (10, 20, 11, 21, 40)):
+        return None, cursor
+    major = [fields[11], fields[21]]
+    ratio = fields[40]
+    if (major[0] == 0.0 and major[1] == 0.0) or ratio <= 0.0:
+        return None, cursor
+    start = fields.get(50, 0.0)
+    end = fields.get(51, 360.0)
+    ccw = int(fields.get(73, 1.0)) != 0
+    # Same complementary-angle convention as arc edges (parameters in degrees).
+    if ccw:
+        first, last = start, end
+    else:
+        first, last = 360.0 - end, 360.0 - start
+    sampled = _sample_ellipse(
+        {
+            "center": [fields[10], fields[20]],
+            "major_axis": major,
+            "ratio": ratio,
+            "start_param": math.radians(first),
+            "end_param": math.radians(last),
+        },
+        _HATCH_CURVE_SEGMENTS,
+    )
+    if not ccw:
+        sampled.reverse()
+    closed = (end - start) % 360.0 < 1e-9
+    if closed:
+        return ([list(point) for point in sampled], list(sampled[0])), cursor
+    if len(sampled) < 2:
+        return None, cursor
+    return ([list(point) for point in sampled[:-1]], list(sampled[-1])), cursor
+
+
+def _parse_hatch_spline_edge(
+    pairs: list[DXFPair], cursor: int
+) -> tuple[_HatchEdge | None, int]:
+    degree = 3
+    knots: list[float] = []
+    control_points: list[list[float]] = []
+    weights: list[float] = []
+    fit_points: list[list[float]] = []
+
+    # Header (94/73/74/95/96) in any order until knots (40) or control points (10).
+    while cursor < len(pairs):
+        code, value = pairs[cursor]
+        if code == 94:
+            degree = int(float(value))
+        elif code in {73, 74, 95, 96}:
+            pass
+        else:
+            break
+        cursor += 1
+    while cursor < len(pairs) and pairs[cursor][0] == 40:
+        knots.append(_to_float(pairs[cursor][1]))
+        cursor += 1
+    while cursor < len(pairs) and pairs[cursor][0] in {10, 20, 30, 42}:
+        code, value = pairs[cursor]
+        if code == 10:
+            control_points.append([_to_float(value), 0.0])
+        elif code == 20 and control_points:
+            control_points[-1][1] = _to_float(value)
+        elif code == 42 and control_points:
+            while len(weights) < len(control_points) - 1:
+                weights.append(1.0)
+            weights.append(_to_float(value))
+        cursor += 1
+    if cursor < len(pairs) and pairs[cursor][0] == 97:
+        cursor += 1
+        while cursor < len(pairs) and pairs[cursor][0] in {11, 21, 31}:
+            code, value = pairs[cursor]
+            if code == 11:
+                fit_points.append([_to_float(value), 0.0])
+            elif code == 21 and fit_points:
+                fit_points[-1][1] = _to_float(value)
+            cursor += 1
+    while cursor < len(pairs) and pairs[cursor][0] in {12, 22, 32, 13, 23, 33}:
+        cursor += 1
+
+    sampled: list[list[float]] | None = None
+    if len(control_points) >= 2 and degree >= 1:
+        spline: dict[str, Any] = {
+            "control_points": control_points,
+            "degree": degree,
+        }
+        if knots:
+            spline["knots"] = knots
+        if (
+            weights
+            and len(weights) == len(control_points)
+            and all(weight > 0 for weight in weights)
+        ):
+            spline["weights"] = weights
+        try:
+            sampled = _sample_spline(spline, _HATCH_CURVE_SEGMENTS)
+        except (ValueError, ZeroDivisionError, OverflowError):
+            sampled = None
+    if sampled is None:
+        if len(fit_points) >= 2:
+            sampled = fit_points
+        elif len(control_points) >= 2:
+            sampled = control_points
+        else:
+            return None, cursor
+    return ([list(point) for point in sampled[:-1]], list(sampled[-1])), cursor
+
+
+def _hatch_points_close(a: list[float], b: list[float], tolerance: float) -> bool:
+    return abs(a[0] - b[0]) <= tolerance and abs(a[1] - b[1]) <= tolerance
+
+
+def _reverse_hatch_edge(edge: _HatchEdge) -> _HatchEdge:
+    points, end = edge
+    bulges = [point[2] if len(point) > 2 else 0.0 for point in points]
+    reversed_points: list[list[float]] = []
+    previous = end
+    for index in range(len(points) - 1, -1, -1):
+        bulge = -bulges[index]
+        reversed_points.append(
+            [previous[0], previous[1], bulge]
+            if bulge != 0.0
+            else [previous[0], previous[1]]
+        )
+        previous = points[index]
+    return reversed_points, [previous[0], previous[1]]
+
+
+def _assemble_hatch_edges(edges: list[_HatchEdge]) -> list[list[float]]:
+    """Chain edges into one closed vertex loop, reversing edges when needed."""
+    if not edges:
+        return []
+    extent = 0.0
+    for points, end in edges:
+        for point in [*points, end]:
+            extent = max(extent, abs(point[0]), abs(point[1]))
+    tolerance = 1e-6 * max(1.0, extent)
+
+    vertices: list[list[float]] = []
+    last_end: list[float] | None = None
+    for edge in edges:
+        points, end = edge
+        if last_end is not None and not _hatch_points_close(
+            points[0], last_end, tolerance
+        ):
+            if _hatch_points_close(end, last_end, tolerance):
+                points, end = _reverse_hatch_edge(edge)
+        vertices.extend([list(point) for point in points])
+        last_end = end
+    if last_end is not None and not _hatch_points_close(
+        vertices[0], last_end, tolerance
+    ):
+        vertices.append([last_end[0], last_end[1]])
+    return vertices
 
 
 def _line_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:

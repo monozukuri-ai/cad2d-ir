@@ -163,6 +163,7 @@ def jww_document_to_ir(
         "entities": entities,
     }
 
+    _append_parser_diagnostics(jww_document, context)
     _append_summary_diagnostics(jww_document, context)
     if import_options.validate:
         validate_ir(document)
@@ -733,6 +734,49 @@ def _collect_text_styles(jww_document: Mapping[str, Any]) -> dict[str, dict[str,
     ):
         collect(_mapping_sequence(block_def.get("entities", []), "block entities"))
     return {font: {"font": font} for font in sorted(fonts)}
+
+
+def _append_parser_diagnostics(
+    jww_document: Mapping[str, Any],
+    context: _ConversionContext,
+) -> None:
+    """Map ``ezjww`` parser diagnostics onto the stable IR diagnostic codes."""
+    for raw in jww_document.get("diagnostics", []) or []:
+        if not isinstance(raw, Mapping):
+            continue
+        code = str(raw.get("code", ""))
+        details = raw.get("details")
+        details_dict = dict(details) if isinstance(details, Mapping) else None
+        if code == "ENTITY_LIST_TRUNCATED":
+            parsed = int((details_dict or {}).get("parsed_entities", 0) or 0)
+            expected = int((details_dict or {}).get("expected_entities", 0) or 0)
+            error = str((details_dict or {}).get("error", "") or "")
+            context.diagnostics.append(
+                ImportDiagnostic(
+                    code="JWW_ENTITY_LIST_TRUNCATED",
+                    severity="error",
+                    message=(
+                        "JWW entity list could not be read to its end: kept "
+                        f"{parsed} of {expected} announced entities"
+                        + (f" ({error})" if error else "")
+                        + "; the remaining entities and block definitions were skipped."
+                    ),
+                    action="skipped",
+                    details=details_dict,
+                )
+            )
+        elif code == "CP932_DECODE_REPLACED":
+            context.diagnostics.append(
+                ImportDiagnostic(
+                    code="JWW_DECODE_REPLACED",
+                    severity="warning",
+                    message=str(
+                        raw.get("message") or "CP932 decoding replaced characters."
+                    ),
+                    action="normalized",
+                    details=details_dict,
+                )
+            )
 
 
 def _append_summary_diagnostics(
