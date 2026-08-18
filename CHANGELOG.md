@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.9.1
+
+- DWG import enumerates entities through `ezdwg.Document.entities()` (with a
+  `modelspace()` fallback for older `ezdwg`), so block-definition bodies keep
+  working with `ezdwg` releases whose `modelspace()` is filtered by entity
+  placement.
+- Paper-space DWG entities (layout frames, viewports, title blocks) are no
+  longer mixed into the IR modelspace; they are skipped with the new
+  `DWG_PAPERSPACE_ENTITY_SKIPPED` info diagnostic.
+
 ## 0.9.0
 
 - Added native MI import through `ezmi2d>=0.2,<0.3`, with `.mi` and

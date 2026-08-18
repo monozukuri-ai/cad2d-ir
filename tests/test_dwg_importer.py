@@ -331,3 +331,46 @@ def test_dwg_units_header_decode_failure_is_lenient() -> None:
     codes = [diagnostic.code for diagnostic in result.diagnostics]
     assert "DWG_HEADER_UNITS_UNREADABLE" in codes
     assert result.document["entities"], "import itself must still succeed"
+
+
+class _PlacementDocument:
+    """ezdwg >= 0.12.1 shape: entities() spans everything, entity_placement() tells where."""
+
+    version = "AC1032"
+
+    def __init__(self, entities: list[_Entity], placements: dict[int, tuple[int, int | None]]):
+        self._entities = entities
+        self._placements = placements
+
+    def modelspace(self) -> _Layout:  # filtered view; the adapter must not rely on it
+        return _Layout([e for e in self._entities if self._placements.get(e.handle, (2, None))[0] == 2])
+
+    def entities(self) -> _Layout:
+        return _Layout(self._entities)
+
+    def entity_placement(self, handle: int) -> tuple[int, int | None] | None:
+        return self._placements.get(handle)
+
+
+def test_dwg_document_to_ir_uses_entities_and_skips_paper_space() -> None:
+    document = _PlacementDocument(
+        [
+            _Entity("LINE", 1, {"start": (0.0, 0.0, 0.0), "end": (1.0, 0.0, 0.0), **_style()}),
+            # block-definition content, only reachable through entities()
+            _Entity(
+                "LINE",
+                2,
+                {"start": (0.0, 0.0, 0.0), "end": (0.0, 1.0, 0.0), **_style(owner_handle=100)},
+            ),
+            _Entity("INSERT", 3, {"insert": (5.0, 5.0, 0.0), "name": "SYMBOL", **_style()}),
+            # paper-space title-block line: entmode 1
+            _Entity("LINE", 4, {"start": (0.0, 0.0, 0.0), "end": (9.0, 0.0, 0.0), **_style()}),
+        ],
+        placements={1: (2, None), 2: (0, 100), 3: (2, None), 4: (1, None)},
+    )
+    result = dwg_document_to_ir(document, block_names_by_handle={100: "SYMBOL", 31: "*Model_Space"})
+    kinds = [entity["kind"] for entity in result.document["entities"]]
+    assert kinds == ["LINE", "INSERT"]
+    assert len(result.document["tables"]["blocks"]["SYMBOL"]["entities"]) == 1
+    codes = [diagnostic.code for diagnostic in result.diagnostics]
+    assert "DWG_PAPERSPACE_ENTITY_SKIPPED" in codes

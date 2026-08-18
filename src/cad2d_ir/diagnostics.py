@@ -98,6 +98,12 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
     "DWG_UNSUPPORTED_ENTITY": DiagnosticCode(
         "warning", "skipped", "DWG import", "An unsupported DWG entity was skipped."
     ),
+    "DWG_PAPERSPACE_ENTITY_SKIPPED": DiagnosticCode(
+        "info",
+        "skipped",
+        "DWG import",
+        "Paper-space entities were skipped; the IR represents model space.",
+    ),
     "DWG_CURVE_APPROXIMATED": DiagnosticCode(
         "warning", "approximated", "DWG import", "Source geometry was approximated."
     ),

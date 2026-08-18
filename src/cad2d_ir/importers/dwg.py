@@ -47,6 +47,7 @@ class _ConversionContext:
     projected_counts: Counter[str] = field(default_factory=Counter)
     projected_handles: set[int] = field(default_factory=set)
     preserved_dimensions: int = 0
+    paperspace_skipped: int = 0
     next_entity_number: int = 1
 
     def allocate_id(self) -> str:
@@ -157,7 +158,7 @@ def dwg_document_to_ir(
     )
 
     try:
-        source_entities = list(dwg_document.modelspace().query())
+        source_entities = list(_enumerate_source_entities(dwg_document))
     except Exception as exc:
         raise ImporterError(f"Failed to enumerate DWG entities: {exc}") from exc
 
@@ -166,14 +167,25 @@ def dwg_document_to_ir(
         for handle, name in (block_names_by_handle or {}).items()
         if str(name) and not _is_space_block(str(name))
     }
+    paperspace_handles = {
+        int(handle)
+        for handle, name in (block_names_by_handle or {}).items()
+        if _is_paperspace_block(str(name))
+    }
+    placement_of = getattr(dwg_document, "entity_placement", None)
     top_level: list[Any] = []
     block_sources: dict[int, list[Any]] = defaultdict(list)
     for source_entity in source_entities:
         owner_handle = _optional_int(_dxf(source_entity).get("owner_handle"))
         if owner_handle is not None and owner_handle in block_names:
             block_sources[owner_handle].append(source_entity)
-        else:
-            top_level.append(source_entity)
+            continue
+        if _is_paperspace_entity(
+            source_entity, owner_handle, paperspace_handles, placement_of
+        ):
+            context.paperspace_skipped += 1
+            continue
+        top_level.append(source_entity)
 
     entities = _convert_entity_sequence(top_level, context)
     blocks: dict[str, dict[str, Any]] = {}
@@ -904,7 +916,59 @@ def _append_unresolved_block_diagnostics(
         )
 
 
+def _enumerate_source_entities(dwg_document: Any) -> Any:
+    """Enumerate every entity of the drawing.
+
+    ``ezdwg >= 0.12.1`` partitions ``Document.modelspace()`` by the stored entity
+    placement, so block-definition contents are only reachable through
+    ``Document.entities()``. This adapter partitions by owner handle itself and
+    therefore needs the complete list; older ``ezdwg`` releases expose everything
+    through ``modelspace()``.
+    """
+    layout_factory = getattr(dwg_document, "entities", None)
+    if callable(layout_factory):
+        return layout_factory().query()
+    return dwg_document.modelspace().query()
+
+
+def _is_paperspace_block(name: str) -> bool:
+    return name.strip().upper().startswith("*PAPER_SPACE")
+
+
+def _is_paperspace_entity(
+    source_entity: Any,
+    owner_handle: int | None,
+    paperspace_handles: set[int],
+    placement_of: Any,
+) -> bool:
+    """Paper-space entities (layout frames, viewports, title blocks) are not part
+    of the model-space drawing the IR represents; they are skipped explicitly."""
+    if owner_handle is not None and owner_handle in paperspace_handles:
+        return True
+    if not callable(placement_of):
+        return False
+    try:
+        placement = placement_of(getattr(source_entity, "handle"))
+    except Exception:
+        return False
+    if not isinstance(placement, tuple) or not placement:
+        return False
+    return placement[0] == 1
+
+
 def _append_summary_diagnostics(context: _ConversionContext) -> None:
+    if context.paperspace_skipped:
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="DWG_PAPERSPACE_ENTITY_SKIPPED",
+                severity="info",
+                message=(
+                    f"Skipped {context.paperspace_skipped} paper-space DWG entities "
+                    "(layouts are not part of the model-space IR)."
+                ),
+                action="skipped",
+            )
+        )
     for source_kind, count in sorted(context.skipped_counts.items()):
         if count and not any(
             diagnostic.code == "DWG_ENTITY_CONVERSION_FAILED"

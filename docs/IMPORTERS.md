@@ -43,7 +43,7 @@ JWW pen color, pen style, pen width, layer/group state, source indices, file ver
 
 ## DWG adapter
 
-The DWG adapter consumes `ezdwg.read()` and `Document.modelspace().query()` directly. Low-level public table decoders are used only to recover layer names/colors and block-header names.
+The DWG adapter consumes `ezdwg.read()` and enumerates every entity through `Document.entities().query()` (falling back to `modelspace().query()` on `ezdwg` releases before the placement-aware layouts), then partitions them itself: entities owned by a named block record become block-definition bodies, paper-space entities (layout frames, viewports, title blocks; `entmode == 1` or owned by a `*Paper_Space*` record) are skipped with `DWG_PAPERSPACE_ENTITY_SKIPPED`, and the rest form the IR modelspace. Low-level public table decoders are used only to recover layer names/colors and block-header names.
 
 | DWG source | IR mapping | Fidelity handling |
 | --- | --- | --- |
