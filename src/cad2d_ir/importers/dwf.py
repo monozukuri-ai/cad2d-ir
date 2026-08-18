@@ -296,6 +296,19 @@ def _convert_entity(
             }
         ]
 
+    if kind == "POLYMARKER":
+        points = _points(getattr(source_entity, "points", ()))
+        if not points:
+            raise ValueError("POLYMARKER has no points")
+        first, *rest = points
+        return [
+            {**common, "kind": "POINT", "position": first},
+            *[
+                {**_clone_common(common, context), "kind": "POINT", "position": point}
+                for point in rest
+            ],
+        ]
+
     if kind in {"CIRCLE", "ARC", "ELLIPSE"}:
         return [_convert_ellipse(source_entity, common, context)]
 
@@ -356,6 +369,9 @@ def _convert_ellipse(
     y_axis = _point(source_entity.y_axis)
     x_length = math.hypot(*x_axis)
     y_length = math.hypot(*y_axis)
+    if x_length <= _EPSILON and y_length <= _EPSILON:
+        # A zero-radius circle/arc is how some writers emit a dot marker.
+        return {**common, "kind": "POINT", "position": center}
     if x_length <= _EPSILON or y_length <= _EPSILON:
         raise ValueError("ellipse axes must be non-zero")
     dot = x_axis[0] * y_axis[0] + x_axis[1] * y_axis[1]

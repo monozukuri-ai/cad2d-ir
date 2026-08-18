@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.4
+
+- DWF import maps `POLYMARKER` entities (draw-polymarker opcodes, emitted by
+  `ezdwf>=0.0.3`) to one IR `POINT` per marker.
+- DWF zero-radius circles/arcs (dot markers) become IR `POINT` entities instead
+  of failing with "ellipse axes must be non-zero".
+
 ## 0.9.3
 
 - Binary DXF (`AutoCAD Binary DXF` sentinel, R12 1-byte and R13+ 2-byte

@@ -343,3 +343,42 @@ def test_dwf_triangle_strips_and_vertex_colors_are_preserved() -> None:
         "DWF_COLOR_GRADIENT_FLATTENED"
     ]
     validate_ir(result.document, strict_jsonschema=True)
+
+
+def test_dwf_polymarkers_become_point_entities() -> None:
+    markers = _entity(
+        "POLYMARKER", 1, points=tuple(_point(x, y) for x, y in ((1, 2), (3, 4), (5, 6)))
+    )
+    drawing = SimpleNamespace(sheets=(_sheet((markers,)),), diagnostics=())
+
+    result = dwf_drawing_to_ir(drawing)
+
+    entities = result.document["entities"]
+    assert [entity["kind"] for entity in entities] == ["POINT"] * 3
+    assert [entity["position"] for entity in entities] == [
+        [1.0, 2.0],
+        [3.0, 4.0],
+        [5.0, 6.0],
+    ]
+    assert len({entity["id"] for entity in entities}) == 3
+    assert result.statistics["converted_entities"] == 3
+    validate_ir(result.document, strict_jsonschema=True)
+
+
+def test_dwf_zero_radius_circle_becomes_point() -> None:
+    dot = _entity(
+        "CIRCLE",
+        1,
+        center=_point(4, 5),
+        x_axis=_point(0, 0),
+        y_axis=_point(0, 0),
+        closed=True,
+    )
+    drawing = SimpleNamespace(sheets=(_sheet((dot,)),), diagnostics=())
+
+    result = dwf_drawing_to_ir(drawing)
+
+    (entity,) = result.document["entities"]
+    assert entity["kind"] == "POINT" and entity["position"] == [4.0, 5.0]
+    assert not [d for d in result.diagnostics if d.severity == "error"]
+    validate_ir(result.document, strict_jsonschema=True)
