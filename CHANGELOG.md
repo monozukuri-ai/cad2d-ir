@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.3
+
+- Binary DXF (`AutoCAD Binary DXF` sentinel, R12 1-byte and R13+ 2-byte
+  group codes) is imported through the same pipeline (`DXF_BINARY_DETECTED`).
+- A corrupted group-code line (e.g. two lines merged by a missing line break)
+  no longer aborts the import: parsing skips to the next `0`/record-name pair
+  (`DXF_STREAM_RESYNCED`).
+- Two-vertex arc loops (AutoCAD's circular hatches: two half circles, or an
+  arc plus its chord) are subdivided instead of being dropped.
+- New entity mappings: `SOLID`/`TRACE` become solid HATCH loops in outline
+  order, `LEADER` becomes its polyline path (`DXF_LEADER_APPROXIMATED`).
+
 ## 0.9.2
 
 - DXF import is now best-effort per entity: a malformed record (missing group

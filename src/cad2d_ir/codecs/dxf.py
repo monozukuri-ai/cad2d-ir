@@ -226,12 +226,22 @@ def read_dxf_file(
 
     source_path = Path(path)
     raw = source_path.read_bytes()
+    import_diagnostics = diagnostics if diagnostics is not None else []
+    if _is_binary_dxf(raw):
+        return _read_binary_dxf(
+            raw,
+            source_name=source_path.name,
+            ir_version=ir_version,
+            validate=validate,
+            warnings=warnings,
+            diagnostics=import_diagnostics,
+            encoding=encoding,
+        )
     selected_encoding, encoding_source = _select_dxf_encoding(raw, encoding)
     dxf_text = raw.decode(selected_encoding, errors="replace")
     replacement_characters = dxf_text.count("�")
     affected_lines = sum("�" in line for line in dxf_text.splitlines())
 
-    import_diagnostics = diagnostics if diagnostics is not None else []
     import_diagnostics.append(
         ImportDiagnostic(
             code="DXF_ENCODING_DETECTED",
@@ -356,6 +366,23 @@ def dxf_to_ir(
     file, and trailing garbage after ``EOF`` or an unpaired final line is ignored.
     """
     pairs = _parse_pairs(dxf_text, warnings=warnings, diagnostics=diagnostics)
+    return _pairs_to_ir(
+        pairs,
+        ir_version=ir_version,
+        validate=validate,
+        warnings=warnings,
+        diagnostics=diagnostics,
+    )
+
+
+def _pairs_to_ir(
+    pairs: list[DXFPair],
+    *,
+    ir_version: str,
+    validate: bool,
+    warnings: list[str] | None,
+    diagnostics: list[ImportDiagnostic] | None,
+) -> dict[str, Any]:
     sections = _split_sections(pairs)
     if not sections:
         # Lenient pairing must not turn arbitrary bytes into an empty drawing.
@@ -745,6 +772,229 @@ def _add_record_handles(
 
 
 _DXF_LINE_BREAK = re.compile(r"\r\n|\n|\r")
+_DXF_RECORD_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
+_BINARY_DXF_SENTINEL = b"AutoCAD Binary DXF\r\n\x1a\x00"
+
+
+def _is_binary_dxf(raw: bytes) -> bool:
+    return raw.startswith(_BINARY_DXF_SENTINEL)
+
+
+def _binary_group_kind(code: int) -> str:
+    """Value type of a group code in binary DXF (DXF reference, "Group Code Value Types")."""
+    if 0 <= code <= 9 or code in (100, 102, 105):
+        return "str"
+    if (
+        10 <= code <= 59
+        or 110 <= code <= 149
+        or 210 <= code <= 239
+        or 460 <= code <= 469
+    ):
+        return "f64"
+    if 60 <= code <= 79 or 170 <= code <= 179 or 270 <= code <= 289:
+        return "i16"
+    if 370 <= code <= 389 or 400 <= code <= 409 or 1060 <= code <= 1070:
+        return "i16"
+    if 90 <= code <= 99 or 420 <= code <= 429 or 440 <= code <= 459 or code == 1071:
+        return "i32"
+    if 160 <= code <= 169:
+        return "i64"
+    if 290 <= code <= 299:
+        return "bool"
+    if 310 <= code <= 319 or code == 1004:
+        return "bin"
+    if 1010 <= code <= 1059:
+        return "f64"
+    return "str"
+
+
+def _binary_dxf_pairs(raw: bytes) -> list[tuple[int, bytes | str]]:
+    """Decode the binary DXF stream into (code, value) pairs; string values stay bytes."""
+    import struct
+
+    pos = len(_BINARY_DXF_SENTINEL)
+    # R13+ writes 2-byte group codes (the first code 0 is 00 00); R12 uses 1-byte
+    # codes with 255 escaping to a 2-byte code.
+    two_byte_codes = len(raw) > pos + 1 and raw[pos + 1] == 0
+    pairs: list[tuple[int, bytes | str]] = []
+    size = len(raw)
+    while pos < size:
+        if two_byte_codes:
+            if pos + 2 > size:
+                break
+            code = struct.unpack_from("<H", raw, pos)[0]
+            pos += 2
+        else:
+            code = raw[pos]
+            pos += 1
+            if code == 255:
+                if pos + 2 > size:
+                    break
+                code = struct.unpack_from("<H", raw, pos)[0]
+                pos += 2
+        kind = _binary_group_kind(code)
+        value: bytes | str
+        if kind == "str":
+            end = raw.find(b"\x00", pos)
+            if end < 0:
+                end = size
+            value = raw[pos:end]
+            pos = end + 1
+        elif kind == "f64":
+            if pos + 8 > size:
+                break
+            value = repr(struct.unpack_from("<d", raw, pos)[0])
+            pos += 8
+        elif kind == "i16":
+            if pos + 2 > size:
+                break
+            value = str(struct.unpack_from("<h", raw, pos)[0])
+            pos += 2
+        elif kind == "i32":
+            if pos + 4 > size:
+                break
+            value = str(struct.unpack_from("<i", raw, pos)[0])
+            pos += 4
+        elif kind == "i64":
+            if pos + 8 > size:
+                break
+            value = str(struct.unpack_from("<q", raw, pos)[0])
+            pos += 8
+        elif kind == "bool":
+            value = str(raw[pos])
+            pos += 1
+        else:  # binary chunk: 1-byte length + data, exposed as hex like ASCII DXF
+            length = raw[pos]
+            pos += 1
+            value = raw[pos : pos + length].hex().upper()
+            pos += length
+        pairs.append((code, value))
+        if code == 0 and value == b"EOF":
+            break
+    return pairs
+
+
+def _read_binary_dxf(
+    raw: bytes,
+    *,
+    source_name: str,
+    ir_version: str,
+    validate: bool,
+    warnings: list[str] | None,
+    diagnostics: list[ImportDiagnostic],
+    encoding: str,
+) -> dict[str, Any]:
+    """Import an ``AutoCAD Binary DXF`` file through the regular pair pipeline."""
+    typed_pairs = _binary_dxf_pairs(raw)
+    normalized = encoding.strip().lower()
+    if normalized != "auto":
+        selected_encoding, encoding_source = _select_dxf_encoding(b"", encoding)
+    else:
+        selected_encoding, encoding_source = "cp932", "cp932-fallback"
+        codepage: str | None = None
+        for index, (code, value) in enumerate(typed_pairs):
+            if code == 9 and value == b"$DWGCODEPAGE" and index + 1 < len(typed_pairs):
+                next_value = typed_pairs[index + 1][1]
+                if isinstance(next_value, bytes):
+                    codepage = next_value.decode("latin-1").strip()
+                break
+        mapped = _CODEPAGE_ENCODINGS.get(codepage.upper()) if codepage else None
+        if mapped is not None:
+            selected_encoding, encoding_source = mapped, f"$DWGCODEPAGE={codepage}"
+        else:
+            try:
+                for _, value in typed_pairs:
+                    if isinstance(value, bytes):
+                        value.decode("utf-8", errors="strict")
+            except UnicodeDecodeError:
+                pass
+            else:
+                selected_encoding, encoding_source = "utf-8", "utf-8-probe"
+
+    replacement_characters = 0
+    affected_values = 0
+    pairs: list[DXFPair] = []
+    for code, value in typed_pairs:
+        if isinstance(value, bytes):
+            decoded = value.decode(selected_encoding, errors="replace")
+            replaced = decoded.count("\ufffd")
+            if replaced:
+                replacement_characters += replaced
+                affected_values += 1
+            pairs.append((code, decoded))
+        else:
+            pairs.append((code, value))
+
+    _import_diagnose(
+        diagnostics,
+        warnings,
+        code="DXF_BINARY_DETECTED",
+        severity="info",
+        message="Binary DXF input (AutoCAD Binary DXF sentinel) was decoded to group pairs.",
+        action="detected",
+        details={"group_code_bytes": 2 if len(raw) > 23 and raw[23] == 0 else 1},
+    )
+    _import_diagnose(
+        diagnostics,
+        warnings,
+        code="DXF_ENCODING_DETECTED",
+        severity="info",
+        message=f"DXF input decoded as {selected_encoding} ({encoding_source}).",
+        action="detected",
+        details={"encoding": selected_encoding, "source": encoding_source},
+    )
+    if replacement_characters:
+        _import_diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_DECODE_REPLACED",
+            severity="warning",
+            message=(
+                f"DXF decoding replaced {replacement_characters} undecodable "
+                f"character(s) in {affected_values} value(s)."
+            ),
+            action="normalized",
+            details={
+                "encoding": selected_encoding,
+                "replacement_characters": replacement_characters,
+                "affected_lines": affected_values,
+            },
+        )
+
+    document = _pairs_to_ir(
+        pairs,
+        ir_version=ir_version,
+        validate=validate,
+        warnings=warnings,
+        diagnostics=diagnostics,
+    )
+    document["source"] = {
+        "format": "dxf",
+        "name": source_name,
+        "metadata": {
+            "encoding": selected_encoding,
+            "encoding_source": encoding_source,
+            "decode_replacement_characters": replacement_characters,
+            "decode_replacement_lines": affected_values,
+            "binary": True,
+        },
+    }
+    return document
+
+
+def _find_dxf_resync_index(lines: list[str], start: int) -> int | None:
+    """Index of the next ``0`` / RECORD-NAME line pair after a corrupted spot.
+
+    A value line is always followed by a group-code line, so a ``0`` line
+    followed by an upper-case record name can only be a genuine record start,
+    whatever the pairing parity is in the damaged region.
+    """
+    for index in range(start + 1, len(lines) - 1):
+        if lines[index].strip() == "0" and _DXF_RECORD_NAME.fullmatch(
+            lines[index + 1].strip()
+        ):
+            return index
+    return None
 
 
 def _parse_pairs(
@@ -777,9 +1027,25 @@ def _parse_pairs(
         try:
             code = int(code_text)
         except ValueError as exc:
-            raise ValueError(
-                f"Invalid DXF group code at line {index + 1}: {code_text}"
-            ) from exc
+            resume = _find_dxf_resync_index(raw_lines, index)
+            if resume is None:
+                raise ValueError(
+                    f"Invalid DXF group code at line {index + 1}: {code_text}"
+                ) from exc
+            _import_diagnose(
+                diagnostics,
+                warnings,
+                code="DXF_STREAM_RESYNCED",
+                severity="warning",
+                message=(
+                    f"Unparsable DXF data at line {index + 1} ({code_text[:24]!r}); "
+                    f"skipped {resume - index} line(s) and resumed at the next record."
+                ),
+                action="skipped",
+                details={"line": index + 1, "skipped_lines": resume - index},
+            )
+            index = resume
+            continue
         pairs.append((code, value))
         index += 2
         if code == 0 and value.strip().upper() == "EOF":
@@ -1044,6 +1310,9 @@ _CONVERTIBLE_DXF_KINDS = frozenset(
         "HATCH",
         "SPLINE",
         "DIMENSION",
+        "SOLID",
+        "TRACE",
+        "LEADER",
     }
 )
 
@@ -1135,6 +1404,23 @@ def _records_to_entities(
                 entity = _spline_from_pairs(pairs, serial)
             elif kind == "DIMENSION":
                 entity = _dimension_from_pairs(pairs, serial, warnings=warnings)
+            elif kind in {"SOLID", "TRACE"}:
+                entity = _solid_from_pairs(pairs, serial)
+            elif kind == "LEADER":
+                entity = _leader_from_pairs(pairs, serial)
+                _import_diagnose(
+                    diagnostics,
+                    warnings,
+                    code="DXF_LEADER_APPROXIMATED",
+                    severity="warning",
+                    message=(
+                        f"[{context}] LEADER {entity['id']} imported as its polyline "
+                        "path; arrowhead and annotation link were omitted."
+                    ),
+                    source_id=str(entity["id"]),
+                    source_kind="LEADER",
+                    action="approximated",
+                )
             if entity is not None:
                 entity.setdefault("source", {"format": "dxf"})["kind"] = kind
                 if kind in {"TEXT", "MTEXT"}:
@@ -1528,6 +1814,64 @@ def _spline_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
     return entity
 
 
+def _solid_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
+    """SOLID/TRACE (filled 2D quad/triangle) as a solid HATCH loop.
+
+    DXF stores the corners in bow-tie order (1, 2, 4, 3 around the outline).
+    """
+    entity = _common_from_pairs(pairs, idx)
+    entity["kind"] = "HATCH"
+    corners = [
+        [_required_float(pairs, 10), _required_float(pairs, 20)],
+        [_required_float(pairs, 11), _required_float(pairs, 21)],
+        [_first_float(pairs, 13, default=None), _first_float(pairs, 23, default=None)],
+        [_first_float(pairs, 12, default=None), _first_float(pairs, 22, default=None)],
+    ]
+    vertices: list[list[float]] = []
+    for corner in corners:
+        if corner[0] is None or corner[1] is None:
+            continue
+        point = [float(corner[0]), float(corner[1])]
+        if (
+            vertices
+            and abs(point[0] - vertices[-1][0]) < 1e-12
+            and abs(point[1] - vertices[-1][1]) < 1e-12
+        ):
+            continue
+        vertices.append(point)
+    if (
+        len(vertices) > 1
+        and abs(vertices[0][0] - vertices[-1][0]) < 1e-12
+        and abs(vertices[0][1] - vertices[-1][1]) < 1e-12
+    ):
+        vertices.pop()
+    if len(vertices) < 3:
+        raise ValueError("SOLID needs at least three distinct corners")
+    entity["loops"] = [{"vertices": vertices, "is_outer": True}]
+    return entity
+
+
+def _leader_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
+    """LEADER as the open polyline through its vertices (arrowhead omitted)."""
+    entity = _common_from_pairs(pairs, idx)
+    entity["kind"] = "LWPOLYLINE"
+    vertices: list[list[float]] = []
+    current: list[float] | None = None
+    for code, value in pairs:
+        if code == 10:
+            if current is not None:
+                vertices.append(current)
+            current = [_to_float(value), 0.0]
+        elif code == 20 and current is not None:
+            current[1] = _to_float(value)
+    if current is not None:
+        vertices.append(current)
+    if len(vertices) < 2:
+        raise ValueError("LEADER requires at least 2 vertices")
+    entity["vertices"] = vertices
+    return entity
+
+
 def _dimension_from_pairs(
     pairs: list[DXFPair],
     idx: int,
@@ -1649,11 +1993,44 @@ def _parse_hatch_loops(
         except (ValueError, IndexError, KeyError, ZeroDivisionError, OverflowError):
             vertices = []
 
+        vertices = _ensure_hatch_loop_vertices(vertices)
         if len(vertices) >= 3:
             loops.append({"vertices": vertices, "is_outer": not loops})
         else:
             notes.skipped_loops += 1
     return loops, notes
+
+
+def _ensure_hatch_loop_vertices(vertices: list[list[float]]) -> list[list[float]]:
+    """Give arc-only loops enough vertices for the IR (>= 3).
+
+    AutoCAD writes circular hatches as two vertices with bulge 1 (two half
+    circles) and semicircular ones as one arc plus the closing line. Both are
+    valid closed loops with 2 vertices; split each arc segment in half so the
+    loop keeps its exact geometry with >= 3 vertices.
+    """
+    if len(vertices) != 2:
+        return vertices
+    if not any(len(vertex) > 2 and vertex[2] != 0.0 for vertex in vertices):
+        return vertices  # two straight segments: a degenerate (zero-area) loop
+    result: list[list[float]] = []
+    for index, vertex in enumerate(vertices):
+        result.append(vertex)
+        bulge = vertex[2] if len(vertex) > 2 else 0.0
+        if bulge == 0.0:
+            continue
+        nxt = vertices[(index + 1) % 2]
+        chord = [nxt[0] - vertex[0], nxt[1] - vertex[1]]
+        # Sagitta of a bulge arc is bulge * chord / 2, to the left of the chord
+        # for positive (counter-clockwise) bulges.
+        mid = [
+            (vertex[0] + nxt[0]) / 2.0 - chord[1] * bulge / 2.0,
+            (vertex[1] + nxt[1]) / 2.0 + chord[0] * bulge / 2.0,
+        ]
+        half_bulge = math.tan(math.atan(bulge) / 2.0)
+        result[-1] = [vertex[0], vertex[1], half_bulge]
+        result.append([mid[0], mid[1], half_bulge])
+    return result
 
 
 def _parse_hatch_polyline_path(

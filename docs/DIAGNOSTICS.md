@@ -41,6 +41,7 @@ entity/source identifiers and structured details.
 | `DWF_MIXED_SHEET_UNITS` | warning | - | DWF import | Sheets used different paper units, so coordinates were retained per sheet with unknown document units. |
 | `DWF_MULTISHEET_FLATTENED` | warning | flattened | DWF import | Multiple sheets were placed in one IR modelspace with sheet metadata retained. |
 | `DWF_UNSUPPORTED_ENTITY` | warning | skipped | DWF import | An unsupported DWF entity, such as a raster image, was skipped. |
+| `DXF_BINARY_DETECTED` | info | detected | DXF import | The input carried the `AutoCAD Binary DXF` sentinel and was decoded from the binary group-code stream (`details.group_code_bytes` is 1 for R12, 2 for R13+). |
 | `DXF_CONSTRAINTS_OMITTED` | warning | skipped | DXF export | IR-only constraints were omitted. |
 | `DXF_DECODE_REPLACED` | warning | normalized | DXF import | Undecodable input bytes were replaced while decoding. |
 | `DXF_DIMENSION_BLOCK_GENERATED` | info | normalized | DXF export | A required DIMENSION geometry block was generated. |
@@ -54,6 +55,7 @@ entity/source identifiers and structured details.
 | `DXF_HATCH_LOOP_SKIPPED` | warning | skipped | DXF import | A HATCH boundary loop could not be reconstructed (unknown edge type or too few vertices) and was skipped. |
 | `DXF_IMPORT_WARNING` | warning | - | DXF import | Legacy wrapper for a DXF parser warning. |
 | `DXF_INSERT_TRANSFORM_OMITTED` | warning | skipped | DXF export | An affine INSERT transform was omitted. |
+| `DXF_LEADER_APPROXIMATED` | warning | approximated | DXF import | A LEADER entity was imported as an open polyline through its vertices; the arrowhead and the link to its annotation were omitted. |
 | `DXF_R12_ELLIPSE_APPROXIMATED` | warning | approximated | DXF R12 export | ELLIPSE was approximated by a polyline. |
 | `DXF_R12_HATCH_EXPLODED` | warning | exploded | DXF R12 export | HATCH was emitted as boundary polylines. |
 | `DXF_R12_INSUNITS_OMITTED` | warning | skipped | DXF R12 export | INSUNITS was omitted from R12 output. |
@@ -63,6 +65,7 @@ entity/source identifiers and structured details.
 | `DXF_R12_MTEXT_FORMATTING_NORMALIZED` | warning | normalized | DXF R12 export | MTEXT formatting codes were removed. |
 | `DXF_R12_SPLINE_APPROXIMATED` | warning | approximated | DXF R12 export | SPLINE was approximated by a polyline. |
 | `DXF_R12_TRUE_COLOR_APPROXIMATED` | warning | approximated | DXF R12 export | True color was approximated by an ACI color. |
+| `DXF_STREAM_RESYNCED` | warning | skipped | DXF import | A group-code line could not be parsed (e.g. a missing line break merged two lines); the lines up to the next `0`/record-name pair were skipped and parsing resumed there. |
 | `DXF_TABLE_DEFAULTED` | info | normalized | DXF export | A required table record was synthesized. |
 | `DXF_TEXT_HEIGHT_DEFAULTED` | warning | normalized | DXF import | A TEXT/MTEXT record carried a non-positive height, which was replaced by a unit-based default (2.5 mm equivalent). |
 | `DXF_TRAILING_DATA_IGNORED` | info | skipped | DXF import | Lines after the `0`/`EOF` marker were ignored. |

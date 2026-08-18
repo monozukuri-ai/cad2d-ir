@@ -56,6 +56,15 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "DXF import",
         "Undecodable input bytes were replaced while decoding.",
     ),
+    "DXF_BINARY_DETECTED": DiagnosticCode(
+        "info", "detected", "DXF import", "The input was a binary DXF file."
+    ),
+    "DXF_STREAM_RESYNCED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "DXF import",
+        "Unparsable lines were skipped and parsing resumed at the next record.",
+    ),
     "DXF_TRAILING_DATA_IGNORED": DiagnosticCode(
         "info", "skipped", "DXF import", "Lines after the EOF marker were ignored."
     ),
@@ -79,6 +88,12 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "normalized",
         "DXF import",
         "A non-positive TEXT/MTEXT height was replaced by a unit-based default.",
+    ),
+    "DXF_LEADER_APPROXIMATED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "DXF import",
+        "A LEADER was imported as its polyline path without arrowhead.",
     ),
     "DXF_HATCH_LOOP_SKIPPED": DiagnosticCode(
         "warning",

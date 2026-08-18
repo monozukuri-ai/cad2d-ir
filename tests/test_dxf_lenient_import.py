@@ -363,3 +363,140 @@ def test_import_file_surfaces_structured_codes(tmp_path: Path) -> None:
 def test_text_without_any_section_is_rejected(text: str) -> None:
     with pytest.raises(ValueError, match="no SECTION|Invalid DXF group code"):
         dxf_to_ir(text)
+
+
+def test_solid_and_trace_become_solid_hatch_loops_in_outline_order() -> None:
+    solid = [
+        "0", "SOLID", "5", "S1", "8", "0",
+        "10", "0", "20", "0", "11", "10", "21", "0", "12", "0", "22", "10", "13", "10", "23", "10",
+    ]  # fmt: skip
+    triangle = [
+        "0", "TRACE", "5", "T1", "8", "0",
+        "10", "0", "20", "0", "11", "4", "21", "0", "12", "2", "22", "3", "13", "2", "23", "3",
+    ]  # fmt: skip
+    ir = dxf_to_ir(_dxf(solid + triangle), validate=True)
+
+    quad, tri = ir["entities"]
+    assert quad["kind"] == "HATCH" and quad["source"]["kind"] == "SOLID"
+    assert quad["loops"][0]["vertices"] == [[0, 0], [10, 0], [10, 10], [0, 10]]
+    assert "solid" not in quad  # solid fill is the default
+    assert tri["loops"][0]["vertices"] == [[0, 0], [4, 0], [2, 3]]
+
+
+def test_leader_becomes_polyline_with_diagnostic() -> None:
+    leader = [
+        "0", "LEADER", "5", "L1", "8", "0", "3", "STANDARD", "71", "1", "72", "0", "73", "3",
+        "76", "3", "10", "0", "20", "0", "10", "5", "20", "5", "10", "12", "20", "5",
+    ]  # fmt: skip
+    diagnostics: list[ImportDiagnostic] = []
+    ir = dxf_to_ir(_dxf(leader), validate=True, diagnostics=diagnostics)
+
+    entity = ir["entities"][0]
+    assert entity["kind"] == "LWPOLYLINE" and entity["source"]["kind"] == "LEADER"
+    assert entity["vertices"] == [[0, 0], [5, 5], [12, 5]]
+    assert _codes(diagnostics) == ["DXF_LEADER_APPROXIMATED"]
+
+
+def test_two_vertex_arc_loops_are_subdivided() -> None:
+    circle_hatch = [
+        "0", "HATCH", "5", "H1", "8", "0", "2", "SOLID", "70", "1", "71", "0", "91", "1",
+        "92", "2", "72", "1", "73", "1", "93", "2",
+        "10", "0", "20", "0", "42", "1.0", "10", "10", "20", "0", "42", "1.0",
+        "97", "0", "75", "0", "76", "1",
+    ]  # fmt: skip
+    ir = dxf_to_ir(_dxf(circle_hatch), validate=True)
+    vertices = ir["entities"][0]["loops"][0]["vertices"]
+    half = math.tan(math.radians(90.0) / 4.0)
+    _assert_vertices(
+        vertices, [[0, 0, half], [5, 5, half], [10, 0, half], [5, -5, half]]
+    )
+
+
+def test_merged_line_break_is_resynced_at_next_record() -> None:
+    good = _line("A")
+    # "LINE" and its "5" handle line collapsed into one line -> the record is unreadable
+    broken = [
+        "0",
+        "LINE 5",
+        "55F",
+        "330",
+        "4B3",
+        "8",
+        "0",
+        "10",
+        "0",
+        "20",
+        "0",
+        "11",
+        "1",
+        "21",
+        "1",
+    ]
+    tail = _line("C")
+    diagnostics: list[ImportDiagnostic] = []
+
+    ir = dxf_to_ir(_dxf(good + broken + tail), diagnostics=diagnostics)
+
+    assert [entity["id"] for entity in ir["entities"]] == ["EA", "EC"]
+    assert "DXF_STREAM_RESYNCED" in _codes(diagnostics)
+
+
+def _binary_dxf(entity_records: list[tuple[int, object]]) -> bytes:
+    import struct
+
+    def encode(code: int, value: object) -> bytes:
+        payload = struct.pack("<H", code)
+        if isinstance(value, float):
+            return payload + struct.pack("<d", value)
+        if isinstance(value, bool):
+            return payload + bytes([int(value)])
+        if isinstance(value, int):
+            if 60 <= code <= 79 or 170 <= code <= 179 or 270 <= code <= 289:
+                return payload + struct.pack("<h", value)
+            return payload + struct.pack("<i", value)
+        return payload + str(value).encode("cp932") + b"\x00"
+
+    records: list[tuple[int, object]] = [
+        (0, "SECTION"), (2, "HEADER"), (9, "$DWGCODEPAGE"), (3, "ANSI_932"), (0, "ENDSEC"),
+        (0, "SECTION"), (2, "ENTITIES"), *entity_records, (0, "ENDSEC"), (0, "EOF"),
+    ]  # fmt: skip
+    return b"AutoCAD Binary DXF\r\n\x1a\x00" + b"".join(
+        encode(c, v) for c, v in records
+    )
+
+
+def test_binary_dxf_is_imported(tmp_path: Path) -> None:
+    data = _binary_dxf(
+        [
+            (0, "LINE"),
+            (5, "A1"),
+            (8, "壁"),
+            (62, 1),
+            (10, 1.5),
+            (20, 2.5),
+            (11, 3.0),
+            (21, 4.0),
+            (0, "TEXT"),
+            (5, "A2"),
+            (8, "0"),
+            (10, 0.0),
+            (20, 0.0),
+            (40, 2.5),
+            (1, "図面"),
+        ]  # fmt: skip
+    )
+    path = tmp_path / "binary.dxf"
+    path.write_bytes(data)
+
+    result = import_file(path)
+
+    codes = _codes(result.diagnostics)
+    assert "DXF_BINARY_DETECTED" in codes
+    line, text = result.document["entities"]
+    assert (
+        line["kind"] == "LINE" and line["p1"] == [1.5, 2.5] and line["p2"] == [3.0, 4.0]
+    )
+    assert line["layer"] == "壁"
+    assert text["text"] == "図面" and text["height"] == 2.5
+    assert result.document["source"]["metadata"]["binary"] is True
+    assert result.statistics["encoding"] == "cp932"
