@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import dataclass, field
 import hashlib
 import math
@@ -72,18 +72,30 @@ def convert_dwg_file_to_ir(
 
     source_path = Path(path)
     document = ezdwg.read(str(source_path))
-    decode_path = str(getattr(document, "decode_path", None) or source_path)
-    raw = getattr(document, "raw", getattr(ezdwg, "raw", None))
-    layer_names, layer_colors, block_names = _read_dwg_tables(raw, decode_path)
-    return dwg_document_to_ir(
-        document,
-        source_name=source_path.name,
-        source_sha256=_sha256_file(source_path),
-        layer_names_by_handle=layer_names,
-        layer_colors_by_handle=layer_colors,
-        block_names_by_handle=block_names,
-        options=options,
-    )
+    try:
+        decode_path = str(getattr(document, "decode_path", None) or source_path)
+        raw = getattr(document, "raw", getattr(ezdwg, "raw", None))
+        layer_names, layer_colors, block_names = _read_dwg_tables(raw, decode_path)
+        return dwg_document_to_ir(
+            document,
+            source_name=source_path.name,
+            source_sha256=_sha256_file(source_path),
+            layer_names_by_handle=layer_names,
+            layer_colors_by_handle=layer_colors,
+            block_names_by_handle=block_names,
+            options=options,
+        )
+    finally:
+        # Native decode helpers cache large per-file tables. ezdwg >= 0.12.5
+        # exposes an explicit lifecycle hook so batch conversion can release them.
+        clear_decode_caches = getattr(ezdwg, "clear_decode_caches", None)
+        if callable(clear_decode_caches):
+            try:
+                clear_decode_caches()
+            except Exception:
+                # Cache cleanup must not replace a successful conversion or hide
+                # the original importer exception.
+                pass
 
 
 def _resolve_header_units(
@@ -157,11 +169,6 @@ def dwg_document_to_ir(
         layers=layers,
     )
 
-    try:
-        source_entities = list(_enumerate_source_entities(dwg_document))
-    except Exception as exc:
-        raise ImporterError(f"Failed to enumerate DWG entities: {exc}") from exc
-
     block_names = {
         int(handle): str(name)
         for handle, name in (block_names_by_handle or {}).items()
@@ -173,26 +180,41 @@ def dwg_document_to_ir(
         if _is_paperspace_block(str(name))
     }
     placement_of = getattr(dwg_document, "entity_placement", None)
-    top_level: list[Any] = []
-    block_sources: dict[int, list[Any]] = defaultdict(list)
-    for source_entity in source_entities:
+    entities: list[dict[str, Any]] = []
+    block_entities_by_owner: dict[int, list[dict[str, Any]]] = {
+        handle: [] for handle in block_names
+    }
+    source_entity_count = 0
+    source_entity_counts: Counter[str] = Counter()
+    try:
+        source_iterator = iter(_enumerate_source_entities(dwg_document))
+    except Exception as exc:
+        raise ImporterError(f"Failed to enumerate DWG entities: {exc}") from exc
+    while True:
+        try:
+            source_entity = next(source_iterator)
+        except StopIteration:
+            break
+        except Exception as exc:
+            raise ImporterError(f"Failed to enumerate DWG entities: {exc}") from exc
+
+        source_entity_count += 1
+        source_entity_counts[_source_kind(source_entity)] += 1
         owner_handle = _optional_int(_dxf(source_entity).get("owner_handle"))
         if owner_handle is not None and owner_handle in block_names:
-            block_sources[owner_handle].append(source_entity)
-            continue
-        if _is_paperspace_entity(
+            destination = block_entities_by_owner[owner_handle]
+        elif _is_paperspace_entity(
             source_entity, owner_handle, paperspace_handles, placement_of
         ):
             context.paperspace_skipped += 1
             continue
-        top_level.append(source_entity)
+        else:
+            destination = entities
+        destination.extend(_convert_entity_sequence((source_entity,), context))
 
-    entities = _convert_entity_sequence(top_level, context)
     blocks: dict[str, dict[str, Any]] = {}
     for owner_handle, block_name in sorted(block_names.items()):
-        block_entities = _convert_entity_sequence(
-            block_sources.get(owner_handle, []), context
-        )
+        block_entities = block_entities_by_owner[owner_handle]
         if block_entities:
             blocks[block_name] = {
                 "base_point": [0.0, 0.0],
@@ -204,6 +226,15 @@ def dwg_document_to_ir(
                     }
                 },
             }
+
+    next_entity_number = 1
+    for entity in entities:
+        entity["id"] = f"DWG_E{next_entity_number:08d}"
+        next_entity_number += 1
+    for block in blocks.values():
+        for entity in block["entities"]:
+            entity["id"] = f"DWG_E{next_entity_number:08d}"
+            next_entity_number += 1
 
     _append_unresolved_block_diagnostics(entities, blocks, context)
     _append_summary_diagnostics(context)
@@ -256,10 +287,8 @@ def dwg_document_to_ir(
     block_entity_count = sum(len(block["entities"]) for block in blocks.values())
     statistics: dict[str, Any] = {
         "source_format": "dwg",
-        "source_entities": len(source_entities),
-        "source_entity_counts": dict(
-            sorted(Counter(_source_kind(entity) for entity in source_entities).items())
-        ),
+        "source_entities": source_entity_count,
+        "source_entity_counts": dict(sorted(source_entity_counts.items())),
         "source_block_definitions": len(block_names),
         "converted_entities": len(entities),
         "converted_block_entities": block_entity_count,
@@ -921,9 +950,9 @@ def _enumerate_source_entities(dwg_document: Any) -> Any:
 
     ``ezdwg >= 0.12.1`` partitions ``Document.modelspace()`` by the stored entity
     placement, so block-definition contents are only reachable through
-    ``Document.entities()``. This adapter partitions by owner handle itself and
-    therefore needs the complete list; older ``ezdwg`` releases expose everything
-    through ``modelspace()``.
+    ``Document.entities()``. This adapter consumes that complete sequence one
+    entity at a time and partitions by owner handle; older ``ezdwg`` releases
+    expose the same sequence through ``modelspace()``.
     """
     layout_factory = getattr(dwg_document, "entities", None)
     if callable(layout_factory):

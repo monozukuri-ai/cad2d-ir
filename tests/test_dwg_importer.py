@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+import weakref
 
 import pytest
 
 from cad2d_ir.importers import ImportOptions
-from cad2d_ir.importers.dwg import dwg_document_to_ir
+from cad2d_ir.importers.dwg import convert_dwg_file_to_ir, dwg_document_to_ir
 from cad2d_ir.schema import validate_ir
 
 
@@ -374,3 +375,63 @@ def test_dwg_document_to_ir_uses_entities_and_skips_paper_space() -> None:
     assert len(result.document["tables"]["blocks"]["SYMBOL"]["entities"]) == 1
     codes = [diagnostic.code for diagnostic in result.diagnostics]
     assert "DWG_PAPERSPACE_ENTITY_SKIPPED" in codes
+
+
+class _StreamingLayout:
+    def query(self):
+        alive: list[weakref.ReferenceType[_Entity]] = []
+        for handle in range(1, 6):
+            alive = [reference for reference in alive if reference() is not None]
+            if len(alive) > 1:
+                raise RuntimeError("source entities were buffered")
+            entity = _Entity(
+                "LINE",
+                handle,
+                {
+                    "start": (float(handle), 0.0, 0.0),
+                    "end": (float(handle), 1.0, 0.0),
+                    **_style(),
+                },
+            )
+            alive.append(weakref.ref(entity))
+            yield entity
+
+
+class _StreamingDocument:
+    version = "AC1027"
+
+    def entities(self) -> _StreamingLayout:
+        return _StreamingLayout()
+
+
+def test_dwg_document_to_ir_consumes_source_entities_as_a_stream() -> None:
+    result = dwg_document_to_ir(_StreamingDocument())
+
+    assert len(result.document["entities"]) == 5
+    assert result.statistics["source_entities"] == 5
+    assert result.statistics["source_entity_counts"] == {"LINE": 5}
+
+
+def test_convert_dwg_file_releases_ezdwg_decode_caches(monkeypatch, tmp_path) -> None:
+    import sys
+    from types import SimpleNamespace
+
+    cleared = 0
+
+    def clear_decode_caches() -> None:
+        nonlocal cleared
+        cleared += 1
+
+    fake_ezdwg = SimpleNamespace(
+        read=lambda _path: _Document(_line_entities()),
+        raw=None,
+        clear_decode_caches=clear_decode_caches,
+    )
+    monkeypatch.setitem(sys.modules, "ezdwg", fake_ezdwg)
+    source = tmp_path / "fixture.dwg"
+    source.write_bytes(b"fixture")
+
+    result = convert_dwg_file_to_ir(source)
+
+    assert result.document["entities"]
+    assert cleared == 1

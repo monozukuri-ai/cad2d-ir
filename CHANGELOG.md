@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.5
+
+- DWG import now consumes native entities as a stream instead of retaining a
+  second full source-entity list alongside the IR, while preserving top-level
+  and block entity ordering and IDs.
+- After file-based DWG import, the importer calls the optional
+  `ezdwg.clear_decode_caches()` lifecycle hook so batch converters can release
+  decoded per-file tables before rendering or exporting the IR.
+
 ## 0.9.4
 
 - DWF import maps `POLYMARKER` entities (draw-polymarker opcodes, emitted by
