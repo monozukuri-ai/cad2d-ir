@@ -70,6 +70,26 @@ class _RenderedEntity:
     pairs: list[DXFPair]
 
 
+@dataclass(frozen=True, slots=True)
+class _AxisProjection:
+    """Lossless 2D projection for an axis-aligned DXF drawing plane."""
+
+    source_plane: Literal["XZ", "YZ"]
+
+    @property
+    def normal(self) -> tuple[float, float, float]:
+        # The normal follows the right-handed orientation of the output axes:
+        # XZ -> (WCS X, WCS Z), YZ -> (WCS Y, WCS Z).
+        if self.source_plane == "XZ":
+            return (0.0, -1.0, 0.0)
+        return (1.0, 0.0, 0.0)
+
+    def project_wcs(self, point: tuple[float, float, float]) -> list[float]:
+        if self.source_plane == "XZ":
+            return [point[0], point[2]]
+        return [point[1], point[2]]
+
+
 @dataclass(slots=True)
 class _HandleAllocator:
     next_value: int = _HANDLE_START
@@ -1218,12 +1238,31 @@ def _entities_to_ir(
     default_text_height: float = 2.5,
 ) -> list[dict[str, Any]]:
     records = _pairs_to_records(entity_pairs)
+    projection = _detect_axis_projection(records)
+    if projection is not None:
+        _import_diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_NON_XY_PLANE_PROJECTED",
+            severity="warning",
+            message=(
+                f"Projected axis-aligned DXF {projection.source_plane} geometry "
+                "to the IR XY plane, including OCS circle/arc coordinates."
+            ),
+            action="projected",
+            details={
+                "source_plane": projection.source_plane,
+                "target_plane": "XY",
+                "method": "axis_aligned",
+            },
+        )
     return _records_to_entities(
         records,
         warnings=warnings,
         diagnostics=diagnostics,
         context="ENTITIES",
         default_text_height=default_text_height,
+        projection=projection,
     )
 
 
@@ -1295,6 +1334,69 @@ def _pairs_to_records(pairs: list[DXFPair]) -> list[tuple[str, list[DXFPair]]]:
     return records
 
 
+_AXIS_PROJECTABLE_DXF_KINDS = frozenset({"LINE", "POINT", "CIRCLE", "ARC"})
+
+
+def _detect_axis_projection(
+    records: list[tuple[str, list[DXFPair]]],
+) -> _AxisProjection | None:
+    """Detect a lossless XZ/YZ drawing without guessing for mixed geometry.
+
+    LINE and POINT coordinates are WCS, so they provide unambiguous plane
+    evidence. CIRCLE and ARC centers are OCS and are verified against the
+    detected plane before projection. More complex entity mixtures retain the
+    historical XY behavior until their coordinate-system rules are supported.
+    """
+    convertible_kinds = {
+        kind for kind, _pairs in records if kind in _CONVERTIBLE_DXF_KINDS
+    }
+    if not convertible_kinds or not convertible_kinds <= _AXIS_PROJECTABLE_DXF_KINDS:
+        return None
+
+    wcs_points: list[tuple[float, float, float]] = []
+    try:
+        for kind, pairs in records:
+            if kind == "LINE":
+                wcs_points.append(_point3_from_pairs(pairs, 10, 20, 30))
+                wcs_points.append(_point3_from_pairs(pairs, 11, 21, 31))
+            elif kind == "POINT":
+                wcs_points.append(_point3_from_pairs(pairs, 10, 20, 30))
+    except (ValueError, TypeError, OverflowError):
+        # Plane detection must never bypass the per-entity lenient parser.
+        return None
+
+    if len(wcs_points) < 2:
+        return None
+
+    spans = tuple(
+        max(point[axis] for point in wcs_points)
+        - min(point[axis] for point in wcs_points)
+        for axis in range(3)
+    )
+    scale = max(1.0, *spans)
+    tolerance = scale * 1e-9
+    x_span, y_span, z_span = spans
+    if z_span <= tolerance:
+        return None
+    if y_span <= tolerance and x_span > tolerance:
+        projection = _AxisProjection("XZ")
+    elif x_span <= tolerance and y_span > tolerance:
+        projection = _AxisProjection("YZ")
+    else:
+        return None
+
+    try:
+        for kind, pairs in records:
+            if kind not in {"CIRCLE", "ARC"}:
+                continue
+            extrusion = _extrusion_from_pairs(pairs)
+            if abs(abs(_dot3(extrusion, projection.normal)) - 1.0) > 1e-9:
+                return None
+    except (ValueError, TypeError, OverflowError):
+        return None
+    return projection
+
+
 _CONVERTIBLE_DXF_KINDS = frozenset(
     {
         "LINE",
@@ -1324,6 +1426,7 @@ def _records_to_entities(
     diagnostics: list[ImportDiagnostic] | None = None,
     context: str = "ENTITIES",
     default_text_height: float = 2.5,
+    projection: _AxisProjection | None = None,
 ) -> list[dict[str, Any]]:
     """Convert entity records to IR entities.
 
@@ -1375,13 +1478,13 @@ def _records_to_entities(
 
         try:
             if kind == "LINE":
-                entity = _line_from_pairs(pairs, serial)
+                entity = _line_from_pairs(pairs, serial, projection=projection)
             elif kind == "CIRCLE":
-                entity = _circle_from_pairs(pairs, serial)
+                entity = _circle_from_pairs(pairs, serial, projection=projection)
             elif kind == "ARC":
-                entity = _arc_from_pairs(pairs, serial)
+                entity = _arc_from_pairs(pairs, serial, projection=projection)
             elif kind == "POINT":
-                entity = _point_from_pairs(pairs, serial)
+                entity = _point_from_pairs(pairs, serial, projection=projection)
             elif kind == "ELLIPSE":
                 entity = _ellipse_from_pairs(pairs, serial)
             elif kind == "LWPOLYLINE":
@@ -1423,6 +1526,10 @@ def _records_to_entities(
                 )
             if entity is not None:
                 entity.setdefault("source", {"format": "dxf"})["kind"] = kind
+                if projection is not None:
+                    entity.setdefault("metadata", {}).setdefault("dxf", {})[
+                        "projected_from_plane"
+                    ] = projection.source_plane
                 if kind in {"TEXT", "MTEXT"}:
                     height = entity.get("height")
                     if not isinstance(height, (int, float)) or not height > 0:
@@ -1528,37 +1635,169 @@ def _common_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
     return entity
 
 
-def _line_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
+def _line_from_pairs(
+    pairs: list[DXFPair],
+    idx: int,
+    *,
+    projection: _AxisProjection | None = None,
+) -> dict[str, Any]:
     entity = _common_from_pairs(pairs, idx)
     entity["kind"] = "LINE"
-    entity["p1"] = [_required_float(pairs, 10), _required_float(pairs, 20)]
-    entity["p2"] = [_required_float(pairs, 11), _required_float(pairs, 21)]
+    p1 = _point3_from_pairs(pairs, 10, 20, 30)
+    p2 = _point3_from_pairs(pairs, 11, 21, 31)
+    entity["p1"] = projection.project_wcs(p1) if projection else [p1[0], p1[1]]
+    entity["p2"] = projection.project_wcs(p2) if projection else [p2[0], p2[1]]
     return entity
 
 
-def _circle_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
+def _circle_from_pairs(
+    pairs: list[DXFPair],
+    idx: int,
+    *,
+    projection: _AxisProjection | None = None,
+) -> dict[str, Any]:
     entity = _common_from_pairs(pairs, idx)
     entity["kind"] = "CIRCLE"
-    entity["center"] = [_required_float(pairs, 10), _required_float(pairs, 20)]
+    center = _point3_from_pairs(pairs, 10, 20, 30)
+    if projection is not None:
+        center = _ocs_to_wcs(center, _extrusion_from_pairs(pairs))
+        entity["center"] = projection.project_wcs(center)
+    else:
+        entity["center"] = [center[0], center[1]]
     entity["radius"] = _required_float(pairs, 40)
     return entity
 
 
-def _arc_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
+def _arc_from_pairs(
+    pairs: list[DXFPair],
+    idx: int,
+    *,
+    projection: _AxisProjection | None = None,
+) -> dict[str, Any]:
     entity = _common_from_pairs(pairs, idx)
     entity["kind"] = "ARC"
-    entity["center"] = [_required_float(pairs, 10), _required_float(pairs, 20)]
-    entity["radius"] = _required_float(pairs, 40)
-    entity["start_angle"] = _required_float(pairs, 50)
-    entity["end_angle"] = _required_float(pairs, 51)
+    center_ocs = _point3_from_pairs(pairs, 10, 20, 30)
+    radius = _required_float(pairs, 40)
+    start_angle = _required_float(pairs, 50)
+    end_angle = _required_float(pairs, 51)
+    entity["radius"] = radius
+    if projection is None:
+        entity["center"] = [center_ocs[0], center_ocs[1]]
+        entity["start_angle"] = start_angle
+        entity["end_angle"] = end_angle
+        return entity
+
+    extrusion = _extrusion_from_pairs(pairs)
+    center_wcs = _ocs_to_wcs(center_ocs, extrusion)
+    start_radians = math.radians(start_angle)
+    end_radians = math.radians(end_angle)
+    start_wcs = _ocs_to_wcs(
+        (
+            center_ocs[0] + radius * math.cos(start_radians),
+            center_ocs[1] + radius * math.sin(start_radians),
+            center_ocs[2],
+        ),
+        extrusion,
+    )
+    end_wcs = _ocs_to_wcs(
+        (
+            center_ocs[0] + radius * math.cos(end_radians),
+            center_ocs[1] + radius * math.sin(end_radians),
+            center_ocs[2],
+        ),
+        extrusion,
+    )
+    center_2d = projection.project_wcs(center_wcs)
+    start_2d = projection.project_wcs(start_wcs)
+    end_2d = projection.project_wcs(end_wcs)
+    entity["center"] = center_2d
+    entity["start_angle"] = _projected_angle(center_2d, start_2d)
+    entity["end_angle"] = _projected_angle(center_2d, end_2d)
+    if _dot3(extrusion, projection.normal) < 0.0:
+        entity["ccw"] = False
     return entity
 
 
-def _point_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
+def _point_from_pairs(
+    pairs: list[DXFPair],
+    idx: int,
+    *,
+    projection: _AxisProjection | None = None,
+) -> dict[str, Any]:
     entity = _common_from_pairs(pairs, idx)
     entity["kind"] = "POINT"
-    entity["position"] = [_required_float(pairs, 10), _required_float(pairs, 20)]
+    point = _point3_from_pairs(pairs, 10, 20, 30)
+    entity["position"] = (
+        projection.project_wcs(point) if projection else [point[0], point[1]]
+    )
     return entity
+
+
+def _point3_from_pairs(
+    pairs: list[DXFPair], x_code: int, y_code: int, z_code: int
+) -> tuple[float, float, float]:
+    return (
+        _required_float(pairs, x_code),
+        _required_float(pairs, y_code),
+        _first_float(pairs, z_code, default=0.0) or 0.0,
+    )
+
+
+def _extrusion_from_pairs(pairs: list[DXFPair]) -> tuple[float, float, float]:
+    extrusion = (
+        _first_float(pairs, 210, default=0.0) or 0.0,
+        _first_float(pairs, 220, default=0.0) or 0.0,
+        _first_float(pairs, 230, default=1.0),
+    )
+    z = 1.0 if extrusion[2] is None else extrusion[2]
+    return _normalize3((extrusion[0], extrusion[1], z))
+
+
+def _ocs_to_wcs(
+    point: tuple[float, float, float], extrusion: tuple[float, float, float]
+) -> tuple[float, float, float]:
+    # DXF arbitrary-axis algorithm. OCS Z is the normalized extrusion vector;
+    # OCS X/Y are derived deterministically from it.
+    if abs(extrusion[0]) < 1.0 / 64.0 and abs(extrusion[1]) < 1.0 / 64.0:
+        x_axis = _normalize3(_cross3((0.0, 1.0, 0.0), extrusion))
+    else:
+        x_axis = _normalize3(_cross3((0.0, 0.0, 1.0), extrusion))
+    y_axis = _cross3(extrusion, x_axis)
+    return tuple(
+        point[0] * x_axis[axis] + point[1] * y_axis[axis] + point[2] * extrusion[axis]
+        for axis in range(3)
+    )
+
+
+def _projected_angle(center: list[float], point: list[float]) -> float:
+    angle = math.degrees(math.atan2(point[1] - center[1], point[0] - center[0]))
+    normalized = angle % 360.0
+    if math.isclose(normalized, 360.0, abs_tol=1e-10) or math.isclose(
+        normalized, 0.0, abs_tol=1e-10
+    ):
+        return 0.0
+    return normalized
+
+
+def _dot3(left: tuple[float, float, float], right: tuple[float, float, float]) -> float:
+    return sum(a * b for a, b in zip(left, right, strict=True))
+
+
+def _cross3(
+    left: tuple[float, float, float], right: tuple[float, float, float]
+) -> tuple[float, float, float]:
+    return (
+        left[1] * right[2] - left[2] * right[1],
+        left[2] * right[0] - left[0] * right[2],
+        left[0] * right[1] - left[1] * right[0],
+    )
+
+
+def _normalize3(vector: tuple[float, float, float]) -> tuple[float, float, float]:
+    length = math.sqrt(_dot3(vector, vector))
+    if length <= 1e-15:
+        raise ValueError("DXF extrusion vector must be non-zero")
+    return tuple(component / length for component in vector)
 
 
 def _ellipse_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:

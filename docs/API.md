@@ -21,6 +21,12 @@ in the `DXF_ENCODING_DETECTED.details` mapping, in
 `document["source"]["metadata"]["encoding"]`. Decode replacement is reported
 as `DXF_DECODE_REPLACED` with replacement-character and affected-line counts.
 
+When LINE/POINT coordinates unambiguously describe an axis-aligned XZ or YZ
+drawing and the file contains only supported LINE/POINT/CIRCLE/ARC geometry,
+the DXF importer projects that plane to IR XY. CIRCLE/ARC OCS coordinates and
+arc direction are transformed consistently, and
+`DXF_NON_XY_PLANE_PROJECTED` records the projection.
+
 `strict=False` skips malformed source records with an error diagnostic.
 `curve_segments` must be in `[8, 4096]`.
 

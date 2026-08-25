@@ -95,6 +95,12 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "DXF import",
         "A LEADER was imported as its polyline path without arrowhead.",
     ),
+    "DXF_NON_XY_PLANE_PROJECTED": DiagnosticCode(
+        "warning",
+        "projected",
+        "DXF import",
+        "Axis-aligned XZ/YZ geometry was projected losslessly to the IR XY plane.",
+    ),
     "DXF_HATCH_LOOP_SKIPPED": DiagnosticCode(
         "warning",
         "skipped",
@@ -130,6 +136,12 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "skipped",
         "JWW import",
         "The JWW entity list ended early; entities read before the error were kept.",
+    ),
+    "JWW_METADATA_SETTING_EXTRACTED": DiagnosticCode(
+        "info",
+        "preserved_metadata",
+        "JWW import",
+        "An internal Jw_cad setting TEXT was moved to document metadata.",
     ),
     "JWW_DECODE_REPLACED": DiagnosticCode(
         "warning",

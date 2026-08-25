@@ -20,6 +20,14 @@ from cad2d_ir.schema import validate_ir
 
 _TAU = 2.0 * math.pi
 _EPSILON = 1e-12
+_METADATA_SETTING_KEYS = {
+    "Printer_Orientation",
+    "Printer_PaperSize",
+    "Printer_D2dBMP",
+    "Printer_BmpZENTAI",
+    "View_Direct2d",
+    "Draw_BmpTOUKA",
+}
 
 _LINE_TYPES = {
     0: "CONTINUOUS",
@@ -119,13 +127,21 @@ def jww_document_to_ir(
         block_names=block_names,
     )
 
+    source_entities = _mapping_sequence(jww_document.get("entities", []), "entities")
+    metadata_settings = _collect_metadata_settings(jww_document, source_entities)
+    metadata_entity_indexes = {
+        int(setting["entity_index"]) for setting in metadata_settings
+    }
     entities = _convert_entity_sequence(
-        _mapping_sequence(jww_document.get("entities", []), "entities"),
+        source_entities,
         context,
         source_prefix="entities",
+        skipped_indexes=metadata_entity_indexes,
     )
     blocks = _convert_blocks(block_defs, context)
-    text_styles = _collect_text_styles(jww_document)
+    text_styles = _collect_text_styles(
+        jww_document, skipped_entity_indexes=metadata_entity_indexes
+    )
 
     tables: dict[str, Any] = {
         "layers": context.layers,
@@ -142,6 +158,15 @@ def jww_document_to_ir(
     if source_sha256 is not None:
         source["sha256"] = source_sha256
 
+    jww_metadata: dict[str, Any] = {
+        "version": raw_version,
+        "memo": str(header.get("memo", "")),
+        "paper_size": int(header.get("paper_size", 0)),
+        "write_layer_group": int(header.get("write_layer_group", 0)),
+    }
+    if metadata_settings:
+        jww_metadata["settings"] = metadata_settings
+
     document: dict[str, Any] = {
         "format": "cad2d-ir",
         "version": import_options.ir_version,
@@ -149,14 +174,7 @@ def jww_document_to_ir(
             "units": "mm",
             "angle_unit": "deg",
             "coord_space": "world",
-            "metadata": {
-                "jww": {
-                    "version": raw_version,
-                    "memo": str(header.get("memo", "")),
-                    "paper_size": int(header.get("paper_size", 0)),
-                    "write_layer_group": int(header.get("write_layer_group", 0)),
-                }
-            },
+            "metadata": {"jww": jww_metadata},
         },
         "source": source,
         "tables": tables,
@@ -164,6 +182,23 @@ def jww_document_to_ir(
     }
 
     _append_parser_diagnostics(jww_document, context)
+    if metadata_settings:
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="JWW_METADATA_SETTING_EXTRACTED",
+                severity="info",
+                message=(
+                    f"Preserved {len(metadata_settings)} Jw_cad internal setting "
+                    "record(s) as document metadata instead of drawing TEXT."
+                ),
+                source_kind="TEXT",
+                action="preserved_metadata",
+                details={
+                    "count": len(metadata_settings),
+                    "keys": sorted({str(item["key"]) for item in metadata_settings}),
+                },
+            )
+        )
     _append_summary_diagnostics(jww_document, context)
     if import_options.validate:
         validate_ir(document)
@@ -177,10 +212,9 @@ def jww_document_to_ir(
     block_entity_count = sum(len(block["entities"]) for block in blocks.values())
     statistics: dict[str, Any] = {
         "source_format": "jww",
-        "source_entities": len(
-            _mapping_sequence(jww_document.get("entities", []), "entities")
-        ),
+        "source_entities": len(source_entities),
         "source_entity_counts": dict(sorted(source_counts.items())),
+        "metadata_settings": len(metadata_settings),
         "source_block_definitions": len(block_defs),
         "converted_entities": len(entities),
         "converted_block_entities": block_entity_count,
@@ -281,9 +315,12 @@ def _convert_entity_sequence(
     context: _ConversionContext,
     *,
     source_prefix: str,
+    skipped_indexes: set[int] | None = None,
 ) -> list[dict[str, Any]]:
     converted: list[dict[str, Any]] = []
     for index, source_entity in enumerate(source_entities):
+        if skipped_indexes is not None and index in skipped_indexes:
+            continue
         source_id = f"{source_prefix}[{index}]"
         entity = _convert_entity_safe(source_entity, context, source_id=source_id)
         if entity is not None:
@@ -716,7 +753,11 @@ def _convert_dimension(
     }
 
 
-def _collect_text_styles(jww_document: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+def _collect_text_styles(
+    jww_document: Mapping[str, Any],
+    *,
+    skipped_entity_indexes: set[int] | None = None,
+) -> dict[str, dict[str, Any]]:
     fonts: set[str] = {"STANDARD"}
 
     def collect(entities: Sequence[Mapping[str, Any]]) -> None:
@@ -728,12 +769,88 @@ def _collect_text_styles(jww_document: Mapping[str, Any]) -> dict[str, dict[str,
                 text = _mapping(entity.get("text", {}), "dimension.text")
                 fonts.add(str(text.get("font_name", "")).strip() or "STANDARD")
 
-    collect(_mapping_sequence(jww_document.get("entities", []), "entities"))
+    main_entities = _mapping_sequence(jww_document.get("entities", []), "entities")
+    collect(
+        [
+            entity
+            for index, entity in enumerate(main_entities)
+            if skipped_entity_indexes is None or index not in skipped_entity_indexes
+        ]
+    )
     for block_def in _mapping_sequence(
         jww_document.get("block_defs", []), "block_defs"
     ):
         collect(_mapping_sequence(block_def.get("entities", []), "block entities"))
     return {font: {"font": font} for font in sorted(fonts)}
+
+
+def _collect_metadata_settings(
+    jww_document: Mapping[str, Any],
+    source_entities: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Normalize ezjww setting metadata with a fallback for older releases."""
+    by_index: dict[int, dict[str, Any]] = {}
+    for raw in jww_document.get("metadata_settings", []) or []:
+        if not isinstance(raw, Mapping):
+            continue
+        try:
+            index = int(raw["entity_index"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if not 0 <= index < len(source_entities):
+            continue
+        classified = _metadata_setting_from_entity(source_entities[index], index)
+        if classified is None:
+            continue
+        by_index[index] = {
+            "entity_index": index,
+            "key": str(raw.get("key", classified["key"])),
+            "value": str(raw.get("value", classified["value"])),
+            "raw": str(raw.get("raw", classified["raw"])),
+        }
+
+    for index, entity in enumerate(source_entities):
+        if index in by_index:
+            continue
+        classified = _metadata_setting_from_entity(entity, index)
+        if classified is not None:
+            by_index[index] = classified
+    return [by_index[index] for index in sorted(by_index)]
+
+
+def _metadata_setting_from_entity(
+    entity: Mapping[str, Any], entity_index: int
+) -> dict[str, Any] | None:
+    if str(entity.get("type", "")).upper() != "TEXT":
+        return None
+    try:
+        at_sentinel = (
+            math.isclose(float(entity.get("start_x")), 0.0, rel_tol=0.0, abs_tol=1e-9)
+            and math.isclose(
+                float(entity.get("start_y")), -1000.0, rel_tol=0.0, abs_tol=1e-9
+            )
+            and math.isclose(float(entity.get("end_x")), 0.0, rel_tol=0.0, abs_tol=1e-9)
+            and math.isclose(
+                float(entity.get("end_y")), -1000.0, rel_tol=0.0, abs_tol=1e-9
+            )
+        )
+    except (TypeError, ValueError):
+        return None
+    if not at_sentinel:
+        return None
+
+    raw = str(entity.get("content", ""))
+    if "=" not in raw:
+        return None
+    key, value = (part.strip() for part in raw.split("=", 1))
+    if key not in _METADATA_SETTING_KEYS:
+        return None
+    return {
+        "entity_index": entity_index,
+        "key": key,
+        "value": value,
+        "raw": raw,
+    }
 
 
 def _append_parser_diagnostics(

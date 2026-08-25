@@ -265,6 +265,75 @@ def test_jww_document_to_ir_leniently_skips_unknown_entities() -> None:
     assert result.diagnostics[0].code == "JWW_UNSUPPORTED_ENTITY"
 
 
+def test_jww_internal_setting_text_is_preserved_as_metadata_not_geometry() -> None:
+    source = _document()
+    setting = {
+        "type": "TEXT",
+        "base": _base(),
+        **_text_payload("Printer_Orientation = 2"),
+        "start_x": 0.0,
+        "start_y": -1000.0,
+        "end_x": 0.0,
+        "end_y": -1000.0,
+        "size_x": 3.0,
+        "size_y": 3.0,
+    }
+    source["entities"].insert(0, setting)
+    source["metadata_settings"] = [
+        {
+            "entity_index": 0,
+            "key": "Printer_Orientation",
+            "value": "2",
+            "raw": "Printer_Orientation = 2",
+        }
+    ]
+    source["entity_counts"]["TEXT"] = 2
+
+    result = jww_document_to_ir(source)
+
+    texts = [
+        entity["text"]
+        for entity in result.document["entities"]
+        if entity["kind"] == "TEXT"
+    ]
+    assert texts == ["note"]
+    assert result.document["header"]["metadata"]["jww"]["settings"] == [
+        {
+            "entity_index": 0,
+            "key": "Printer_Orientation",
+            "value": "2",
+            "raw": "Printer_Orientation = 2",
+        }
+    ]
+    assert result.statistics["metadata_settings"] == 1
+    assert any(
+        diagnostic.code == "JWW_METADATA_SETTING_EXTRACTED"
+        and diagnostic.details
+        == {
+            "count": 1,
+            "keys": ["Printer_Orientation"],
+        }
+        for diagnostic in result.diagnostics
+    )
+
+
+def test_jww_setting_fallback_requires_sentinel_coordinates() -> None:
+    source = _document()
+    visible = {
+        "type": "TEXT",
+        "base": _base(),
+        **_text_payload("Printer_Orientation = 2"),
+    }
+    source["entities"] = [visible]
+    source["entity_counts"] = {"TEXT": 1}
+
+    result = jww_document_to_ir(source)
+
+    assert result.document["entities"][0]["text"] == "Printer_Orientation = 2"
+    assert "settings" not in result.document["header"]["metadata"]["jww"]
+    assert result.statistics["metadata_settings"] == 0
+
+
 def test_jww_generic_dimension_is_visible_in_dxf_and_mapped_one_to_many() -> None:
     imported = jww_document_to_ir(_document())
     dimension = next(

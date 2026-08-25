@@ -56,6 +56,7 @@ entity/source identifiers and structured details.
 | `DXF_IMPORT_WARNING` | warning | - | DXF import | Legacy wrapper for a DXF parser warning. |
 | `DXF_INSERT_TRANSFORM_OMITTED` | warning | skipped | DXF export | An affine INSERT transform was omitted. |
 | `DXF_LEADER_APPROXIMATED` | warning | approximated | DXF import | A LEADER entity was imported as an open polyline through its vertices; the arrowhead and the link to its annotation were omitted. |
+| `DXF_NON_XY_PLANE_PROJECTED` | warning | projected | DXF import | Axis-aligned XZ/YZ WCS geometry was projected to IR XY, with CIRCLE/ARC OCS coordinates transformed into the same plane. |
 | `DXF_R12_ELLIPSE_APPROXIMATED` | warning | approximated | DXF R12 export | ELLIPSE was approximated by a polyline. |
 | `DXF_R12_HATCH_EXPLODED` | warning | exploded | DXF R12 export | HATCH was emitted as boundary polylines. |
 | `DXF_R12_INSUNITS_OMITTED` | warning | skipped | DXF R12 export | INSUNITS was omitted from R12 output. |
@@ -75,6 +76,7 @@ entity/source identifiers and structured details.
 | `JWW_DECODE_REPLACED` | warning | normalized | JWW import | `ezjww` replaced undecodable CP932 byte sequences in a JWW string with U+FFFD (details carry field and byte offset). |
 | `JWW_ENTITY_CONVERSION_FAILED` | error | skipped | JWW import | A malformed JWW entity was skipped. |
 | `JWW_ENTITY_LIST_TRUNCATED` | error | skipped | JWW import | `ezjww` could not read the main entity list to its end (truncated upload, unknown record layout, corrupt tag); entities parsed before the error were kept, the rest and all block definitions were skipped. |
+| `JWW_METADATA_SETTING_EXTRACTED` | info | preserved_metadata | JWW import | A sentinel-positioned Jw_cad internal setting record was retained under `header.metadata.jww.settings` instead of becoming drawing TEXT. |
 | `JWW_TEXT_HEIGHT_DEFAULTED` | warning | normalized | JWW import | A non-positive text height was replaced. |
 | `JWW_UNRESOLVED_BLOCK_REFERENCE` | warning | - | JWW import | A referenced JWW block was not resolved. |
 | `JWW_UNSUPPORTED_ENTITY` | warning | skipped | JWW import | An unsupported JWW entity was skipped. |

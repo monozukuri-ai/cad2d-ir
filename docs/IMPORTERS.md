@@ -34,12 +34,13 @@ The JWW adapter consumes `ezjww.read_document()` rather than `read_dxf_document(
 | `ARC` / `CIRCLE` | `ARC`, `CIRCLE`, or `ELLIPSE` | flatness and tilt preserved |
 | `POINT` | `POINT` | temporary marker state preserved |
 | `TEXT` | `TEXT` | font, size, endpoint, and spacing metadata preserved |
+| internal setting `TEXT` at `(0, -1000)` | `header.metadata.jww.settings` | known printer/view keys remain metadata and do not affect drawing geometry |
 | `SOLID` | solid `HATCH` | quadrilateral vertex order normalized |
 | `CIRCLE_SOLID` | solid `HATCH` | polyline approximation recorded and diagnosed |
 | `BLOCK` | `INSERT` plus block table | signed scale and rotation preserved |
 | `DIMENSION` | `GENERIC DIMENSION` | line, text, SXF mode, auxiliary lines, and auxiliary points preserved in `definition.source_geometry` |
 
-JWW pen color, pen style, pen width, layer/group state, source indices, file version, memo, and paper size are retained through IR style fields, tables, provenance, or JWW metadata.
+JWW pen color, pen style, pen width, layer/group state, source indices, file version, memo, paper size, and internal printer/view settings are retained through IR style fields, tables, provenance, or JWW metadata. `JWW_METADATA_SETTING_EXTRACTED` reports the source-entity-to-metadata separation.
 
 ## DWG adapter
 
