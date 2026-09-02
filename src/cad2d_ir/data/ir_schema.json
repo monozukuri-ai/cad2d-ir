@@ -149,6 +149,7 @@
     },
 
     "Affine2D": {
+      "description": "SVG-order affine coefficients [a, b, c, d, e, f]: x' = a*x + c*y + e, y' = b*x + d*y + f.",
       "type": "array",
       "minItems": 6,
       "maxItems": 6,

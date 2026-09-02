@@ -321,7 +321,8 @@ def test_assembly_affines_use_insert_fields_or_complete_transform() -> None:
     shear_result = mi_document_to_ir(shear_document)
     shear = shear_result.document["entities"][0]
     assert shear["insert"] == pytest.approx([4.0, 5.0])
-    assert shear["transform"] == pytest.approx([1.0, 0.5, 4.0, 0.0, 1.0, 5.0])
+    # Affine2DはSVG順 [a,b,c,d,e,f] (x'=a*x+c*y+e, y'=b*x+d*y+f)
+    assert shear["transform"] == pytest.approx([1.0, 0.0, 0.5, 1.0, 4.0, 5.0])
     assert "rotation" not in shear
     assert "scale" not in shear
     validate_ir(shear_result.document, strict_jsonschema=True)

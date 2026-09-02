@@ -830,12 +830,13 @@ def _convert_instance(
     }
     decomposed = _decompose_insert_transform(transform)
     if decomposed is None:
+        # IRのAffine2DはSVG順 [a,b,c,d,e,f] (x'=a*x+c*y+e, y'=b*x+d*y+f)
         result["transform"] = [
             float(transform.a),
-            float(transform.c),
-            float(transform.tx),
             float(transform.b),
+            float(transform.c),
             float(transform.d),
+            float(transform.tx),
             float(transform.ty),
         ]
         context.preserved_semantics["complete_affine_insert"] += 1

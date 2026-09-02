@@ -61,6 +61,8 @@ class _ConversionContext:
     linetypes: dict[str, dict[str, Any]] = field(default_factory=dict)
     text_styles: dict[str, dict[str, Any]] = field(default_factory=dict)
     blocks: dict[str, dict[str, Any]] = field(default_factory=dict)
+    # 共有セル名 -> (ブロック名, 定義ローカル原点のマスター座標)
+    shared_cell_blocks: dict[str, tuple[str, list[float]]] = field(default_factory=dict)
     skipped_counts: Counter[str] = field(default_factory=Counter)
     approximation_counts: Counter[str] = field(default_factory=Counter)
     flattened_counts: Counter[str] = field(default_factory=Counter)
@@ -408,6 +410,12 @@ def _convert_entity(
     if kind == "CELL":
         return [_convert_cell(source_entity, common, context)]
 
+    if kind == "SHARED_CELL_DEFINITION":
+        return _register_shared_cell_definition(source_entity, context)
+
+    if kind == "SHARED_CELL_INSTANCE":
+        return _convert_shared_cell_instance(source_entity, common, context)
+
     if kind == "BSPLINE_CURVE":
         return [_convert_bspline(source_entity, common, context)]
 
@@ -595,6 +603,87 @@ def _convert_cell(
         "block": block_name,
         "insert": origin,
     }
+
+
+def _register_shared_cell_definition(
+    source_entity: Any,
+    context: _ConversionContext,
+) -> list[dict[str, Any]]:
+    """共有セル定義をブロックとして登録する。定義位置には何も描かない。"""
+    source_id = _source_id(source_entity)
+    raw_name = str(getattr(source_entity, "name", "") or "")
+    block_name = _unique_block_name(
+        raw_name or "SHARED_CELL", source_id, context.blocks
+    )
+    children = _convert_sequence(_children(context, source_entity), context)
+    # 定義の構成要素はセル原点まわりのローカルUOR座標で、通常のマスター変換
+    # (グローバル原点シフト込み)を経て格納される。配置時はローカル原点の
+    # マスター座標 f0 を差し引いてから配置行列を適用する。
+    local_origin = _point_from_attrs(source_entity, "origin_master", "origin_uor")
+    context.shared_cell_blocks[raw_name] = (block_name, local_origin)
+    context.blocks[block_name] = {
+        "base_point": local_origin,
+        "entities": children,
+        "metadata": {
+            "dgn": {
+                "shared_cell_name": raw_name,
+                "source_record": source_id,
+                "component_coordinate_space": "design",
+            }
+        },
+    }
+    return []
+
+
+def _convert_shared_cell_instance(
+    source_entity: Any,
+    common: dict[str, Any],
+    context: _ConversionContext,
+) -> list[dict[str, Any]]:
+    """共有セル配置を、同名定義ブロックへのアフィンINSERTに変換する。"""
+    source_id = _source_id(source_entity)
+    raw_name = str(getattr(source_entity, "name", "") or "")
+    resolved = context.shared_cell_blocks.get(raw_name)
+    if resolved is None:
+        context.skipped_counts["SHARED_CELL_INSTANCE"] += 1
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="DGN_SHARED_CELL_UNRESOLVED",
+                severity="warning",
+                message=(
+                    f"Shared cell instance references undefined cell {raw_name!r}."
+                ),
+                source_id=source_id,
+                source_kind="SHARED_CELL_INSTANCE",
+                action="skipped",
+            )
+        )
+        return []
+    block_name, local_origin = resolved
+    origin = _point_from_attrs(source_entity, "origin_master", "origin_uor")
+    rows = getattr(source_entity, "transform", ((1.0, 0.0), (0.0, 1.0)))
+    t00, t01 = float(rows[0][0]), float(rows[0][1])
+    t10, t11 = float(rows[1][0]), float(rows[1][1])
+    # 配置は p' = origin + M·(p - f0)。IRのAffine2DはSVG順[a,b,c,d,e,f]
+    # (x' = a*x + c*y + e, y' = b*x + d*y + f)なので a=t00, b=t10, c=t01, d=t11
+    translate_x = float(origin[0]) - (t00 * local_origin[0] + t01 * local_origin[1])
+    translate_y = float(origin[1]) - (t10 * local_origin[0] + t11 * local_origin[1])
+    common["metadata"]["dgn"].update(
+        {
+            "shared_cell_name": raw_name,
+            "placement_transform": [[t00, t01], [t10, t11]],
+            "component_coordinate_space": "design",
+        }
+    )
+    return [
+        {
+            **common,
+            "kind": "INSERT",
+            "block": block_name,
+            "insert": origin,
+            "transform": [t00, t10, t01, t11, translate_x, translate_y],
+        }
+    ]
 
 
 def _convert_bspline(

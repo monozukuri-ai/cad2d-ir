@@ -395,3 +395,63 @@ def test_dgn_symbol_unit_labels_map_to_ir(label: str, expected: str) -> None:
 
     assert result.document["header"]["units"] == expected
     assert result.diagnostics == []
+
+
+def test_shared_cell_definitions_become_blocks_and_instances_affine_inserts() -> None:
+    definition_line = _entity(
+        "LINE",
+        2,
+        3,
+        start_master=(0.0, 0.0),
+        end_master=(-4.0, 0.0),
+    )
+    definition = _entity(
+        "SHARED_CELL_DEFINITION",
+        1,
+        34,
+        name="ARR",
+        origin_master=(10.0, 20.0),
+        transform=((1.0, 0.0), (0.0, 1.0)),
+    )
+    placed = _entity(
+        "SHARED_CELL_INSTANCE",
+        3,
+        35,
+        name="ARR",
+        origin_master=(100.0, 200.0),
+        transform=((0.0, 2.0), (-2.0, 0.0)),
+    )
+    dangling = _entity(
+        "SHARED_CELL_INSTANCE",
+        4,
+        35,
+        name="MISSING",
+        origin_master=(0.0, 0.0),
+        transform=((1.0, 0.0), (0.0, 1.0)),
+    )
+    drawing = _Drawing((definition, placed, dangling), {1: (definition_line,)})
+
+    result = dgn_drawing_to_ir(drawing)
+
+    blocks = result.document["tables"]["blocks"]
+    (block_name,) = [name for name in blocks if "ARR" in name]
+    assert [entity["kind"] for entity in blocks[block_name]["entities"]] == ["LINE"]
+    # 定義そのものは描画エンティティを生まない
+    inserts = [
+        entity
+        for entity in result.document["entities"]
+        if entity["kind"] == "INSERT"
+    ]
+    assert len(inserts) == 1
+    insert = inserts[0]
+    assert insert["block"] == block_name
+    # Affine2DはSVG順[a,b,c,d,e,f]。平行移動は origin - M·f0
+    # (f0=(10,20), M=[[0,2],[-2,0]] → e=100-(0*10+2*20)=60, f=200-(-2*10+0*20)=220)
+    assert insert["transform"] == pytest.approx([0.0, -2.0, 2.0, 0.0, 60.0, 220.0])
+    unresolved = [
+        diagnostic
+        for diagnostic in result.diagnostics
+        if diagnostic.code == "DGN_SHARED_CELL_UNRESOLVED"
+    ]
+    assert len(unresolved) == 1
+    validate_ir(result.document, strict_jsonschema=True)
