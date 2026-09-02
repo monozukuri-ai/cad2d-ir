@@ -3553,7 +3553,19 @@ def _append_entity_output(
 
 
 def _next_output_index(entity_map: list[EntityMapEntry]) -> int:
-    return sum(entry.get("dxf_type") is not None for entry in entity_map)
+    """次に出力される(描画済み)エンティティの0始まりindex。
+
+    entity_mapは_append_entity_outputだけが伸ばす追記専用リストなので、
+    直前エントリのindexから O(1) で導ける。全走査のsum()だと10万要素級の
+    図面でO(n²)になり、DXF書き出しだけで数百秒かかっていた。
+    """
+    if not entity_map:
+        return 0
+    last = entity_map[-1]
+    index = last.get("index")
+    if not isinstance(index, int):
+        return sum(entry.get("dxf_type") is not None for entry in entity_map)
+    return index + 1 if last.get("dxf_type") is not None else index
 
 
 def _render_entity(

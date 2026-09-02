@@ -60,6 +60,9 @@ class ImportOptions:
     strict: bool = True
     curve_segments: int = 96
     encoding: str = "auto"
+    # バイト単位の出所詳細(source.metadataのoffset/opcode等)を要素ごとに残すか。
+    # 10万要素級のDWFでは辞書シェルだけで数十MBになるため既定はオフ
+    debug_provenance: bool = False
 
     def __post_init__(self) -> None:
         if not 8 <= self.curve_segments <= 4096:

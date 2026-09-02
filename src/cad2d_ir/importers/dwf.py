@@ -60,7 +60,24 @@ class _ConversionContext:
     skipped_sources: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     approximation_counts: Counter[str] = field(default_factory=Counter)
     appearance_effect_counts: Counter[str] = field(default_factory=Counter)
+    # 内容が同じStyleメタデータ辞書を共有する。DWFのStyleは要素ごとに別
+    # オブジェクトだが値の種類は少なく、10万要素級では複製が数百MBになる
+    style_metadata_cache: dict[tuple[tuple[str, Any], ...], dict[str, Any]] = field(
+        default_factory=dict
+    )
     next_entity_number: int = 1
+
+    def shared_style_metadata(self, style: Any) -> dict[str, Any]:
+        value = _style_metadata(style)
+        try:
+            key = tuple(sorted((k, _hashable(v)) for k, v in value.items()))
+        except TypeError:
+            return value
+        cached = self.style_metadata_cache.get(key)
+        if cached is not None:
+            return cached
+        self.style_metadata_cache[key] = value
+        return value
 
     def allocate_id(self) -> str:
         entity_id = f"DWF_E{self.next_entity_number:08d}"
@@ -705,23 +722,28 @@ def _entity_common(
     context.appearance_effect_counts.update(
         {name: count for name, count in appearance_effects.items() if count > 0}
     )
+    # シート名・単位などの定数は文書メタデータのsheets一覧にあり、要素ごとには
+    # 動的な最小限だけ持つ(entity_indexはsource.idの「区:流:番」と重複するため
+    # 省略)。効果カウントは非ゼロのときだけ載せる
     metadata = {
         "sheet_index": sheet_index,
-        "sheet_name": str(getattr(sheet, "name", f"Sheet {sheet_index + 1}")),
-        "sheet_title": getattr(sheet, "title", None),
-        "sheet_units": getattr(sheet, "units", None),
         "section_index": getattr(source_entity, "section_index", None),
         "stream_index": getattr(source_entity, "stream_index", None),
-        "entity_index": getattr(source_entity, "entity_index", None),
         "resource_href": getattr(source_entity, "resource_href", None),
         "resource_role": getattr(source_entity, "resource_role", None),
         "is_markup": bool(getattr(source_entity, "is_markup", False)),
-        "style": _style_metadata(style),
-        "clip_count": appearance_effects["clips"],
-        "opacity_mask_count": appearance_effects["opacity_masks"],
-        "compositing_group_count": appearance_effects["compositing_groups"],
-        "glyph_outline_count": len(getattr(source_entity, "glyph_outline", ()) or ()),
+        "style": context.shared_style_metadata(style),
     }
+    for effect_name, effect_key in (
+        ("clips", "clip_count"),
+        ("opacity_masks", "opacity_mask_count"),
+        ("compositing_groups", "compositing_group_count"),
+    ):
+        if appearance_effects[effect_name]:
+            metadata[effect_key] = appearance_effects[effect_name]
+    glyph_outline_count = len(getattr(source_entity, "glyph_outline", ()) or ())
+    if glyph_outline_count:
+        metadata["glyph_outline_count"] = glyph_outline_count
     colored_points = tuple(getattr(source_entity, "colored_points", ()))
     if colored_points:
         metadata["colored_points"] = [
@@ -731,22 +753,23 @@ def _entity_common(
             }
             for item in colored_points
         ]
+    source_info: dict[str, Any] = {
+        "format": "dwf",
+        "id": _source_id(source_entity),
+        "kind": _kind(source_entity),
+    }
+    if context.options.debug_provenance:
+        source_info["metadata"] = {
+            "offset": getattr(source, "offset", None),
+            "length": getattr(source, "length", None),
+            "opcode": getattr(source, "opcode", None),
+        }
     result: dict[str, Any] = {
         "id": context.allocate_id(),
         "layer": layer_name,
         "linetype": linetype,
         "visible": bool(getattr(style, "visible", True)),
-        "source": {
-            "format": "dwf",
-            "id": _source_id(source_entity),
-            "kind": _kind(source_entity),
-            "metadata": {
-                "resource": getattr(source_entity, "resource_href", None),
-                "offset": getattr(source, "offset", None),
-                "length": getattr(source, "length", None),
-                "opcode": getattr(source, "opcode", None),
-            },
-        },
+        "source": source_info,
         "metadata": {"dwf": metadata},
     }
     if color is not None:
@@ -1085,6 +1108,14 @@ def _with_fill_color(common: dict[str, Any], source_entity: Any) -> dict[str, An
     if color is not None:
         result["color"] = color
     return result
+
+
+def _hashable(value: Any) -> Any:
+    if isinstance(value, dict):
+        return tuple(sorted((k, _hashable(v)) for k, v in value.items()))
+    if isinstance(value, (list, tuple)):
+        return tuple(_hashable(v) for v in value)
+    return value
 
 
 def _style_metadata(style: Any) -> dict[str, Any]:
