@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.9
+
+- DXF import decodes AutoCAD text escapes for characters outside the file
+  codepage: `\U+XXXX` (Unicode) and the MIF form `\M+nXXXX` (CJK codepages).
+  Writers such as ezjww emit these for non-ASCII text in `ANSI_1252` files;
+  they previously reached the IR as literal escape sequences.
+- The `jww` / `all` extras accept `ezjww>=0.3` (ezjww 0.3.0 adds JWC reading;
+  the JWW reader API used by the importer is unchanged).
+- `source.format` accepts `jwc` so converters that read DOS-era Jw_cad JWC
+  files through an intermediate DXF can record the real provenance.
+
 ## 0.9.5
 
 - DWG import now consumes native entities as a stream instead of retaining a

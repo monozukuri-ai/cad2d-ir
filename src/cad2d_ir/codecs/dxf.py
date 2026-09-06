@@ -29,6 +29,11 @@ _CODEPAGE_ENCODINGS = {
     "DOS932": "cp932",
     "UTF-8": "utf-8",
 }
+# AutoCAD escapes for characters outside the file codepage: ``\U+XXXX`` (Unicode)
+# and the older MIF form ``\M+nXXXX`` (a double-byte code in the CJK codepage
+# selected by ``n``). Writers such as ezjww emit these in ANSI_1252 files.
+_DXF_TEXT_ESCAPE = re.compile(r"\\(?:U\+([0-9A-Fa-f]{4})|M\+([1-5])([0-9A-Fa-f]{4}))")
+_MIF_ENCODINGS = {"1": "cp932", "2": "cp950", "3": "cp949", "4": "cp1361", "5": "cp936"}
 
 _ENTITY_COMMON_CODES = {6, 8, 48, 60, 62, 370, 420}
 _ENTITY_SUBCLASSES: dict[str, tuple[str, ...]] = {
@@ -395,6 +400,19 @@ def dxf_to_ir(
     )
 
 
+def _decode_dxf_text_escapes(value: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        unicode_hex, mif_page, mif_hex = match.groups()
+        if unicode_hex is not None:
+            code_point = int(unicode_hex, 16)
+            if 0xD800 <= code_point <= 0xDFFF:
+                return match.group(0)
+            return chr(code_point)
+        return bytes.fromhex(mif_hex).decode(_MIF_ENCODINGS[mif_page], errors="replace")
+
+    return _DXF_TEXT_ESCAPE.sub(replace, value)
+
+
 def _pairs_to_ir(
     pairs: list[DXFPair],
     *,
@@ -403,6 +421,12 @@ def _pairs_to_ir(
     warnings: list[str] | None,
     diagnostics: list[ImportDiagnostic] | None,
 ) -> dict[str, Any]:
+    pairs = [
+        (code, _decode_dxf_text_escapes(value))
+        if "\\U+" in value or "\\M+" in value
+        else (code, value)
+        for code, value in pairs
+    ]
     sections = _split_sections(pairs)
     if not sections:
         # Lenient pairing must not turn arbitrary bytes into an empty drawing.

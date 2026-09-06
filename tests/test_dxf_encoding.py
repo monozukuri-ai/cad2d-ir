@@ -192,3 +192,62 @@ def test_r12_file_writer_rejects_encoding_that_conflicts_with_codepage(
             target_version="AC1009",
             encoding="utf-8",
         )
+
+
+def test_text_escapes_outside_codepage_are_decoded() -> None:
+    from cad2d_ir import convert_dxf_text_to_ir
+
+    mif = "".join(f"\\M+1{ch.encode('cp932').hex().upper()}" for ch in "寸法")
+    dxf_text = "\n".join(
+        [
+            "0",
+            "SECTION",
+            "2",
+            "HEADER",
+            "9",
+            "$DWGCODEPAGE",
+            "3",
+            "ANSI_1252",
+            "0",
+            "ENDSEC",
+            "0",
+            "SECTION",
+            "2",
+            "ENTITIES",
+            "0",
+            "TEXT",
+            "8",
+            "\\U+56F3\\U+9762",
+            "10",
+            "0",
+            "20",
+            "0",
+            "40",
+            "1",
+            "1",
+            "\\U+65E5\\U+672C\\U+8A9E ABC",
+            "0",
+            "TEXT",
+            "8",
+            "0",
+            "10",
+            "0",
+            "20",
+            "0",
+            "40",
+            "1",
+            "1",
+            mif + " \\U+D83D",
+            "0",
+            "ENDSEC",
+            "0",
+            "EOF",
+        ]
+    )
+
+    imported = convert_dxf_text_to_ir(dxf_text)
+    entities = imported.document["entities"]
+    assert entities[0]["layer"] == "図面"
+    assert entities[0]["text"] == "日本語 ABC"
+    # MIF (\M+1 = cp932) decodes; a lone surrogate escape stays literal
+    assert entities[1]["text"] == "寸法 \\U+D83D"
