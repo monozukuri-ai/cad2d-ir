@@ -63,6 +63,12 @@ class ImportOptions:
     # バイト単位の出所詳細(source.metadataのoffset/opcode等)を要素ごとに残すか。
     # 10万要素級のDWFでは辞書シェルだけで数十MBになるため既定はオフ
     debug_provenance: bool = False
+    # 要素ごとの出所(source)と元形式の属性メタデータ(metadata.jww等)を残すか。
+    # JWWでは1要素あたり約1.5KB(IRの6割)がこの2つで、表示・書き出しだけが目的の
+    # 大きな図面(数十万要素)ではオフにするとピークメモリがほぼ半分になる。
+    # 文書レベルのsource/header.metadata、寸法のdefinition、診断は影響しない。
+    # 現在はJWWインポータが対応
+    entity_provenance: bool = True
 
     def __post_init__(self) -> None:
         if not 8 <= self.curve_segments <= 4096:

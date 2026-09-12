@@ -1,6 +1,6 @@
 [project]
 name = "cad2d-ir"
-version = "0.9.9"
+version = "0.9.10"
 description = "Intermediate representation (IR) and importers for 2D CAD formats"
 readme = "README.md"
 license = "MIT"

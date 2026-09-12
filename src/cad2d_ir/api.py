@@ -123,8 +123,13 @@ def convert_file_to_ir(
     strict: bool = True,
     curve_segments: int = 96,
     encoding: str = "auto",
+    entity_provenance: bool = True,
 ) -> ImportResult:
-    """Convert a supported CAD file to IR using format detection or an explicit adapter."""
+    """Convert a supported CAD file to IR using format detection or an explicit adapter.
+
+    ``entity_provenance=False`` omits per-entity ``source``/``metadata`` (JWW),
+    roughly halving peak memory for render-only imports of very large drawings.
+    """
     return import_file(
         path,
         source_format=source_format,
@@ -134,6 +139,7 @@ def convert_file_to_ir(
             strict=strict,
             curve_segments=curve_segments,
             encoding=encoding,
+            entity_provenance=entity_provenance,
         ),
     )
 

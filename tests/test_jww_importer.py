@@ -401,3 +401,51 @@ def test_jww_parser_diagnostics_are_mapped_to_stable_codes() -> None:
         "error": "unexpected EOF while reading bytes",
     }
     validate_ir(result.document)
+
+
+def test_entity_provenance_can_be_omitted_for_render_only_imports() -> None:
+    full = jww_document_to_ir(
+        _document(), source_name="fixture.jww", source_sha256="a" * 64
+    )
+    slim = jww_document_to_ir(
+        _document(),
+        source_name="fixture.jww",
+        source_sha256="a" * 64,
+        options=ImportOptions(entity_provenance=False),
+    )
+    validate_ir(slim.document)
+    assert slim.statistics == full.statistics
+    assert slim.diagnostics == full.diagnostics
+    assert slim.document["source"] == full.document["source"]
+    assert slim.document["header"] == full.document["header"]
+    assert len(slim.document["entities"]) == len(full.document["entities"])
+    for lean, rich in zip(slim.document["entities"], full.document["entities"]):
+        assert "source" not in lean, lean["kind"]
+        assert "metadata" not in lean, lean["kind"]
+        assert "source" in rich and "metadata" in rich
+        # Geometry, styling and dimension definitions are unchanged.
+        stripped = {k: v for k, v in rich.items() if k not in {"source", "metadata"}}
+        assert lean == stripped, lean["kind"]
+
+
+def test_file_style_consumption_releases_raw_entities_without_changing_results() -> (
+    None
+):
+    intact = _document()
+    reference = jww_document_to_ir(
+        intact, source_name="fixture.jww", source_sha256="a" * 64
+    )
+    assert all(entity is not None for entity in intact["entities"])
+
+    raw = _document()
+    consumed = jww_document_to_ir(
+        raw, source_name="fixture.jww", source_sha256="a" * 64, consume_source=True
+    )
+    assert consumed.document == reference.document
+    assert consumed.statistics == reference.statistics
+    assert consumed.diagnostics == reference.diagnostics
+    # Converted raw entities are released; the list keeps its length for statistics.
+    assert len(raw["entities"]) == reference.statistics["source_entities"]
+    assert raw["entities"].count(None) == reference.statistics[
+        "converted_entities"
+    ] + sum(reference.statistics["skipped_entity_counts"].values())

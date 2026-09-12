@@ -13,7 +13,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.9.7"
+version = "0.9.10"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
@@ -63,8 +63,8 @@ requires-dist = [
     { name = "ezdwf", marker = "extra == 'dwf'", specifier = ">=0.0.1,<0.1" },
     { name = "ezdwg", marker = "extra == 'all'", specifier = ">=0.11,<1" },
     { name = "ezdwg", marker = "extra == 'dwg'", specifier = ">=0.11,<1" },
-    { name = "ezjww", marker = "extra == 'all'", specifier = ">=0.2.6,<0.3" },
-    { name = "ezjww", marker = "extra == 'jww'", specifier = ">=0.2.6,<0.3" },
+    { name = "ezjww", marker = "extra == 'all'", specifier = ">=0.2.6,<0.4" },
+    { name = "ezjww", marker = "extra == 'jww'", specifier = ">=0.2.6,<0.4" },
     { name = "ezmi2d", marker = "extra == 'all'", specifier = ">=0.2,<0.3" },
     { name = "ezmi2d", marker = "extra == 'mi'", specifier = ">=0.2,<0.3" },
     { name = "ezsxf", marker = "extra == 'all'", specifier = ">=0.1,<0.2" },

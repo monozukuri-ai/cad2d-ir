@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 import hashlib
 import math
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Any, Mapping, Sequence, cast
 
 from cad2d_ir.importers.base import (
     ImportDiagnostic,
@@ -99,11 +99,13 @@ def convert_jww_file_to_ir(
 
     source_path = Path(path)
     jww_document = read_document(str(source_path))
+    # このドキュメントは当関数だけが参照するので、変換済みの生要素を逐次解放できる
     return jww_document_to_ir(
         jww_document,
         source_name=source_path.name,
         source_sha256=_sha256_file(source_path),
         options=options,
+        consume_source=True,
     )
 
 
@@ -113,8 +115,15 @@ def jww_document_to_ir(
     source_name: str | None = None,
     source_sha256: str | None = None,
     options: ImportOptions | None = None,
+    consume_source: bool = False,
 ) -> ImportResult:
-    """Convert an ``ezjww.read_document`` result to CAD 2D IR."""
+    """Convert an ``ezjww.read_document`` result to CAD 2D IR.
+
+    ``consume_source=True`` releases each raw entity as soon as it has been
+    converted (the caller must not reuse ``jww_document["entities"]`` afterwards).
+    pyo3 builds about 1.4 KB of dictionaries per JWW entity, so holding the raw
+    document and the IR at the same time doubles the peak for large drawings.
+    """
     import_options = options or ImportOptions()
     header = _mapping(jww_document.get("header"), "header")
     layers, layer_names = _build_layers(header)
@@ -127,21 +136,29 @@ def jww_document_to_ir(
         block_names=block_names,
     )
 
-    source_entities = _mapping_sequence(jww_document.get("entities", []), "entities")
+    raw_entities = jww_document.get("entities", [])
+    if consume_source and isinstance(raw_entities, list):
+        for index, item in enumerate(raw_entities):
+            _mapping(item, f"entities[{index}]")
+        source_entities: Sequence[Any] = raw_entities
+    else:
+        source_entities = _mapping_sequence(raw_entities, "entities")
     metadata_settings = _collect_metadata_settings(jww_document, source_entities)
     metadata_entity_indexes = {
         int(setting["entity_index"]) for setting in metadata_settings
     }
+    # 文字スタイルの収集は生要素を読むので、逐次解放する変換ループより前に済ませる
+    text_styles = _collect_text_styles(
+        jww_document, skipped_entity_indexes=metadata_entity_indexes
+    )
     entities = _convert_entity_sequence(
         source_entities,
         context,
         source_prefix="entities",
         skipped_indexes=metadata_entity_indexes,
+        consume=consume_source,
     )
     blocks = _convert_blocks(block_defs, context)
-    text_styles = _collect_text_styles(
-        jww_document, skipped_entity_indexes=metadata_entity_indexes
-    )
 
     tables: dict[str, Any] = {
         "layers": context.layers,
@@ -311,14 +328,17 @@ def _convert_blocks(
 
 
 def _convert_entity_sequence(
-    source_entities: Sequence[Mapping[str, Any]],
+    source_entities: Sequence[Any],
     context: _ConversionContext,
     *,
     source_prefix: str,
     skipped_indexes: set[int] | None = None,
+    consume: bool = False,
 ) -> list[dict[str, Any]]:
     converted: list[dict[str, Any]] = []
     for index, source_entity in enumerate(source_entities):
+        if source_entity is None:
+            continue
         if skipped_indexes is not None and index in skipped_indexes:
             continue
         source_id = f"{source_prefix}[{index}]"
@@ -326,6 +346,9 @@ def _convert_entity_sequence(
         if entity is not None:
             converted.append(entity)
             context.converted_counts[str(entity["kind"])] += 1
+        if consume:
+            # 呼び出し元が所有するリストの要素を解放する(長さは統計のため保つ)
+            cast(list[Any], source_entities)[index] = None
     return converted
 
 
@@ -446,8 +469,10 @@ def _entity_common(
         "layer": layer_name,
         "linetype": _LINE_TYPES.get(pen_style, "BYLAYER"),
         "color": _map_color(int(base.get("pen_color", 0))),
-        "source": {"format": "jww", "id": source_id, "kind": source_kind},
-        "metadata": {
+    }
+    if context.options.entity_provenance:
+        common["source"] = {"format": "jww", "id": source_id, "kind": source_kind}
+        common["metadata"] = {
             "jww": {
                 "group": int(base.get("group", 0)),
                 "pen_style": pen_style,
@@ -457,15 +482,24 @@ def _entity_common(
                 "layer_group": layer_group,
                 "flag": int(base.get("flag", 0)),
             }
-        },
-    }
+        }
     if pen_width > 0:
         common["lineweight_mm"] = min(pen_width, 211) / 100.0
     custom_color = source_entity.get("color")
     if isinstance(custom_color, int):
         common["color"] = f"#{custom_color & 0xFFFFFF:06X}"
-        common["metadata"]["jww"]["custom_color"] = custom_color
+        jww_metadata = _jww_metadata(common)
+        if jww_metadata is not None:
+            jww_metadata["custom_color"] = custom_color
     return common
+
+
+def _jww_metadata(entity: dict[str, Any]) -> dict[str, Any] | None:
+    """``entity["metadata"]["jww"]``, or ``None`` when entity provenance is off."""
+    metadata = entity.get("metadata")
+    if metadata is None:
+        return None
+    return metadata.setdefault("jww", {})
 
 
 def _convert_arc(
@@ -568,16 +602,18 @@ def _convert_text(
     size_x = float(source.get("size_x", 0.0))
     if size_x > 0.0:
         result["width_factor"] = size_x / height
-    result["metadata"]["jww"].update(
-        {
-            "end": [_number(source, "end_x"), _number(source, "end_y")],
-            "text_type": int(source.get("text_type", 0)),
-            "size_x": size_x,
-            "size_y": float(source.get("size_y", 0.0)),
-            "spacing": float(source.get("spacing", 0.0)),
-            "font_name": str(source.get("font_name", "")),
-        }
-    )
+    jww_metadata = _jww_metadata(result)
+    if jww_metadata is not None:
+        jww_metadata.update(
+            {
+                "end": [_number(source, "end_x"), _number(source, "end_y")],
+                "text_type": int(source.get("text_type", 0)),
+                "size_x": size_x,
+                "size_y": float(source.get("size_y", 0.0)),
+                "spacing": float(source.get("spacing", 0.0)),
+                "font_name": str(source.get("font_name", "")),
+            }
+        )
     return result
 
 
@@ -699,7 +735,9 @@ def _convert_block_reference(
     rotation = float(source.get("rotation", 0.0))
     if rotation != 0.0:
         result["rotation"] = math.degrees(rotation)
-    result["metadata"]["jww"]["def_number"] = number
+    jww_metadata = _jww_metadata(result)
+    if jww_metadata is not None:
+        jww_metadata["def_number"] = number
     return result
 
 
@@ -726,7 +764,9 @@ def _convert_dimension(
     text_start = [_number(text, "start_x"), _number(text, "start_y")]
     text_end = [_number(text, "end_x"), _number(text, "end_y")]
     sxf_mode = source.get("sxf_mode")
-    common["metadata"]["jww"]["sxf_mode"] = sxf_mode
+    jww_metadata = _jww_metadata(common)
+    if jww_metadata is not None:
+        jww_metadata["sxf_mode"] = sxf_mode
     return {
         **common,
         "kind": "DIMENSION",

@@ -10,6 +10,12 @@
   the JWW reader API used by the importer is unchanged).
 - `source.format` accepts `jwc` so converters that read DOS-era Jw_cad JWC
   files through an intermediate DXF can record the real provenance.
+- JWW import peak memory: `ImportOptions.entity_provenance=False`
+  (`convert_file_to_ir(..., entity_provenance=False)`) omits per-entity
+  `source`/`metadata.jww`, which were about 1.5 KB of the 2.5 KB per entity, and
+  file imports release each raw `ezjww` entity as soon as it is converted instead
+  of holding the raw document and the IR at the same time. A 32 MB JWW with
+  570k entities previously needed more than 1.5 GB to render.
 
 ## 0.9.5
 
