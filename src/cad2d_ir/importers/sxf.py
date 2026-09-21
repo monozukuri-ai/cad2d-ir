@@ -337,6 +337,13 @@ def _convert_path(primitive: Any, context: _ConversionContext) -> dict[str, Any]
         raise ValueError("path requires at least two points")
 
     common = _primitive_common(primitive, source_kind, context)
+    # ezsxf >= 0.1.2 attaches the exact circle/arc/ellipse to curved paths (already
+    # transformed through compound-figure placements). Emit it as a true curve so
+    # DXF output stays editable; older ezsxf falls through to the sampled polyline.
+    curve_entity = _curve_entity(_attr(primitive, "curve", None), common)
+    if curve_entity is not None:
+        curve_entity["metadata"]["sxf"]["source_id"] = source_id
+        return curve_entity
     if len(points) == 2 and not closed:
         return {**common, "kind": "LINE", "p1": points[0], "p2": points[1]}
 
@@ -358,6 +365,127 @@ def _convert_path(primitive: Any, context: _ConversionContext) -> dict[str, Any]
         context.approximation_counts[approximation_kind] += 1
     entity["metadata"]["sxf"]["source_id"] = source_id
     return entity
+
+
+_TAU = 2.0 * math.pi
+_CURVE_TOLERANCE = 1.0e-9
+
+
+def _curve_entity(curve: Any, common: dict[str, Any]) -> dict[str, Any] | None:
+    """Convert an ``ezsxf`` exact curve to an IR CIRCLE, ARC or ELLIPSE.
+
+    The curve is ``center + u*cos(t) + v*sin(t)`` for ``t`` from ``start_param`` to
+    ``end_param``; ``u``/``v`` are conjugate semi-diameters, so a circle placed with
+    unequal X/Y ratios arrives here as a (possibly sheared) ellipse. Returns ``None``
+    when the curve is missing or degenerate and the sampled polyline should be used.
+    """
+    if curve is None:
+        return None
+    try:
+        center = _point(_attr(curve, "center"))
+        u = _point(_attr(curve, "axis_u"))
+        v = _point(_attr(curve, "axis_v"))
+        start = float(_attr(curve, "start_param"))
+        end = float(_attr(curve, "end_param"))
+    except (TypeError, ValueError, KeyError, IndexError):
+        return None
+    values = (*center, *u, *v, start, end)
+    if not all(math.isfinite(value) for value in values):
+        return None
+
+    length_u = math.hypot(u[0], u[1])
+    length_v = math.hypot(v[0], v[1])
+    scale = max(length_u, length_v)
+    determinant = u[0] * v[1] - u[1] * v[0]
+    if scale <= _EPSILON or abs(determinant) <= _CURVE_TOLERANCE * scale * scale:
+        return None
+    orientation = 1.0 if determinant > 0.0 else -1.0
+    sweep = end - start
+    is_full = (
+        bool(_attr(curve, "closed", False)) or abs(sweep) >= _TAU - _CURVE_TOLERANCE
+    )
+    if not is_full and abs(sweep) <= _CURVE_TOLERANCE:
+        return None
+    # Parameter t increases counter-clockwise only when (u, v) is right-handed.
+    runs_ccw = orientation * sweep > 0.0
+
+    is_circle = (
+        abs(length_u - length_v) <= _CURVE_TOLERANCE * scale
+        and abs(u[0] * v[0] + u[1] * v[1]) <= _CURVE_TOLERANCE * scale * scale
+    )
+    if is_circle:
+        radius = (length_u + length_v) * 0.5
+        if is_full:
+            return {**common, "kind": "CIRCLE", "center": center, "radius": radius}
+        base = math.atan2(u[1], u[0])
+        first = math.degrees(base + orientation * start)
+        last = math.degrees(base + orientation * end)
+        if not runs_ccw:
+            first, last = last, first
+        return {
+            **common,
+            "kind": "ARC",
+            "center": center,
+            "radius": radius,
+            "start_angle": _normalize_degrees(first),
+            "end_angle": _normalize_degrees(last),
+            "ccw": True,
+        }
+
+    # Principal axes of the ellipse spanned by the conjugate semi-diameters:
+    # eigen-decomposition of M*M^T with M = [u v].
+    a = u[0] * u[0] + v[0] * v[0]
+    b = u[0] * u[1] + v[0] * v[1]
+    c = u[1] * u[1] + v[1] * v[1]
+    mean = (a + c) * 0.5
+    spread = math.hypot((a - c) * 0.5, b)
+    major_squared = mean + spread
+    minor_squared = mean - spread
+    if major_squared <= 0.0 or minor_squared <= 0.0:
+        return None
+    major = math.sqrt(major_squared)
+    minor = math.sqrt(minor_squared)
+    if abs(b) > _EPSILON * major_squared:
+        direction = (major_squared - c, b)
+    elif a >= c:
+        direction = (1.0, 0.0)
+    else:
+        direction = (0.0, 1.0)
+    norm = math.hypot(direction[0], direction[1])
+    if norm <= 0.0:
+        return None
+    axis = (direction[0] / norm, direction[1] / norm)
+    normal = (-axis[1], axis[0])
+    ratio = min(1.0, minor / major)
+
+    def ellipse_param(t: float) -> float:
+        dx = u[0] * math.cos(t) + v[0] * math.sin(t)
+        dy = u[1] * math.cos(t) + v[1] * math.sin(t)
+        return math.atan2(
+            (dx * normal[0] + dy * normal[1]) / minor,
+            (dx * axis[0] + dy * axis[1]) / major,
+        )
+
+    if is_full:
+        start_param, end_param = 0.0, _TAU
+    else:
+        first = ellipse_param(start if runs_ccw else end) % _TAU
+        start_param, end_param = first, first + abs(sweep)
+    return {
+        **common,
+        "kind": "ELLIPSE",
+        "center": center,
+        "major_axis": [major * axis[0], major * axis[1]],
+        "ratio": ratio,
+        "start_param": start_param,
+        "end_param": end_param,
+        "ccw": True,
+    }
+
+
+def _normalize_degrees(value: float) -> float:
+    normalized = value % 360.0
+    return 0.0 if math.isclose(normalized, 360.0, abs_tol=1e-12) else normalized
 
 
 def _convert_fill(primitive: Any, context: _ConversionContext) -> dict[str, Any]:

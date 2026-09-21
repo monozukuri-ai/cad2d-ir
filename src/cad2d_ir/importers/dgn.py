@@ -493,7 +493,7 @@ def _convert_text(
     common: dict[str, Any],
     context: _ConversionContext,
 ) -> dict[str, Any]:
-    raw = bytes(getattr(source_entity, "text_bytes"))
+    raw = _unpack_wide_text(bytes(getattr(source_entity, "text_bytes")))
     selected_encoding = context.text_encoding
     try:
         text = raw.decode(selected_encoding)
@@ -886,11 +886,43 @@ def _dgn_text_samples(source_entities: Iterable[Any]) -> tuple[bytes, ...]:
         if _kind(source_entity) != "TEXT":
             continue
         try:
-            samples.append(bytes(getattr(source_entity, "text_bytes")))
+            samples.append(
+                _unpack_wide_text(bytes(getattr(source_entity, "text_bytes")))
+            )
         except (AttributeError, TypeError, ValueError):
             # Leave malformed text handling to the normal per-entity conversion path.
             continue
     return tuple(samples)
+
+
+_WIDE_TEXT_MARKER = b"\xff\xfd"
+
+
+def _unpack_wide_text(raw: bytes) -> bytes:
+    """Undo MicroStation's 16-bit text storage so the codepage decoder can read it.
+
+    Localised MicroStation (Japanese drawings in practice) stores a string that
+    contains multi-byte characters as the marker ``FF FD`` followed by one
+    little-endian 16-bit word per character: a double-byte character is the word
+    ``lead << 8 | trail`` and a single-byte character has a zero high byte. The
+    bytes are therefore swapped relative to the codepage (``97 A7`` is stored as
+    ``A7 97``) and would otherwise decode as mojibake or force the whole file onto
+    the latin-1 fallback.
+    """
+    if not raw.startswith(_WIDE_TEXT_MARKER):
+        return raw
+    body = raw[len(_WIDE_TEXT_MARKER) :]
+    unpacked = bytearray()
+    for index in range(0, len(body) - 1, 2):
+        low, high = body[index], body[index + 1]
+        if high:
+            unpacked.append(high)
+            unpacked.append(low)
+        elif low:
+            unpacked.append(low)
+    if len(body) % 2 and body[-1]:
+        unpacked.append(body[-1])
+    return bytes(unpacked)
 
 
 def _select_dgn_text_encoding(

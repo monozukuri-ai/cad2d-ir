@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.11
+
+- SXF (SFC/P21) import keeps circles, arcs and ellipses as IR `CIRCLE` / `ARC` /
+  `ELLIPSE` entities instead of sampled `LWPOLYLINE`s. `ezsxf` 0.1.2 attaches the
+  exact curve to each curved path, already transformed through compound-figure
+  placements; a placement with unequal X/Y ratios turns a circle into an
+  `ELLIPSE` (principal axes are recovered from the conjugate semi-diameters) and
+  a mirrored placement flips the arc direction. DXF output of SFC drawings is
+  therefore editable again: a real drawing with 2,057 arcs previously produced
+  2,057 polylines. Splines and clothoids are still approximated, and with
+  `ezsxf` < 0.1.2 the importer falls back to the sampled polyline as before.
+- DGN (V7) text: strings stored in MicroStation's 16-bit form (`FF FD` marker
+  followed by one little-endian word per character, used by Japanese drawings for
+  multi-byte text) are unpacked before codepage decoding. They previously came
+  out as mojibake and pushed the whole file onto the latin-1 fallback.
+
 ## 0.9.9
 
 - DXF import decodes AutoCAD text escapes for characters outside the file

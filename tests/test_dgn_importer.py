@@ -290,6 +290,28 @@ def test_dgn_auto_text_encoding_is_probed_once_for_the_whole_file() -> None:
     }
 
 
+def test_dgn_wide_text_marker_is_unpacked_before_decoding() -> None:
+    # 本番の実ファイル(日本語版 MicroStation): 多バイト文字を含む文字列は FF FD の後に
+    # 1文字16ビット(リトルエンディアン)で入る。"立面図-2" は A7 97 CA 96 7D 90 2D 00 32 00
+    wide = b"\xff\xfd\xa7\x97\xca\x96\x7d\x90\x2d\x00\x32\x00"
+    drawing = _Drawing(
+        (
+            _text_entity(1, b"1FL"),
+            _text_entity(2, wide),
+            _text_entity(3, "寸法".encode("cp932")),
+        ),
+        {},
+    )
+
+    result = dgn_drawing_to_ir(drawing)
+
+    texts = [e["text"] for e in result.document["entities"] if e["kind"] == "TEXT"]
+    assert texts == ["1FL", "立面図-2", "寸法"]
+    # 以前は FF FD が cp932 として不正で、ファイル全体が latin-1 に落ちていた
+    assert result.statistics["encoding_source"] == "cp932-probe"
+    assert "DGN_TEXT_DECODE_REPLACED" not in {d.code for d in result.diagnostics}
+
+
 def test_dgn_auto_text_encoding_falls_back_to_latin1() -> None:
     drawing = _Drawing((_text_entity(1, b"\x82"),), {})
     drawing.design_settings.master_unit_name = "mu"
@@ -438,9 +460,7 @@ def test_shared_cell_definitions_become_blocks_and_instances_affine_inserts() ->
     assert [entity["kind"] for entity in blocks[block_name]["entities"]] == ["LINE"]
     # 定義そのものは描画エンティティを生まない
     inserts = [
-        entity
-        for entity in result.document["entities"]
-        if entity["kind"] == "INSERT"
+        entity for entity in result.document["entities"] if entity["kind"] == "INSERT"
     ]
     assert len(inserts) == 1
     insert = inserts[0]
