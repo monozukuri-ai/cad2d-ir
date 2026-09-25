@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.10.0
+
+- New IDW (Autodesk Inventor drawing) importer behind the `idw` extra
+  (`inventor-kit>=0.6,<0.7`, Python 3.11+). It maps the saved sheet display
+  (`inventor_kit.read_drawing_file`) directly to IR: polylines, affine ellipse
+  arcs (exact `CIRCLE`/`ARC`/`ELLIPSE` recovery through a 2x2 SVD), filled arcs
+  and triangle batches as solid `HATCH`, and text with cap-height sizing,
+  line splitting and AIGDT symbol mapping. Inventor's internal centimetres are
+  scaled to millimetres and disclosed (`IDW_UNITS_ASSUMED_CM`); multiple
+  sheets are tiled along +X; raster view caches and image placements stay in
+  `source.metadata.idw` with `IDW_IMAGE_NOT_IN_IR` / `IDW_VIEW_RASTER_ONLY`.
+  `.idw` dispatches through `convert_file_to_ir` and the CLI; the new
+  `convert_idw_file_to_ir` and `idw_document_to_ir` entry points are public.
+- `source.format` accepts `idw`.
+- The `idw` extra is intentionally not part of `all`: `inventor-kit` declares
+  `cq-acis` (CadQuery/OCCT) for IPT/IAM geometry that the IDW path never
+  imports. See the README for excluding it.
+
 ## 0.9.11
 
 - SXF (SFC/P21) import keeps circles, arcs and ellipses as IR `CIRCLE` / `ARC` /

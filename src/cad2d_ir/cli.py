@@ -63,7 +63,7 @@ def build_parser() -> argparse.ArgumentParser:
         "import",
         help=(
             "Import a supported CAD file "
-            "(DXF, DWG, DGN, DWF, JWW, MI/BI, or SXF) to IR JSON"
+            "(DXF, DWG, DGN, DWF, IDW, JWW, MI/BI, or SXF) to IR JSON"
         ),
     )
     import_parser.add_argument("input", type=Path, help="Path to source CAD file")
@@ -72,7 +72,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--format",
         dest="source_format",
         default="auto",
-        choices=("auto", "dxf", "dwg", "dgn", "dwf", "jww", "mi", "sxf"),
+        choices=("auto", "dxf", "dwg", "dgn", "dwf", "idw", "jww", "mi", "sxf"),
         help="Source format (default: detect from filename)",
     )
     import_parser.add_argument(

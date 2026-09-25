@@ -187,6 +187,54 @@ the gzip-wrapped product-generated MI envelope currently verified by
 `ezmi2d`; zlib, ZIP, UNIX `compress`, UNIX `pack`, and arbitrary historical BI
 encodings are not inferred.
 
+## IDW adapter
+
+**Licensing:** The optional `inventor-kit` dependency is offered under PolyForm
+Noncommercial 1.0.0 with separate commercial licenses. Review the
+[IDW licensing terms](../README.md#idw-licensing-inventor-kit) before commercial
+use, including internal business use, or redistribution with your application.
+`cad2d-ir` itself remains MIT-licensed.
+
+The IDW adapter consumes `inventor_kit.DrawingDocument` (the saved sheet display
+that Inventor wrote into the file). `convert_idw_file_to_ir` reads the file with
+`inventor_kit.read_drawing_file`; `idw_document_to_ir` accepts an already-read
+document so callers that also need the image bytes read the file once. Nothing is
+reprojected or regenerated and no referenced IPT/IAM file is opened.
+
+| IDW display item | IR mapping | Fidelity handling |
+| --- | --- | --- |
+| `polyline` (2 points) | `LINE` | direct; repeated closing point removed |
+| `polyline` (3+ points) | `LWPOLYLINE` | closed when the last point repeats the first; splines arrive pre-sampled from the parser |
+| `curve` (affine ellipse arc `C + u cos t + v sin t`) | `CIRCLE` / `ARC` / `ELLIPSE` | the XY projection of a 3D circle is generally a skewed ellipse; a 2x2 SVD recovers the principal axes and the parameter range is recovered numerically. Edge-on projections (minor axis ~0) become `LINE` with an `approximation` record |
+| `curve` with `filled: true` | solid `HATCH` | the arc closes along its chord; the loop is sampled with `curve_segments` |
+| `triangles` | solid `HATCH` per triangle | filled arrowheads and similar saved fills |
+| `text` | `TEXT` | cap-height candidate becomes `height`; rotation from the direction vector; multi-line strings split into one entity per line (1.2 x height); AIGDT `n`/`x` map to U+2300/U+21A7; mirrored up vectors are recorded, not applied |
+| `image` | none | placements (origin, u, v in mm) and image descriptors stay in `source.metadata.idw`; raster-only views are diagnosed |
+
+Coordinates are Inventor's internal units, which are centimetres for every
+observed file (A-series and ANSI sheets match exactly). The adapter multiplies by
+`unit_scale` (default 10) and reports `IDW_UNITS_ASSUMED_CM` with the matched
+paper size. Coordinates are paper space with view scales already applied, so
+DXF output is the sheet at 1:1. Multiple available sheets are tiled along +X with
+a gap of `sheet_gap_ratio` times the widest sheet (`IDW_MULTISHEET_TILED`);
+sheets without a decodable display are skipped (`IDW_SHEET_UNAVAILABLE`) and a
+document without any decodable sheet raises `ImporterError` naming the segment
+major. Elements lying entirely outside the sheet (unclipped projected curves)
+are dropped with `IDW_OUT_OF_SHEET_DROPPED`.
+
+Style handling: entity colors come from stored RGBA values (most items inherit
+an unknown layer color and stay unset), stored line widths become
+`lineweight_mm`, dash arrays become `IDW_LTYPE_nnnn` linetypes with nominal
+millimetre patterns, and font families become `IDW_<family>[_BOLD][_ITALIC]`
+text styles. Parser-side omissions (`hidden_by_stored_attribute`,
+`display_type_not_decoded`, ...) and unresolved style reasons are forwarded as
+counted diagnostics; `inventor-kit` document diagnostics are forwarded as
+`IDW_DRAWING_WARNING`. Supported segment majors are those of the installed
+`inventor-kit` (23, 24, 26, 28, 29 and 31 in 0.6.0).
+
+`ImportOptions.entity_provenance=False` omits per-entity `source`/`metadata`
+for render-only imports of large drawings.
+
 ## SXF adapter
 
 The SXF adapter parses either SFC or AP202/P21 and consumes `ezsxf._drawing.build_drawing()`. No DXF text is produced or reparsed.
@@ -211,6 +259,7 @@ The implementation was exercised against the current local upstream corpora with
 - DGN V8: the ODA-authored GDAL fixture (53 drawable source entities across 14 kinds, 3D model); 43 strict-mode top-level IR entities plus 4 block-body entities in 2 blocks, zero conversion failures, and explicit skip diagnostics for the dimension anchor and the shared-cell instance.
 - DWF: seven supported DWF 6 package/DWFx files; 24,360 IR entities and zero conversion failures. Standalone W2D 00.30 and 00.50 files were recognized and rejected explicitly as unsupported versions.
 - MI: three byte-stable synthetic `ezmi2d` v0.2.0 fixtures cover direct geometry, UTF-8 text, fillet/B-spline geometry, generic dimensions, leaders, associative hatches, nested/shared parts, and two sheet occurrences. Plain MI and a test-created gzip BI envelope pass strict JSON Schema validation. These adapter fixtures do not expand `ezmi2d`'s documented format-family or corpus guarantees.
+- IDW: inventor-kit 0.6.0 public regression inputs (segment majors 23, 24, 26, 28, 29 and 31; 10 decodable files, 13 sheets, about 50,000 display items including one 28,820-item sheet) plus 136 Inventor 2027 control drawings; 146 of 151 local inputs converted, every result passed strict JSON Schema validation with zero conversion failures and zero curve sampling fallbacks, and DXF re-import reproduced the entity kind counts. The remaining five inputs (three copies of the major21 VISE drawing and two holdout major31 resaves) have no decodable stored display in `inventor-kit` and raise `unsupported IDW profile`. Raster-only views are disclosed, not converted.
 - SFC: 20 files; 46,305 source/typed features, 49,929 IR entities, 1,491 semantic dimensions, zero skipped entities, and zero failures.
 - P21: 20 files; 538,130 generic STEP entities, 57,094 IR entities, zero skipped entities, and zero failures.
 

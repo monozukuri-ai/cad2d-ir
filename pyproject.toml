@@ -1,6 +1,6 @@
 [project]
 name = "cad2d-ir"
-version = "0.9.11"
+version = "0.10.0"
 description = "Intermediate representation (IR) and importers for 2D CAD formats"
 readme = "README.md"
 license = "MIT"
@@ -9,7 +9,7 @@ authors = [
     { name = "neka-nat", email = "nekanat.stock@gmail.com" }
 ]
 requires-python = ">=3.10"
-keywords = ["cad", "dxf", "dwg", "dgn", "dwf", "jww", "mi", "sxf", "geometry", "2d", "intermediate-representation"]
+keywords = ["cad", "dxf", "dwg", "dgn", "dwf", "idw", "inventor", "jww", "mi", "sxf", "geometry", "2d", "intermediate-representation"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -31,6 +31,9 @@ dependencies = [
 dwg = ["ezdwg>=0.11,<1"]
 dgn = ["ezdgn>=0.2.1,<0.3"]
 dwf = ["ezdwf>=0.0.1,<0.1"]
+# inventor-kit needs Python 3.11+; it is deliberately not part of `all` because it
+# declares cq-acis (CadQuery/OCCT) for IPT/IAM geometry, which the IDW path does not use.
+idw = ["inventor-kit>=0.6,<0.7; python_version >= '3.11'"]
 jww = ["ezjww>=0.2.6,<0.4"]
 mi = ["ezmi2d>=0.2,<0.3"]
 sxf = ["ezsxf>=0.1,<0.2"]
@@ -48,6 +51,13 @@ cad2d-ir = "cad2d_ir.cli:main"
 [build-system]
 requires = ["uv_build>=0.8.15,<0.9.0"]
 build-backend = "uv_build"
+
+[tool.uv]
+# inventor-kit declares cq-acis (CadQuery/OCCT, about 1 GB) for IPT/IAM geometry.
+# The IDW drawing path never imports it, so the development lock and CI leave it
+# out. This override applies to this project's own environment only; consumers of
+# `cad2d-ir[idw]` resolve their own dependencies (see README).
+override-dependencies = ["cq-acis; python_full_version < '0'"]
 
 [dependency-groups]
 dev = [

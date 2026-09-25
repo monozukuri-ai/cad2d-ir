@@ -398,6 +398,111 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "DXF R12 export",
         "MTEXT formatting codes were removed.",
     ),
+    "IDW_UNITS_ASSUMED_CM": DiagnosticCode(
+        "info",
+        "normalized",
+        "IDW import",
+        "Coordinates were scaled from Inventor internal centimetres to millimetres; "
+        "the physical unit is not verified by the parser. Warning when a sheet "
+        "does not match a standard paper size.",
+    ),
+    "IDW_MULTISHEET_TILED": DiagnosticCode(
+        "warning",
+        "flattened",
+        "IDW import",
+        "Multiple sheets were placed side by side in one IR modelspace with "
+        "sheet offsets retained in source metadata.",
+    ),
+    "IDW_SHEET_UNAVAILABLE": DiagnosticCode(
+        "warning",
+        "skipped",
+        "IDW import",
+        "A sheet without a decodable stored display was skipped.",
+    ),
+    "IDW_OUT_OF_SHEET_DROPPED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "IDW import",
+        "Elements lying entirely outside the sheet were dropped.",
+    ),
+    "IDW_CURVE_EDGE_ON_LINE": DiagnosticCode(
+        "warning",
+        "approximated",
+        "IDW import",
+        "An edge-on projected circle was represented as a line segment.",
+    ),
+    "IDW_CURVE_APPROXIMATED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "IDW import",
+        "A curve whose ellipse parameters could not be recovered was sampled "
+        "as a polyline.",
+    ),
+    "IDW_FILLED_CURVE_APPROXIMATED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "IDW import",
+        "A filled arc was represented as a solid HATCH with a sampled loop.",
+    ),
+    "IDW_TEXT_SYMBOL_MAPPED": DiagnosticCode(
+        "info",
+        "normalized",
+        "IDW import",
+        "AIGDT symbol-font glyphs were mapped to Unicode characters.",
+    ),
+    "IDW_TEXT_MIRROR_IGNORED": DiagnosticCode(
+        "warning",
+        "preserved_metadata",
+        "IDW import",
+        "A mirrored text placement was recorded in metadata but not applied.",
+    ),
+    "IDW_TEXT_MULTILINE_SPLIT": DiagnosticCode(
+        "info",
+        "exploded",
+        "IDW import",
+        "A multi-line text item was split into one TEXT entity per line.",
+    ),
+    "IDW_STYLE_UNRESOLVED": DiagnosticCode(
+        "info",
+        "preserved_metadata",
+        "IDW import",
+        "Style attributes the parser could not interpret are listed by reason.",
+    ),
+    "IDW_ELEMENT_OMITTED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "IDW import",
+        "inventor-kit omitted stored elements from the sheet display; the reason "
+        "is the source kind. Info for elements hidden by a stored attribute.",
+    ),
+    "IDW_IMAGE_NOT_IN_IR": DiagnosticCode(
+        "warning",
+        "skipped",
+        "IDW import",
+        "Image placements (view caches, logos) have no IR representation; "
+        "placements and descriptors remain in source metadata.",
+    ),
+    "IDW_VIEW_RASTER_ONLY": DiagnosticCode(
+        "warning",
+        "preserved_metadata",
+        "IDW import",
+        "Drawing views stored only as raster view caches have no vector geometry.",
+    ),
+    "IDW_UNSUPPORTED_ELEMENT": DiagnosticCode(
+        "warning", "skipped", "IDW import", "An unknown element kind was skipped."
+    ),
+    "IDW_ENTITY_CONVERSION_FAILED": DiagnosticCode(
+        "error",
+        "skipped",
+        "IDW import",
+        "A malformed IDW element was skipped in lenient mode.",
+    ),
+    "IDW_DRAWING_WARNING": DiagnosticCode(
+        "warning",
+        "forwarded",
+        "IDW import",
+        "An inventor-kit drawing diagnostic was forwarded with its upstream code.",
+    ),
     "DXF_R12_ELLIPSE_APPROXIMATED": DiagnosticCode(
         "warning",
         "approximated",

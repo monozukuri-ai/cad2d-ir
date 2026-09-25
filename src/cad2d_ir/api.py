@@ -258,6 +258,34 @@ def convert_mi_file_to_ir(
     )
 
 
+def convert_idw_file_to_ir(
+    path: str | Path,
+    *,
+    ir_version: str = CURRENT_IR_VERSION,
+    validate: bool = True,
+    strict: bool = True,
+    curve_segments: int = 96,
+    entity_provenance: bool = True,
+) -> ImportResult:
+    """Convert an Autodesk Inventor IDW drawing's saved display directly to IR.
+
+    Requires the ``idw`` extra (``inventor-kit``). Coordinates are sheet paper
+    space scaled from Inventor's internal centimetres to millimetres.
+    """
+    from cad2d_ir.importers.idw import convert_idw_file_to_ir as import_idw
+
+    return import_idw(
+        path,
+        options=ImportOptions(
+            ir_version=ir_version,
+            validate=validate,
+            strict=strict,
+            curve_segments=curve_segments,
+            entity_provenance=entity_provenance,
+        ),
+    )
+
+
 def convert_sxf_file_to_ir(
     path: str | Path,
     *,

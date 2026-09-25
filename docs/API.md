@@ -36,6 +36,7 @@ Format-specific helpers are also public:
 - `convert_dwg_file_to_ir(path, ...)`
 - `convert_dgn_file_to_ir(path, *, encoding="auto", ...)`
 - `convert_dwf_file_to_ir(path, ...)`
+- `convert_idw_file_to_ir(path, *, entity_provenance=True, ...)`
 - `convert_jww_file_to_ir(path, ...)`
 - `convert_mi_file_to_ir(path, *, encoding="auto", ...)`
 - `convert_sxf_file_to_ir(path, ...)`
@@ -62,6 +63,20 @@ container sizes, and source spans are retained in `source.metadata.mi` or
 entity provenance. `.mi` and `.bi` suffixes dispatch to the same adapter;
 current `.bi` compatibility is limited to the verified gzip-wrapped MI
 container supported by `ezmi2d`.
+
+IDW input requires the `idw` extra (`inventor-kit`, Python 3.11+). This optional
+dependency has separate PolyForm Noncommercial / commercial licensing terms;
+see the [IDW license notice](../README.md#idw-licensing-inventor-kit), including
+the conditions for commercial internal business use. The adapter
+converts the saved sheet display, scales Inventor's internal centimetres to
+millimetres (`IDW_UNITS_ASSUMED_CM`), tiles multiple sheets along +X
+(`IDW_MULTISHEET_TILED`) and keeps image placements and per-sheet layout in
+`source.metadata.idw`. `cad2d_ir.importers.idw.idw_document_to_ir(document, ...)`
+accepts an `inventor_kit.DrawingDocument` that the caller already read, plus
+`unit_scale` and `sheet_gap_ratio` overrides; `convert_idw_file_to_ir` also
+forwards `limits` / `drawing_limits` to `inventor_kit.read_drawing_file`. A file
+whose segment major is not supported by `inventor-kit` raises `ImporterError`
+with a message starting `unsupported IDW profile`.
 
 ## High-level DXF export API
 

@@ -72,6 +72,23 @@ entity/source identifiers and structured details.
 | `DXF_TRAILING_DATA_IGNORED` | info | skipped | DXF import | Lines after the `0`/`EOF` marker were ignored. |
 | `DXF_TRAILING_LINE_IGNORED` | warning | skipped | DXF import | The text ended with an unpaired line (truncated file or stray data) that was ignored. |
 | `DXF_UNKNOWN_ENTITY_SKIPPED` | warning | skipped | DXF export | An unknown IR entity kind was skipped. |
+| `IDW_CURVE_APPROXIMATED` | warning | approximated | IDW import | A curve whose ellipse parameters could not be recovered was sampled as a polyline. |
+| `IDW_CURVE_EDGE_ON_LINE` | warning | approximated | IDW import | An edge-on projected circle (minor axis ~0 after XY projection) was represented as a line segment. |
+| `IDW_DRAWING_WARNING` | warning | forwarded | IDW import | An `inventor-kit` drawing diagnostic (for example `drawing.unverified`) was forwarded with its upstream code in `details`. The instance severity follows the upstream diagnostic. |
+| `IDW_ELEMENT_OMITTED` | warning | skipped | IDW import | `inventor-kit` omitted stored elements from the sheet display; the omission reason is the source kind. Elements hidden by a stored attribute are reported as info. |
+| `IDW_ENTITY_CONVERSION_FAILED` | error | skipped | IDW import | A malformed IDW element was skipped in lenient mode. |
+| `IDW_FILLED_CURVE_APPROXIMATED` | warning | approximated | IDW import | A filled arc (closed along its chord) was represented as a solid `HATCH` with a sampled polyline loop. |
+| `IDW_IMAGE_NOT_IN_IR` | warning | skipped | IDW import | Image placements (raster view caches, logos) have no IR representation; their placements and descriptors remain in `source.metadata.idw`. |
+| `IDW_MULTISHEET_TILED` | warning | flattened | IDW import | Multiple sheets were placed side by side along +X in one IR modelspace; offsets remain in `source.metadata.idw.sheets`. |
+| `IDW_OUT_OF_SHEET_DROPPED` | warning | skipped | IDW import | Elements lying entirely outside the sheet (typically unclipped projected curves) were dropped. |
+| `IDW_SHEET_UNAVAILABLE` | warning | skipped | IDW import | A sheet without a decodable stored display was skipped while other sheets were converted. |
+| `IDW_STYLE_UNRESOLVED` | info | preserved_metadata | IDW import | Style attributes the parser could not interpret (for example undecoded layer dash patterns) are listed by reason and count in `details`. |
+| `IDW_TEXT_MIRROR_IGNORED` | warning | preserved_metadata | IDW import | A text item's up vector indicates a mirrored placement; the mirror is recorded in metadata but not applied. |
+| `IDW_TEXT_MULTILINE_SPLIT` | info | exploded | IDW import | A multi-line text item was split into one `TEXT` entity per line with a 1.2 x height line spacing. |
+| `IDW_TEXT_SYMBOL_MAPPED` | info | normalized | IDW import | AIGDT symbol-font glyphs (`n` diameter, `x` depth) were mapped to Unicode characters. |
+| `IDW_UNITS_ASSUMED_CM` | info | normalized | IDW import | Coordinates were scaled from Inventor's internal centimetres to millimetres; the physical unit is not verified by the parser. Warning when a sheet does not match a standard paper size. |
+| `IDW_UNSUPPORTED_ELEMENT` | warning | skipped | IDW import | An element kind unknown to the adapter was skipped. |
+| `IDW_VIEW_RASTER_ONLY` | warning | preserved_metadata | IDW import | Drawing views stored only as raster view caches have no vector geometry in the IR. |
 | `JWW_CURVE_APPROXIMATED` | warning | approximated | JWW import | Source geometry was approximated. |
 | `JWW_DECODE_REPLACED` | warning | normalized | JWW import | `ezjww` replaced undecodable CP932 byte sequences in a JWW string with U+FFFD (details carry field and byte offset). |
 | `JWW_ENTITY_CONVERSION_FAILED` | error | skipped | JWW import | A malformed JWW entity was skipped. |

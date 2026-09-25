@@ -19,6 +19,7 @@ _SUFFIX_TO_FORMAT = {
     ".dgn": "dgn",
     ".dwf": "dwf",
     ".dwfx": "dwf",
+    ".idw": "idw",
     ".jww": "jww",
     ".mi": "mi",
     ".bi": "mi",
@@ -119,6 +120,11 @@ def import_file(
         from cad2d_ir.importers.dwf import convert_dwf_file_to_ir
 
         return convert_dwf_file_to_ir(source_path, options=import_options)
+
+    if normalized_format == "idw":
+        from cad2d_ir.importers.idw import convert_idw_file_to_ir
+
+        return convert_idw_file_to_ir(source_path, options=import_options)
 
     if normalized_format == "mi":
         from cad2d_ir.importers.mi import convert_mi_file_to_ir
