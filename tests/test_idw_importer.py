@@ -302,8 +302,17 @@ def _full_document() -> SimpleNamespace:
             {"reason": "display_type_not_decoded", "segment_id": "segment"},
         ),
         views=(
-            SimpleNamespace(name="View1", image_reference=2147483648, item_ids=()),
+            SimpleNamespace(
+                name="View1",
+                image_reference=2147483648,
+                item_ids=(f"{'ab' * 32}/sheet-12",),
+            ),
             SimpleNamespace(name="View2", image_reference=None, item_ids=("x",)),
+            SimpleNamespace(
+                name="View3",
+                image_reference=2147483648,
+                item_ids=(f"{'ab' * 32}/sheet-1",),
+            ),
         ),
         diagnostics=("stored_display_partial",),
     )

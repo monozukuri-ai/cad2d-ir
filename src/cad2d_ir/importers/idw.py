@@ -249,7 +249,13 @@ def idw_document_to_ir(
             )
         _collect_omissions(sheet, sheet_index, context)
         views = list(getattr(sheet, "views", None) or ())
-        raster_only = sum(1 for view in views if _view_is_raster_only(view))
+        item_kinds = {
+            str(getattr(item, "id", "")): str(
+                _mapping(getattr(item, "geometry", None)).get("kind", "")
+            )
+            for item in items
+        }
+        raster_only = sum(1 for view in views if _view_is_raster_only(view, item_kinds))
         paper = _match_paper(width * scale, height * scale)
         paper_matches.append(paper)
         size_mm = [width * scale, height * scale]
@@ -1001,10 +1007,14 @@ def _sheet_available(sheet: Any) -> bool:
     return math.isfinite(width) and math.isfinite(height) and width > 0 and height > 0
 
 
-def _view_is_raster_only(view: Any) -> bool:
+def _view_is_raster_only(view: Any, item_kinds: Mapping[str, str]) -> bool:
+    """A view whose stored display is only its raster cache (its own image item)."""
     if getattr(view, "image_reference", None) is None:
         return False
-    return not tuple(getattr(view, "item_ids", ()) or ())
+    return all(
+        item_kinds.get(str(item_id), "image") == "image"
+        for item_id in tuple(getattr(view, "item_ids", ()) or ())
+    )
 
 
 def _segment_majors(document: Any) -> list[int]:

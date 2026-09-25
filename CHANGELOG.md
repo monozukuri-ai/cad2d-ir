@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.10.1
+
+- IDW: `IDW_VIEW_RASTER_ONLY` now recognizes views whose only stored display item
+  is their own raster cache image (every view in Inventor 2027 files). 0.10.0
+  counted such views as vector views because the image item is listed in the
+  view's item ids.
+
 ## 0.10.0
 
 - New IDW (Autodesk Inventor drawing) importer behind the `idw` extra
