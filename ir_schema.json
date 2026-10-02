@@ -585,6 +585,32 @@
       ]
     },
 
+    "HatchPatternLine": {
+      "description": "One family of parallel hatch lines. For every integer k, a line runs through base + k * offset in direction angle; the hatch shows the parts inside its loops.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["angle", "base", "offset"],
+      "properties": {
+        "angle": {
+          "description": "Direction of the lines, in header.angle_unit.",
+          "type": "number"
+        },
+        "base": {
+          "description": "A point on the line k = 0. Dash patterns start at base + k * offset.",
+          "$ref": "#/$defs/Point2"
+        },
+        "offset": {
+          "description": "Displacement from one line of the family to the next. Its component across the lines is their spacing and must not be zero; its component along the lines staggers the dashes.",
+          "$ref": "#/$defs/Point2"
+        },
+        "dashes": {
+          "description": "Dash-gap pattern along each line in drawing units: positive = dash, negative = gap, 0 = dot. Empty or omitted for continuous lines.",
+          "type": "array",
+          "items": { "type": "number" }
+        }
+      }
+    },
+
     "EntityHatch": {
       "description": "Simplified hatch: each loop is a closed polyline. Convert to DXF HATCH later.",
       "unevaluatedProperties": false,
@@ -597,6 +623,20 @@
             "kind": { "const": "HATCH" },
             "solid": { "type": "boolean", "default": true },
             "pattern": { "type": "string" },
+            "pattern_angle": {
+              "description": "Rotation of the pattern in header.angle_unit, as recorded by the source (DXF group 52). pattern_lines already include it.",
+              "type": "number"
+            },
+            "pattern_scale": {
+              "description": "Scale or spacing of the pattern as recorded by the source (DXF group 41). pattern_lines already include it.",
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "pattern_lines": {
+              "description": "Definition of a pattern (non-solid) hatch: families of parallel lines in drawing coordinates, already rotated and scaled. Omitted when the source does not define the pattern.",
+              "type": "array",
+              "items": { "$ref": "#/$defs/HatchPatternLine" }
+            },
             "loops": {
               "type": "array",
               "minItems": 1,

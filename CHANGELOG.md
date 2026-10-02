@@ -1,5 +1,59 @@
 # Changelog
 
+## 0.10.3
+
+- Hatch pattern definitions reach the IR. A pattern fill (`solid: false`) carries
+  `pattern_lines`: the families of parallel lines that make up the pattern
+  (direction, a base point, the offset from one line to the next and an optional
+  dash pattern), in drawing coordinates and already rotated and scaled.
+  `pattern_angle` and `pattern_scale` record the rotation and scale the source
+  states. Until now the IR only had the pattern name, so a renderer could not
+  draw the lines that are in the drawing. The DXF codec reads and writes the
+  definition, and the DWG importer fills it (`ezdwg` 0.12.10 or later). A hatch
+  without a definition in its source stays as before. See docs/SCHEMA_NOTES.md.
+- DWG linetypes (`ezdwg` 0.12.10 or later). `tables.linetypes` holds the
+  linetype table with its dash patterns, layers carry their linetype, and
+  entities carry `linetype` and `linetype_scale`. Every DWG entity used to be
+  `BYLAYER` on `CONTINUOUS` layers. Checked against DXF exports of the same
+  drawings: 300 linetype patterns, 1,648 layer linetypes and the layer, linetype
+  and linetype scale of 31,334 entities agree.
+- DWG block contents stay in their block. The owner of an entity now comes from
+  the placement stored in its common entity data. The owner reported by the
+  type-specific decoders is absent for splines, hatches, solids and ellipses, so
+  those entities left their block for model space, at block-local coordinates,
+  and a model-space insert could land in a block. In drawings compared against
+  their DXF export, 1,996 of 28,857 entities sat in the wrong place; all
+  entities of R2000 and later files agree now. R13/R14 files have no stored
+  placement and keep the old behaviour.
+- DWG blocks that share a name no longer overwrite each other. The last one keeps
+  the name, the others are renamed (`DWG_DUPLICATE_BLOCK_NAME_RENAMED`), and no
+  block body is lost.
+- A DWG `DIMENSION` names the block that holds its saved graphics in
+  `definition.block`, like DXF-derived dimensions. The reference is resolved by
+  handle, so it is right even when block names repeat. Renderers and the DXF
+  export then use the saved graphics instead of rebuilding them from the
+  definition points.
+- DWG attribute definitions inside block definitions are no longer drawn. They
+  are templates: a block reference shows the values of its own `ATTRIB`
+  entities, so the definition text doubled every attribute of a title block.
+  Constant definitions stay, and invisible attributes are skipped as well
+  (`DWG_HIDDEN_ATTRIBUTE_SKIPPED`).
+- JWW line types follow the settings of the file (`ezjww` 0.3.3 or later): the
+  bit pattern and printer pitch of line types 2-9 and 16-19, the segment lengths
+  of SXF-compatible line types, and user-defined SXF line types, which were
+  `BYLAYER` and are now `SXF_USER_17`-`32` with their pattern.
+  `header.metadata.jww.line_type_settings` tells whether the file's settings
+  (`"file"`) or the Jw_cad defaults (`"default"`) were used. In 808 real-world
+  JWW files, 37% use another printer pitch than the default and 139 define
+  line types of their own.
+- DXF export keeps one value per line. A line break inside a text value used to
+  be written as is, which shifted every following group code and made the file
+  unreadable; multi-line `MTEXT` from the DWG and MI importers triggered it.
+  `MTEXT` breaks become `\P`, and other values use the caret notation (`^J`).
+- The default (non-strict) validator checks the new hatch fields.
+
+Older `ezdwg` and `ezjww` releases keep working; they only lack the new data.
+
 ## 0.10.2
 
 - Linetype scale reaches the IR. `header.linetype_scale` carries the global scale

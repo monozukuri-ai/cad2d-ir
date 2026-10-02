@@ -377,6 +377,12 @@ def _validate_entity(entity: Any, path: str) -> None:
             raise IRValidationError(f"{path}.solid must be boolean")
         if "pattern" in entity and not isinstance(entity["pattern"], str):
             raise IRValidationError(f"{path}.pattern must be string")
+        if "pattern_angle" in entity:
+            _require_number(entity, "pattern_angle", path)
+        if "pattern_scale" in entity:
+            _require_positive_number(entity, "pattern_scale", path)
+        if "pattern_lines" in entity:
+            _require_hatch_pattern_lines(entity["pattern_lines"], path)
     elif kind == "SPLINE":
         degree = entity.get("degree")
         if not isinstance(degree, int) or not (1 <= degree <= 7):
@@ -532,6 +538,29 @@ def _require_vertices(vertices: Any, path: str, *, min_vertices: int) -> None:
             raise IRValidationError(f"{path}.vertices must be [x,y] or [x,y,bulge]")
         if not all(isinstance(v, (int, float)) for v in vertex):
             raise IRValidationError(f"{path}.vertices must contain only numbers")
+
+
+def _require_hatch_pattern_lines(lines: Any, path: str) -> None:
+    if not isinstance(lines, list):
+        raise IRValidationError(f"{path}.pattern_lines must be an array")
+    for index, line in enumerate(lines):
+        line_path = f"{path}.pattern_lines[{index}]"
+        if not isinstance(line, dict):
+            raise IRValidationError(f"{line_path} must be an object")
+        unknown = set(line) - {"angle", "base", "offset", "dashes"}
+        if unknown:
+            raise IRValidationError(
+                f"{line_path} has unknown properties: {sorted(unknown)}"
+            )
+        _require_number(line, "angle", line_path)
+        _require_point2(line, "base", line_path)
+        _require_point2(line, "offset", line_path)
+        if "dashes" in line:
+            dashes = line["dashes"]
+            if not isinstance(dashes, list) or not all(
+                isinstance(value, (int, float)) for value in dashes
+            ):
+                raise IRValidationError(f"{line_path}.dashes must be a number array")
 
 
 def _require_point2(entity: dict[str, Any], key: str, path: str) -> None:

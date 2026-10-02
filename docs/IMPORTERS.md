@@ -54,13 +54,25 @@ The entity pen style is the Jw_cad line type number:
 | 11-15 | random (freehand-looking) line | `BYLAYER` | not modelled |
 | 16-19 | double-length chain, double-dot chain, dashed | `JWW_DASHDOT_X2`, `JWW_DIVIDE_X2`, `JWW_DASHED_X2`, `JWW_DASHED_X4` | 20 mm period (40 mm for X4) |
 | 31-45 | SXF line type 1-15 | `CONTINUOUS`, `SXF_DASHED`, ... | SXF Ver.3.1 reference pitches |
-| 47-62 | SXF user-defined | `BYLAYER` | definition not exposed by `ezjww` |
+| 47-62 | SXF user-defined | `SXF_USER_17`-`32` | segment lengths stored in the file; an empty slot stays `BYLAYER` |
 
-The patterns are millimetres on paper, like JWW coordinates, so no linetype scale applies. They come from the default line type patterns stored in every JWW header (a bit mask per line type): one pattern bit prints as `printer pitch / 32` mm. Jw_cad stores, for its SXF-compatible line types, both such a bit pattern with its printer pitch and the SXF segment lengths in millimetres, and the two agree at exactly that ratio. `ezjww` does not expose the per-file settings, so the Jw_cad default printer pitch (10; 20 or 40 for the double-length types) is assumed; a drawing saved with another pitch prints proportionally shorter or longer dashes than the IR pattern says. Construction lines are displayed but never printed, which `plot: false` on the linetype records.
+The patterns are millimetres on paper, like JWW coordinates, so no linetype scale applies. They come from the default line type patterns stored in every JWW header (a bit mask per line type): one pattern bit prints as `printer pitch / 32` mm. Jw_cad stores, for its SXF-compatible line types, both such a bit pattern with its printer pitch and the SXF segment lengths in millimetres, and the two agree at exactly that ratio. Construction lines are displayed but never printed, which `plot: false` on the linetype records.
+
+The table lists the Jw_cad defaults. A file records its own line type settings, and with `ezjww` 0.3.3 or later (`header["line_types"]`) the importer uses them:
+
+- line types 2-9 and 16-19 take the bit pattern and the printer pitch of the file. A pattern the user turned solid gets an empty `pattern_mm`;
+- SXF-compatible line types take the segment lengths stored with them, and keep the SXF reference pitches when the file names them without lengths;
+- user-defined SXF line types (47-62) become `SXF_USER_<code>` (code 17-32) with their segment lengths, and the name given in Jw_cad goes into the description.
+
+`header.metadata.jww.line_type_settings` is `"file"` when the settings were read and `"default"` otherwise (an older `ezjww`, or a header that ends before them). In the default case the Jw_cad default printer pitch (10; 20 or 40 for the double-length types) is assumed, so a drawing saved with another pitch prints proportionally shorter or longer dashes than the IR pattern says, and user-defined line types stay `BYLAYER`.
 
 ## DWG adapter
 
-The DWG adapter consumes `ezdwg.read()` and enumerates every entity through `Document.entities().query()` (falling back to `modelspace().query()` on `ezdwg` releases before the placement-aware layouts), then partitions them itself: entities owned by a named block record become block-definition bodies, paper-space entities (layout frames, viewports, title blocks; `entmode == 1` or owned by a `*Paper_Space*` record) are skipped with `DWG_PAPERSPACE_ENTITY_SKIPPED`, and the rest form the IR modelspace. Low-level public table decoders are used only to recover layer names/colors and block-header names.
+The DWG adapter consumes `ezdwg.read()` and enumerates every entity through `Document.entities().query()` (falling back to `modelspace().query()` on `ezdwg` releases before the placement-aware layouts), then partitions them itself: entities owned by a named block record become block-definition bodies, paper-space entities (layout frames, viewports, title blocks; `entmode == 1` or owned by a `*Paper_Space*` record) are skipped with `DWG_PAPERSPACE_ENTITY_SKIPPED`, and the rest form the IR modelspace. Low-level public table decoders are used only to recover layer names/colors, linetypes and block-header names.
+
+The owner of an entity is the placement stored in its common entity data (`Document.entity_placement()`: owner handle, paper space or model space). The `owner_handle` of the type-specific decoders is only the fallback when no placement is available (R13/R14): it is absent for several entity types (`HATCH`, `SPLINE`, `SOLID`, `ELLIPSE`, ...), which used to move block contents into model space, and it can name another object for a model-space `INSERT`.
+
+Block names are unique in the IR. When two block headers carry the same name (anonymous blocks are stored without their number), the last one keeps the name, as a name reference resolved before, and the others are renamed: the next free number for anonymous names (`*D12`), `<name>_<HANDLE>` otherwise. The original name stays in `metadata.dwg.source_name` and `DWG_DUPLICATE_BLOCK_NAME_RENAMED` reports the count.
 
 | DWG source | IR mapping | Fidelity handling |
 | --- | --- | --- |
@@ -68,12 +80,17 @@ The DWG adapter consumes `ezdwg.read()` and enumerates every entity through `Doc
 | `LWPOLYLINE`, `POLYLINE_2D` | `LWPOLYLINE` | bulges and widths metadata retained; fitted interpolation is diagnosed |
 | `SPLINE` | `SPLINE` | degree, controls, knots, weights, closure retained |
 | `TEXT`, `MTEXT`, `TOLERANCE` | `TEXT` / `MTEXT` | placement and exposed formatting retained |
-| `HATCH`, `SOLID`, `TRACE`, planar `3DFACE` | `HATCH` | polygon loops retained |
+| `ATTRIB`, `ATTDEF` | `TEXT` | attribute values are text at their own position; definitions inside a block definition (templates) and invisible attributes are skipped with `DWG_HIDDEN_ATTRIBUTE_SKIPPED`, constant definitions stay in the block |
+| `HATCH`, `SOLID`, `TRACE`, planar `3DFACE` | `HATCH` | polygon loops retained; pattern fills carry `pattern_lines` |
 | `INSERT`, `MINSERT` | `INSERT` | signed scale retained; MINSERT array parameters remain metadata |
-| `DIMENSION` | semantic `DIMENSION` | subtype and complete native geometry payload retained |
+| `DIMENSION` | semantic `DIMENSION` | subtype and complete native geometry payload retained; `definition.block` names the block with the saved graphics |
 | block-owned entities | block table body | grouped when owner handles are exposed |
 
-`$LTSCALE` fills `header.linetype_scale` when it is not 1. It has no visible effect yet: `ezdwg` exposes neither entity linetypes nor the linetype table, so every DWG entity is `BYLAYER` on `CONTINUOUS` layers and the table holds no patterns.
+Linetypes need `ezdwg` 0.12.10 or later. `tables.linetypes` holds the linetype table of the drawing with its dash patterns (`pattern_mm` in drawing units, as in DXF), layers carry their linetype, and entities carry `linetype` (`BYLAYER`, `BYBLOCK`, `CONTINUOUS` or a table entry) and `linetype_scale` when it is not 1. `$LTSCALE` fills `header.linetype_scale` when it is not 1. With an older `ezdwg` every entity is `BYLAYER` on `CONTINUOUS` layers and the table holds no patterns.
+
+A `DIMENSION` refers to the anonymous block that holds its saved graphics by handle. When that block is in the IR, `definition.block` names it, the same reference the DXF codec keeps (group 2), so renderers and the DXF export use the saved graphics instead of rebuilding them from the definition points. Dimensions of R13/R14 files have no such reference yet.
+
+Pattern fills carry the definition lines of their pattern (`pattern_lines`, with `pattern_angle` and `pattern_scale`; see docs/SCHEMA_NOTES.md), again with `ezdwg` 0.12.10 or later.
 
 DWG units come from the `$INSUNITS` header variable (`ezdwg` >= 0.11 `Document.header_variables()`); mapped codes fill `header.units` (and therefore `$INSUNITS` on DXF export), the raw code is recorded in header metadata, and unmapped codes or R14 files (no `$INSUNITS`) fall back to `unknown` with the reason in metadata plus a diagnostic. Non-zero Z coordinates are projected to XY and reported. Unsupported 3D/presentation entities are skipped with aggregate diagnostics. Block base points are also not exposed; recovered block bodies use `[0, 0]` and state that limitation in metadata.
 

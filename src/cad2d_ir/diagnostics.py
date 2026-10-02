@@ -164,6 +164,18 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
     "DWG_UNRESOLVED_BLOCK_REFERENCE": DiagnosticCode(
         "warning", None, "DWG import", "A referenced DWG block was not resolved."
     ),
+    "DWG_HIDDEN_ATTRIBUTE_SKIPPED": DiagnosticCode(
+        "info",
+        "skipped",
+        "DWG import",
+        "Attribute definitions inside blocks and invisible attributes were skipped.",
+    ),
+    "DWG_DUPLICATE_BLOCK_NAME_RENAMED": DiagnosticCode(
+        "info",
+        "renamed",
+        "DWG import",
+        "Blocks that share their name with another block were renamed.",
+    ),
     "DWG_UNSUPPORTED_ENTITY": DiagnosticCode(
         "warning", "skipped", "DWG import", "An unsupported DWG entity was skipped."
     ),

@@ -36,8 +36,10 @@ _METADATA_SETTING_KEYS = {
 # One pattern bit prints as (printer pitch / 32) mm. Jw_cad stores, for its
 # SXF-compatible line types, both the bit pattern with its printer pitch and the
 # SXF segment lengths in millimetres; the two agree at exactly this ratio in every
-# header inspected. ``ezjww`` does not expose the per-file printer pitch, so the
-# Jw_cad default (10 for the standard line types) is assumed.
+# header inspected. The Jw_cad defaults below (printer pitch 10 for the standard
+# line types) apply when the file's own settings are not available: ``ezjww``
+# older than 0.3.3 does not report them, and files older than JWW 3.00 do not
+# store them where it reads.
 _PATTERN_UNIT_MM = 1.0 / 32.0
 
 
@@ -103,14 +105,112 @@ for _code, _sxf_name in SXF_LINETYPE_NAMES.items():
     }
 
 
-def _linetype_table(used: set[str]) -> dict[str, dict[str, Any]]:
-    """The Jw_cad line types, plus the SXF-compatible ones the drawing uses."""
-    table: dict[str, dict[str, Any]] = {}
-    for name, definition in _LINETYPE_TABLE.items():
-        if name.startswith("SXF_") and name not in used:
+# SXF line type codes 17-32 (pen styles 47-62) are user-defined.
+_SXF_USER_DEFINED_CODES = range(17, 33)
+
+
+def _signed_pattern(segments: Sequence[Any]) -> list[float]:
+    """Alternating dash/gap lengths -> signed ``pattern_mm``."""
+    return [
+        float(length) if index % 2 == 0 else -float(length)
+        for index, length in enumerate(segments)
+    ]
+
+
+def _usable_segments(value: Any) -> list[float] | None:
+    """Dash/gap lengths reported by ``ezjww``, or ``None`` when they are unusable."""
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return None
+    segments: list[float] = []
+    for item in value:
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            return None
+        length = float(item)
+        if not math.isfinite(length) or length < 0.0:
+            return None
+        segments.append(length)
+    return segments
+
+
+def _document_line_types(
+    header: Mapping[str, Any],
+) -> tuple[dict[int, str], dict[str, dict[str, Any]], bool]:
+    """Linetype names by pen style and the linetype table of one document.
+
+    Starts from the Jw_cad defaults and applies the settings the file records
+    (``header["line_types"]``, ``ezjww`` >= 0.3.3):
+
+    - standard (2-9) and double-length (16-19) line types take the pattern and
+      printer pitch of the file, including a pattern the user turned solid;
+    - SXF-compatible line types take the segment lengths stored with them, and
+      the SXF reference pattern when the file names them without lengths;
+    - user-defined SXF line types (47-62) become ``SXF_USER_<code>``.
+
+    The third value tells whether the file's settings were available.
+    """
+    names = dict(_LINE_TYPES)
+    table = {
+        name: {**definition, "pattern_mm": list(definition["pattern_mm"])}
+        for name, definition in _LINETYPE_TABLE.items()
+    }
+    settings = header.get("line_types")
+    if not isinstance(settings, Mapping):
+        return names, table, False
+
+    for key in ("standard", "double_length"):
+        for item in settings.get(key) or ():
+            if not isinstance(item, Mapping):
+                continue
+            name = _LINE_TYPES.get(_optional_int(item.get("number")))
+            segments = _usable_segments(item.get("segments_mm"))
+            if name is None or name == "CONTINUOUS" or segments is None:
+                continue
+            # One run or none is a line without gaps.
+            table[name]["pattern_mm"] = (
+                _signed_pattern(segments) if len(segments) >= 2 else []
+            )
+
+    for item in settings.get("sxf") or ():
+        if not isinstance(item, Mapping):
             continue
-        table[name] = {**definition, "pattern_mm": list(definition["pattern_mm"])}
-    return table
+        number = _optional_int(item.get("number"))
+        segments = _usable_segments(item.get("segments_mm"))
+        if number is None or segments is None:
+            continue
+        code = number - _SXF_PEN_STYLE_OFFSET
+        if code in _SXF_USER_DEFINED_CODES:
+            if not segments:
+                continue  # an empty slot: entities that refer to it stay BYLAYER
+            name = f"SXF_USER_{code}"
+            label = str(item.get("name") or "").strip()
+            names[number] = name
+            table[name] = {
+                "description": "SXF user-defined line type"
+                + (f": {label}" if label else ""),
+                "pattern_mm": _signed_pattern(segments) if len(segments) >= 2 else [],
+            }
+            continue
+        name = _LINE_TYPES.get(number)
+        if name is not None and name != "CONTINUOUS" and len(segments) >= 2:
+            table[name]["pattern_mm"] = _signed_pattern(segments)
+    return names, table, True
+
+
+def _optional_int(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def _used_linetype_table(
+    table: Mapping[str, dict[str, Any]], used: set[str]
+) -> dict[str, dict[str, Any]]:
+    """The Jw_cad line types, plus the SXF-compatible ones the drawing uses."""
+    return {
+        name: definition
+        for name, definition in table.items()
+        if not name.startswith("SXF_") or name in used
+    }
 
 
 @dataclass(slots=True)
@@ -119,6 +219,7 @@ class _ConversionContext:
     layers: dict[str, dict[str, Any]]
     layer_names: dict[tuple[int, int], str]
     block_names: dict[int, str]
+    linetype_names: dict[int, str] = field(default_factory=lambda: dict(_LINE_TYPES))
     used_linetypes: set[str] = field(default_factory=set)
     diagnostics: list[ImportDiagnostic] = field(default_factory=list)
     converted_counts: Counter[str] = field(default_factory=Counter)
@@ -184,11 +285,13 @@ def jww_document_to_ir(
     layers, layer_names = _build_layers(header)
     block_defs = _mapping_sequence(jww_document.get("block_defs", []), "block_defs")
     block_names = _build_block_names(block_defs)
+    linetype_names, linetype_table, linetypes_from_file = _document_line_types(header)
     context = _ConversionContext(
         options=import_options,
         layers=layers,
         layer_names=layer_names,
         block_names=block_names,
+        linetype_names=linetype_names,
     )
 
     raw_entities = jww_document.get("entities", [])
@@ -217,7 +320,7 @@ def jww_document_to_ir(
 
     tables: dict[str, Any] = {
         "layers": context.layers,
-        "linetypes": _linetype_table(context.used_linetypes),
+        "linetypes": _used_linetype_table(linetype_table, context.used_linetypes),
         "text_styles": text_styles,
     }
     if blocks:
@@ -235,6 +338,9 @@ def jww_document_to_ir(
         "memo": str(header.get("memo", "")),
         "paper_size": int(header.get("paper_size", 0)),
         "write_layer_group": int(header.get("write_layer_group", 0)),
+        # "file": the linetype patterns are the ones this file records.
+        # "default": they are the Jw_cad defaults.
+        "line_type_settings": "file" if linetypes_from_file else "default",
     }
     if metadata_settings:
         jww_metadata["settings"] = metadata_settings
@@ -519,7 +625,7 @@ def _entity_common(
 
     pen_style = int(base.get("pen_style", 0))
     pen_width = int(base.get("pen_width", 0))
-    linetype = _LINE_TYPES.get(pen_style, "BYLAYER")
+    linetype = context.linetype_names.get(pen_style, "BYLAYER")
     context.used_linetypes.add(linetype)
     common: dict[str, Any] = {
         "id": context.allocate_id(),

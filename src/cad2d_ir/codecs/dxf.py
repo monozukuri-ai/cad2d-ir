@@ -2108,6 +2108,8 @@ def _hatch_from_pairs(
     pattern = _first_string(pairs, 2)
     if pattern and pattern.upper() != "SOLID":
         entity["pattern"] = pattern
+    if entity.get("solid") is False:
+        _apply_hatch_pattern(entity, pairs)
 
     loops, notes = _parse_hatch_loops(pairs)
     if not loops:
@@ -2145,6 +2147,82 @@ def _hatch_from_pairs(
             details={"loops": notes.skipped_loops},
         )
     return entity
+
+
+# Groups of one pattern definition line: angle, base point, offset, dash count, dashes.
+_HATCH_PATTERN_LINE_CODES = frozenset({53, 43, 44, 45, 46, 79, 49})
+# A pattern with more definition lines than this is not a plausible hatch pattern.
+_HATCH_PATTERN_MAX_LINES = 512
+
+
+def _apply_hatch_pattern(entity: dict[str, Any], pairs: list[DXFPair]) -> None:
+    """Pattern angle, scale and definition lines of a pattern-filled HATCH.
+
+    The definition lines in a DXF file are already rotated by the pattern angle
+    and scaled by the pattern scale, and they share the coordinate system of the
+    boundary paths, so they go to the IR unchanged.
+    """
+    try:
+        angle = _first_float(pairs, 52, default=None)
+        scale = _first_float(pairs, 41, default=None)
+    except ValueError:
+        angle = scale = None
+    if angle is not None and math.isfinite(angle) and angle != 0.0:
+        entity["pattern_angle"] = angle
+    if scale is not None and math.isfinite(scale) and scale > 0.0 and scale != 1.0:
+        entity["pattern_scale"] = scale
+    lines = _parse_hatch_pattern_lines(pairs)
+    if lines:
+        entity["pattern_lines"] = lines
+
+
+def _parse_hatch_pattern_lines(pairs: list[DXFPair]) -> list[dict[str, Any]]:
+    """HATCH pattern definition lines: group 78 and the line data that follows it."""
+    start = next((i for i, (code, _) in enumerate(pairs) if code == 78), None)
+    if start is None:
+        return []
+    raw_lines: list[dict[int, list[float]]] = []
+    for code, value in pairs[start + 1 :]:
+        if code not in _HATCH_PATTERN_LINE_CODES:
+            break
+        if code == 53:
+            if len(raw_lines) >= _HATCH_PATTERN_MAX_LINES:
+                return []
+            raw_lines.append({})
+        if not raw_lines:
+            return []  # line data must start with its angle
+        try:
+            number = _to_float(value)
+        except ValueError:
+            return []
+        raw_lines[-1].setdefault(code, []).append(number)
+
+    lines: list[dict[str, Any]] = []
+    for raw in raw_lines:
+        if any(code not in raw for code in (53, 43, 44, 45, 46)):
+            continue
+        angle, base_x, base_y, offset_x, offset_y = (
+            raw[code][0] for code in (53, 43, 44, 45, 46)
+        )
+        if not all(
+            math.isfinite(value)
+            for value in (angle, base_x, base_y, offset_x, offset_y)
+        ):
+            continue
+        direction = math.radians(angle)
+        spacing = offset_y * math.cos(direction) - offset_x * math.sin(direction)
+        if abs(spacing) < 1e-12:
+            continue  # every line of the family would lie on the same line
+        line: dict[str, Any] = {
+            "angle": angle,
+            "base": [base_x, base_y],
+            "offset": [offset_x, offset_y],
+        }
+        dashes = raw.get(49, [])
+        if dashes and all(math.isfinite(dash) for dash in dashes):
+            line["dashes"] = dashes
+        lines.append(line)
+    return lines
 
 
 def _spline_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
@@ -2876,7 +2954,8 @@ def _mtext_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
             (10, _num(insert[0])),
             (20, _num(insert[1])),
             (40, _num(entity["height"])),
-            (1, str(entity["text"])),
+            # A line break inside MTEXT is the paragraph code in DXF.
+            (1, _DXF_LINE_BREAK.sub(r"\\P", str(entity["text"]))),
         ]
     )
 
@@ -2990,8 +3069,35 @@ def _hatch_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
 
     pairs.extend([(75, "0"), (76, "1")])
     if not solid:
-        pairs.append((78, "0"))
+        pairs.extend(_hatch_pattern_to_pairs(entity))
     pairs.append((98, "0"))
+    return pairs
+
+
+def _hatch_pattern_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
+    """Pattern angle, scale and definition lines (groups 52, 41, 77, 78 and line data)."""
+    lines = entity.get("pattern_lines")
+    if not isinstance(lines, list):
+        lines = []
+    pairs: list[DXFPair] = [
+        (52, _num(entity.get("pattern_angle", 0.0))),
+        (41, _num(entity.get("pattern_scale", 1.0))),
+        (77, "0"),
+        (78, str(len(lines))),
+    ]
+    for line in lines:
+        dashes = line.get("dashes") or []
+        pairs.extend(
+            [
+                (53, _num(line["angle"])),
+                (43, _num(line["base"][0])),
+                (44, _num(line["base"][1])),
+                (45, _num(line["offset"][0])),
+                (46, _num(line["offset"][1])),
+                (79, str(len(dashes))),
+            ]
+        )
+        pairs.extend((49, _num(dash)) for dash in dashes)
     return pairs
 
 
@@ -4552,5 +4658,12 @@ def _format_pairs(pairs: list[DXFPair]) -> str:
     lines: list[str] = []
     for code, value in pairs:
         lines.append(str(code))
-        lines.append(str(value))
+        lines.append(_single_line(str(value)))
     return "\n".join(lines) + "\n"
+
+
+def _single_line(value: str) -> str:
+    """A DXF value is one line; control characters use the caret notation."""
+    if "\n" not in value and "\r" not in value:
+        return value
+    return value.replace("\r\n", "^J").replace("\n", "^J").replace("\r", "^M")

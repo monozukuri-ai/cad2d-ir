@@ -489,7 +489,7 @@ def test_jww_line_types_follow_jw_cad_numbering() -> None:
         "CONTINUOUS",  # SXF line type 1
         "SXF_DASHED",
         "SXF_CHAIN",
-        "BYLAYER",  # SXF user-defined line type: pattern not exposed by ezjww
+        "BYLAYER",  # SXF user-defined line type the file does not define
     ]
     linetypes = result.document["tables"]["linetypes"]
     assert set(names) <= set(linetypes)
@@ -544,3 +544,174 @@ def test_jww_linetype_table_is_not_shared_between_documents() -> None:
     second = jww_document_to_ir(_document()).document["tables"]["linetypes"]
 
     assert second["JWW_DASHED1"]["pattern_mm"] == [0.625, -0.625]
+
+
+def _line_types_header(
+    *,
+    printer_pitch: int = 10,
+    dashed1_segments: list[float] | None = None,
+    sxf: list[dict] | None = None,
+) -> dict:
+    """``header["line_types"]`` as ``ezjww`` >= 0.3.3 reports it."""
+    unit = printer_pitch / 32.0
+    runs = {
+        2: [2, 2],
+        3: [4, 4],
+        4: [6, 2],
+        5: [10, 2, 2, 2],
+        6: [26, 2, 2, 2],
+        7: [8, 2, 1, 2, 1, 2],
+        8: [24, 2, 1, 2, 1, 2],
+        9: [1, 3],
+    }
+    standard = [
+        {
+            "number": number,
+            "pattern": 0,
+            "unit_dots": sum(run),
+            "pitch": 1,
+            "printer_pitch": printer_pitch,
+            "runs": run,
+            "segments_mm": [length * unit for length in run],
+        }
+        for number, run in runs.items()
+    ]
+    if dashed1_segments is not None:
+        standard[0]["segments_mm"] = dashed1_segments
+    return {
+        "standard": standard,
+        "random": [],
+        "double_length": [
+            {
+                "number": 16,
+                "pattern": 0,
+                "unit_dots": 32,
+                "pitch": 2,
+                "printer_pitch": 20,
+                "runs": [26, 2, 2, 2],
+                "segments_mm": [16.25, 1.25, 1.25, 1.25],
+            }
+        ],
+        "sxf": sxf,
+    }
+
+
+def _line_types_document(pen_styles: list[int], **settings: object) -> dict:
+    document = _document()
+    document["entities"] = [
+        _line_with_pen_style(pen_style, float(index))
+        for index, pen_style in enumerate(pen_styles)
+    ]
+    document["block_defs"] = []
+    document["header"]["line_types"] = _line_types_header(**settings)  # type: ignore[arg-type]
+    return document
+
+
+def test_jww_line_type_patterns_follow_the_printer_pitch_of_the_file() -> None:
+    # Printer pitch 5 prints every pattern at half the default size.
+    result = jww_document_to_ir(_line_types_document([2, 5, 16], printer_pitch=5))
+    linetypes = result.document["tables"]["linetypes"]
+
+    assert linetypes["JWW_DASHED1"]["pattern_mm"] == [0.3125, -0.3125]
+    assert linetypes["JWW_DASHDOT1"]["pattern_mm"] == [
+        1.5625,
+        -0.3125,
+        0.3125,
+        -0.3125,
+    ]
+    assert linetypes["JWW_DASHDOT_X2"]["pattern_mm"] == [16.25, -1.25, 1.25, -1.25]
+    # Line types the file does not report keep the Jw_cad defaults.
+    assert linetypes["JWW_DASHED_X4"]["pattern_mm"] == [37.5, -2.5]
+    assert linetypes["JWW_CONSTRUCTION"]["plot"] is False
+    jww = result.document["header"]["metadata"]["jww"]
+    assert jww["line_type_settings"] == "file"
+    validate_ir(result.document, strict_jsonschema=True)
+
+
+def test_jww_line_type_made_solid_in_the_file_has_no_pattern() -> None:
+    # A pattern without gaps reports no runs: the user turned this line type solid.
+    document = _line_types_document([2], dashed1_segments=[])
+    linetypes = jww_document_to_ir(document).document["tables"]["linetypes"]
+
+    assert linetypes["JWW_DASHED1"]["pattern_mm"] == []
+    assert linetypes["JWW_DASHED2"]["pattern_mm"] == [1.25, -1.25]
+
+
+def test_jww_sxf_line_types_use_the_definitions_of_the_file() -> None:
+    sxf = [
+        {"number": 32, "name": "dashed", "segments_mm": [5.0, 2.0]},
+        # Named without lengths (files written by other software): SXF reference.
+        {"number": 38, "name": "chain", "segments_mm": []},
+        {"number": 47, "name": "境界線", "segments_mm": [10.0, 1.0, 0.5, 1.0]},
+        {"number": 48, "name": "", "segments_mm": [3.0, 1.0, 3.0]},
+        {"number": 49, "name": "solid", "segments_mm": [8.0]},
+        {"number": 50, "name": "", "segments_mm": []},
+    ]
+    document = _line_types_document([32, 38, 47, 48, 49, 50, 51], sxf=sxf)
+    result = jww_document_to_ir(document)
+
+    names = [entity["linetype"] for entity in result.document["entities"]]
+    assert names == [
+        "SXF_DASHED",
+        "SXF_CHAIN",
+        "SXF_USER_17",
+        "SXF_USER_18",
+        "SXF_USER_19",
+        "BYLAYER",  # an empty user-defined slot
+        "BYLAYER",  # not reported at all
+    ]
+    linetypes = result.document["tables"]["linetypes"]
+    assert linetypes["SXF_DASHED"]["pattern_mm"] == [5.0, -2.0]
+    assert linetypes["SXF_CHAIN"]["pattern_mm"] == [12.0, -1.5, 3.5, -1.5]
+    assert linetypes["SXF_USER_17"] == {
+        "description": "SXF user-defined line type: 境界線",
+        "pattern_mm": [10.0, -1.0, 0.5, -1.0],
+    }
+    # A pattern that ends with a dash joins the first dash when it repeats.
+    assert linetypes["SXF_USER_18"] == {
+        "description": "SXF user-defined line type",
+        "pattern_mm": [3.0, -1.0, 3.0],
+    }
+    # One segment is a line without gaps.
+    assert linetypes["SXF_USER_19"]["pattern_mm"] == []
+    validate_ir(result.document, strict_jsonschema=True)
+
+
+def test_jww_user_defined_line_types_are_listed_only_when_used() -> None:
+    sxf = [{"number": 47, "name": "unused", "segments_mm": [10.0, 1.0]}]
+    result = jww_document_to_ir(_line_types_document([2], sxf=sxf))
+
+    assert "SXF_USER_17" not in result.document["tables"]["linetypes"]
+
+
+def test_jww_line_types_fall_back_to_defaults_without_file_settings() -> None:
+    # ezjww older than 0.3.3 has no "line_types", and reports None for old files.
+    for line_types in ("missing", None, "garbage"):
+        document = _line_types_document([2, 47])
+        if line_types == "missing":
+            del document["header"]["line_types"]
+        else:
+            document["header"]["line_types"] = line_types
+        result = jww_document_to_ir(document)
+
+        linetypes = result.document["tables"]["linetypes"]
+        assert linetypes["JWW_DASHED1"]["pattern_mm"] == [0.625, -0.625]
+        assert result.document["entities"][1]["linetype"] == "BYLAYER"
+        jww = result.document["header"]["metadata"]["jww"]
+        assert jww["line_type_settings"] == "default"
+
+
+def test_jww_unusable_line_type_settings_are_ignored() -> None:
+    document = _line_types_document([2, 3, 47], dashed1_segments=[1.0, float("nan")])
+    document["header"]["line_types"]["standard"][1]["segments_mm"] = "4,4"
+    document["header"]["line_types"]["sxf"] = [
+        {"number": 47, "name": "bad", "segments_mm": [1.0, -2.0]},
+        {"number": "48", "name": "bad", "segments_mm": [1.0, 2.0]},
+        "not a mapping",
+    ]
+    result = jww_document_to_ir(document)
+
+    linetypes = result.document["tables"]["linetypes"]
+    assert linetypes["JWW_DASHED1"]["pattern_mm"] == [0.625, -0.625]
+    assert linetypes["JWW_DASHED2"]["pattern_mm"] == [1.25, -1.25]
+    assert result.document["entities"][2]["linetype"] == "BYLAYER"

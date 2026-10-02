@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 import hashlib
 import math
 from pathlib import Path
+import re
 from typing import Any, Iterable, Mapping, Sequence
 
 from cad2d_ir.codecs.dxf import INSUNITS_TO_IR_UNITS
@@ -21,6 +22,8 @@ from cad2d_ir.schema import validate_ir
 
 _EPSILON = 1.0e-12
 _DEFAULT_LAYER = "0"
+# "*D12", "*U3", "*T": blocks that the application numbers when it loads a drawing.
+_ANONYMOUS_BLOCK_NAME = re.compile(r"^(\*[A-Za-z])\d*$")
 
 _DIMENSION_KINDS = {
     "LINEAR": "LINEAR",
@@ -40,6 +43,7 @@ class _ConversionContext:
     options: ImportOptions
     layer_names: dict[int, str]
     layers: dict[str, dict[str, Any]]
+    linetypes: dict[str, dict[str, Any]] = field(default_factory=dict)
     diagnostics: list[ImportDiagnostic] = field(default_factory=list)
     converted_counts: Counter[str] = field(default_factory=Counter)
     skipped_counts: Counter[str] = field(default_factory=Counter)
@@ -48,6 +52,8 @@ class _ConversionContext:
     projected_handles: set[int] = field(default_factory=set)
     preserved_dimensions: int = 0
     paperspace_skipped: int = 0
+    renamed_blocks: int = 0
+    hidden_attributes: int = 0
     next_entity_number: int = 1
 
     def allocate_id(self) -> str:
@@ -76,6 +82,7 @@ def convert_dwg_file_to_ir(
         decode_path = str(getattr(document, "decode_path", None) or source_path)
         raw = getattr(document, "raw", getattr(ezdwg, "raw", None))
         layer_names, layer_colors, block_names = _read_dwg_tables(raw, decode_path)
+        linetypes, layer_linetypes = _read_dwg_linetypes(raw, decode_path)
         return dwg_document_to_ir(
             document,
             source_name=source_path.name,
@@ -83,6 +90,8 @@ def convert_dwg_file_to_ir(
             layer_names_by_handle=layer_names,
             layer_colors_by_handle=layer_colors,
             block_names_by_handle=block_names,
+            linetypes_by_handle=linetypes,
+            layer_linetypes_by_handle=layer_linetypes,
             options=options,
         )
     finally:
@@ -144,10 +153,45 @@ def _resolve_header_units(
     return units, {"insunits": code}
 
 
+def _read_dwg_linetypes(
+    raw: Any, decode_path: str
+) -> tuple[dict[int, tuple[str, str, list[float]]], dict[int, int]]:
+    """Linetype table and the linetype of every layer (``ezdwg`` >= 0.12.10).
+
+    Returns ``({linetype handle: (name, description, dashes)}, {layer handle:
+    linetype handle})``; both are empty with an older ``ezdwg``.
+    """
+    linetypes: dict[int, tuple[str, str, list[float]]] = {}
+    layer_linetypes: dict[int, int] = {}
+    decode_linetypes = getattr(raw, "decode_linetypes", None)
+    if callable(decode_linetypes):
+        try:
+            for handle, name, description, _length, dashes in decode_linetypes(
+                decode_path
+            ):
+                linetypes[int(handle)] = (
+                    str(name),
+                    str(description),
+                    [float(dash) for dash in dashes],
+                )
+        except Exception:
+            linetypes = {}
+    decode_layer_linetypes = getattr(raw, "decode_layer_linetypes", None)
+    if callable(decode_layer_linetypes):
+        try:
+            layer_linetypes = {
+                int(layer): int(linetype)
+                for layer, linetype in decode_layer_linetypes(decode_path)
+            }
+        except Exception:
+            layer_linetypes = {}
+    return linetypes, layer_linetypes
+
+
 def _resolve_linetype_scale(dwg_document: Any) -> float | None:
     """``$LTSCALE`` from the DWG header when it is a usable value other than 1.
 
-    Entity linetypes are not exposed by ``ezdwg`` yet, so this only records the
+    Entity and layer linetypes need ``ezdwg`` >= 0.12.10; older versions only record the
     global scale; failures are silent because the units lookup already reports an
     unreadable header.
     """
@@ -174,21 +218,32 @@ def dwg_document_to_ir(
     layer_names_by_handle: Mapping[int, str] | None = None,
     layer_colors_by_handle: Mapping[int, tuple[int | None, int | None]] | None = None,
     block_names_by_handle: Mapping[int, str] | None = None,
+    linetypes_by_handle: Mapping[int, tuple[str, str, Sequence[float]]] | None = None,
+    layer_linetypes_by_handle: Mapping[int, int] | None = None,
     options: ImportOptions | None = None,
 ) -> ImportResult:
     """Convert an ``ezdwg.Document``-compatible object directly to IR.
 
     The extra table arguments are public primarily for adapters and tests. The file
     entry point obtains them from ``ezdwg.raw`` so layer and block names are retained.
+    ``linetypes_by_handle`` maps a linetype handle to ``(name, description,
+    dashes)`` and ``layer_linetypes_by_handle`` a layer handle to its linetype handle.
     """
     import_options = options or ImportOptions()
     layer_names, layers = _build_layers(
         layer_names_by_handle or {}, layer_colors_by_handle or {}
     )
+    linetype_names, linetypes = _build_linetypes(linetypes_by_handle or {})
+    for layer_handle, linetype_handle in (layer_linetypes_by_handle or {}).items():
+        layer_name = layer_names.get(int(layer_handle))
+        linetype_name = linetype_names.get(int(linetype_handle))
+        if layer_name is not None and linetype_name not in (None, "BYLAYER", "BYBLOCK"):
+            layers[layer_name]["linetype"] = linetype_name
     context = _ConversionContext(
         options=import_options,
         layer_names=layer_names,
         layers=layers,
+        linetypes=linetypes,
     )
 
     block_names = {
@@ -222,32 +277,23 @@ def dwg_document_to_ir(
 
         source_entity_count += 1
         source_entity_counts[_source_kind(source_entity)] += 1
-        owner_handle = _optional_int(_dxf(source_entity).get("owner_handle"))
-        if owner_handle is not None and owner_handle in block_names:
-            destination = block_entities_by_owner[owner_handle]
-        elif _is_paperspace_entity(
-            source_entity, owner_handle, paperspace_handles, placement_of
-        ):
+        owner_handle, in_paperspace = _entity_owner(
+            source_entity, paperspace_handles, placement_of
+        )
+        if in_paperspace:
             context.paperspace_skipped += 1
             continue
-        else:
-            destination = entities
+        in_block = owner_handle is not None and owner_handle in block_names
+        if _is_hidden_attribute(source_entity, in_block):
+            context.hidden_attributes += 1
+            continue
+        destination = block_entities_by_owner[owner_handle] if in_block else entities
         destination.extend(_convert_entity_sequence((source_entity,), context))
 
-    blocks: dict[str, dict[str, Any]] = {}
-    for owner_handle, block_name in sorted(block_names.items()):
-        block_entities = block_entities_by_owner[owner_handle]
-        if block_entities:
-            blocks[block_name] = {
-                "base_point": [0.0, 0.0],
-                "entities": block_entities,
-                "metadata": {
-                    "dwg": {
-                        "block_header_handle": _handle_text(owner_handle),
-                        "base_point_status": "not exposed by ezdwg",
-                    }
-                },
-            }
+    blocks, block_name_by_handle = _build_blocks(
+        block_names, block_entities_by_owner, context
+    )
+    _link_dimension_blocks(entities, blocks, block_name_by_handle)
 
     next_entity_number = 1
     for entity in entities:
@@ -263,13 +309,7 @@ def dwg_document_to_ir(
 
     tables: dict[str, Any] = {
         "layers": context.layers,
-        "linetypes": {
-            "BYLAYER": {
-                "description": "Use the DWG layer linetype",
-                "pattern_mm": [],
-            },
-            "CONTINUOUS": {"description": "Continuous line", "pattern_mm": []},
-        },
+        "linetypes": context.linetypes,
         "text_styles": {"STANDARD": {"font": "STANDARD"}},
     }
     if blocks:
@@ -362,6 +402,47 @@ def _read_dwg_tables(
     except Exception:
         pass
     return layer_names, layer_colors, block_names
+
+
+_BUILTIN_LINETYPES = ("BYLAYER", "BYBLOCK", "CONTINUOUS")
+
+
+def _linetype_name(raw_name: Any) -> str | None:
+    """IR name of a DWG linetype: the stored name, with the built-in ones in upper case."""
+    name = str(raw_name).strip()
+    if not name:
+        return None
+    return name.upper() if name.upper() in _BUILTIN_LINETYPES else name
+
+
+def _build_linetypes(
+    linetypes_by_handle: Mapping[int, tuple[str, str, Sequence[float]]],
+) -> tuple[dict[int, str], dict[str, dict[str, Any]]]:
+    """Linetype names by handle and the IR linetype table.
+
+    ``pattern_mm`` takes the DWG dash lengths unchanged: both are drawing units at
+    linetype scale 1 with the DXF sign convention.
+    """
+    names: dict[int, str] = {}
+    table: dict[str, dict[str, Any]] = {
+        "BYLAYER": {"description": "Use the DWG layer linetype", "pattern_mm": []},
+        "CONTINUOUS": {"description": "Continuous line", "pattern_mm": []},
+    }
+    for handle, (raw_name, description, dashes) in sorted(linetypes_by_handle.items()):
+        name = _linetype_name(raw_name)
+        if name is None:
+            continue
+        names[int(handle)] = name
+        if name in _BUILTIN_LINETYPES:
+            continue
+        pattern = [float(dash) for dash in dashes]
+        if not all(math.isfinite(dash) for dash in pattern):
+            pattern = []
+        definition: dict[str, Any] = {"pattern_mm": pattern}
+        if str(description).strip():
+            definition["description"] = str(description).strip()
+        table.setdefault(name, definition)
+    return names, table
 
 
 def _build_layers(
@@ -567,7 +648,7 @@ def _entity_common(source_entity: Any, context: _ConversionContext) -> dict[str,
     result: dict[str, Any] = {
         "id": context.allocate_id(),
         "layer": layer,
-        "linetype": "BYLAYER",
+        "linetype": _entity_linetype(dxf, context),
         "source": {"format": "dwg", "id": _handle_text(handle), "kind": kind},
         "metadata": {
             "dwg": {
@@ -576,6 +657,15 @@ def _entity_common(source_entity: Any, context: _ConversionContext) -> dict[str,
             }
         },
     }
+    linetype_scale = dxf.get("linetype_scale")
+    if (
+        isinstance(linetype_scale, (int, float))
+        and not isinstance(linetype_scale, bool)
+        and math.isfinite(linetype_scale)
+        and linetype_scale > 0
+        and linetype_scale != 1
+    ):
+        result["linetype_scale"] = float(linetype_scale)
     color = _dwg_color(
         _optional_int(dxf.get("resolved_color_index")),
         _optional_int(dxf.get("resolved_true_color")),
@@ -591,6 +681,20 @@ def _entity_common(source_entity: Any, context: _ConversionContext) -> dict[str,
     if owner is not None:
         result["metadata"]["dwg"]["owner_handle"] = _handle_text(owner)
     return result
+
+
+def _entity_linetype(dxf: Mapping[str, Any], context: _ConversionContext) -> str:
+    """Linetype name of an entity (``ezdwg`` >= 0.12.10 reports it as ``linetype``).
+
+    A name the linetype table does not hold gets an entry without a pattern, so the
+    reference stays valid; the entity then draws as a continuous line.
+    """
+    name = _linetype_name(dxf.get("linetype") or "")
+    if name is None:
+        return "BYLAYER"
+    if name not in context.linetypes and name != "BYBLOCK":
+        context.linetypes[name] = {"pattern_mm": []}
+    return name
 
 
 def _convert_polyline(
@@ -812,6 +916,8 @@ def _convert_hatch(
         "pattern": str(dxf.get("pattern_name", "SOLID")),
         "loops": loops,
     }
+    if not result["solid"]:
+        result.update(_hatch_pattern(dxf))
     result["metadata"]["dwg"].update(
         {
             "associative": bool(dxf.get("associative", False)),
@@ -820,6 +926,66 @@ def _convert_hatch(
         }
     )
     return result
+
+
+def _hatch_pattern(dxf: Mapping[str, Any]) -> dict[str, Any]:
+    """Pattern definition of a pattern fill (``ezdwg`` >= 0.12.10; angles in degrees).
+
+    The definition lines are stored already rotated and scaled in the coordinate
+    system of the boundary paths, exactly as in a DXF file.
+    """
+    pattern: dict[str, Any] = {}
+    angle = _finite_number(dxf.get("pattern_angle"))
+    if angle is not None and angle != 0.0:
+        pattern["pattern_angle"] = angle
+    scale = _finite_number(dxf.get("pattern_scale"))
+    if scale is not None and scale > 0.0 and scale != 1.0:
+        pattern["pattern_scale"] = scale
+
+    source_lines = dxf.get("pattern_lines")
+    if not isinstance(source_lines, Sequence) or isinstance(source_lines, (str, bytes)):
+        return pattern
+    lines: list[dict[str, Any]] = []
+    for source in source_lines:
+        if not isinstance(source, Mapping):
+            continue
+        line_angle = _finite_number(source.get("angle"))
+        base = _finite_pair(source.get("base"))
+        offset = _finite_pair(source.get("offset"))
+        if line_angle is None or base is None or offset is None:
+            continue
+        direction = math.radians(line_angle)
+        spacing = offset[1] * math.cos(direction) - offset[0] * math.sin(direction)
+        if abs(spacing) < 1e-12:
+            continue  # every line of the family would lie on the same line
+        line: dict[str, Any] = {"angle": line_angle, "base": base, "offset": offset}
+        dashes = source.get("dashes")
+        if isinstance(dashes, Sequence) and not isinstance(dashes, (str, bytes)):
+            values = [_finite_number(dash) for dash in dashes]
+            if values and all(value is not None for value in values):
+                line["dashes"] = values
+        lines.append(line)
+    if lines:
+        pattern["pattern_lines"] = lines
+    return pattern
+
+
+def _finite_number(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
+
+
+def _finite_pair(value: Any) -> list[float] | None:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return None
+    if len(value) < 2:
+        return None
+    x, y = _finite_number(value[0]), _finite_number(value[1])
+    if x is None or y is None:
+        return None
+    return [x, y]
 
 
 def _convert_solid(
@@ -946,6 +1112,91 @@ def _convert_dimension(
     }
 
 
+def _build_blocks(
+    block_names: Mapping[int, str],
+    block_entities_by_owner: Mapping[int, list[dict[str, Any]]],
+    context: _ConversionContext,
+) -> tuple[dict[str, dict[str, Any]], dict[int, str]]:
+    """Block definitions by IR name, and the IR name of each block header handle.
+
+    Two block headers can share a name: a DWG stores anonymous blocks without
+    their number, and the numbers ezdwg gives them are not always unique. An
+    ``INSERT`` names its block, so the last header keeps the name as before; the
+    others get a free name and stay reachable through their handle (a
+    ``DIMENSION`` refers to its block by handle).
+    """
+    emitted = [
+        (handle, name)
+        for handle, name in sorted(block_names.items())
+        if block_entities_by_owner[handle]
+    ]
+    name_owner = {name: handle for handle, name in emitted}
+    taken = {name.upper() for name in block_names.values()}
+    next_number: dict[str, int] = {}
+    blocks: dict[str, dict[str, Any]] = {}
+    block_name_by_handle: dict[int, str] = {}
+    for owner_handle, source_name in emitted:
+        block_name = source_name
+        dwg_metadata = {
+            "block_header_handle": _handle_text(owner_handle),
+            "base_point_status": "not exposed by ezdwg",
+        }
+        if name_owner[source_name] != owner_handle:
+            block_name = _free_block_name(source_name, owner_handle, taken, next_number)
+            taken.add(block_name.upper())
+            dwg_metadata["source_name"] = source_name
+            context.renamed_blocks += 1
+        blocks[block_name] = {
+            "base_point": [0.0, 0.0],
+            "entities": block_entities_by_owner[owner_handle],
+            "metadata": {"dwg": dwg_metadata},
+        }
+        block_name_by_handle[owner_handle] = block_name
+    return blocks, block_name_by_handle
+
+
+def _free_block_name(
+    name: str, handle: int, taken: set[str], next_number: dict[str, int]
+) -> str:
+    anonymous = _ANONYMOUS_BLOCK_NAME.match(name)
+    if anonymous:
+        prefix = anonymous.group(1)
+        number = next_number.get(prefix, 1)
+        while f"{prefix}{number}".upper() in taken:
+            number += 1
+        next_number[prefix] = number + 1
+        return f"{prefix}{number}"
+    candidate = f"{name}_{handle:X}"
+    while candidate.upper() in taken:
+        candidate += "_"
+    return candidate
+
+
+def _link_dimension_blocks(
+    entities: Sequence[dict[str, Any]],
+    blocks: Mapping[str, dict[str, Any]],
+    block_name_by_handle: Mapping[int, str],
+) -> None:
+    """Name the block that holds the saved graphics of each dimension.
+
+    ``definition["block"]`` is the same reference the DXF codec keeps (group 2).
+    """
+    if not block_name_by_handle:
+        return
+    scopes = [entities, *(block["entities"] for block in blocks.values())]
+    for scope in scopes:
+        for entity in scope:
+            if entity.get("kind") != "DIMENSION":
+                continue
+            definition = entity["definition"]
+            block_handle = _optional_int(
+                definition["source_geometry"].get("anonymous_block_handle")
+            )
+            block_name = block_name_by_handle.get(block_handle)
+            if block_name is not None:
+                definition["block"] = block_name
+
+
 def _append_unresolved_block_diagnostics(
     entities: Sequence[Mapping[str, Any]],
     blocks: Mapping[str, Any],
@@ -989,28 +1240,95 @@ def _is_paperspace_block(name: str) -> bool:
     return name.strip().upper().startswith("*PAPER_SPACE")
 
 
-def _is_paperspace_entity(
+def _entity_owner(
     source_entity: Any,
-    owner_handle: int | None,
     paperspace_handles: set[int],
     placement_of: Any,
-) -> bool:
-    """Paper-space entities (layout frames, viewports, title blocks) are not part
-    of the model-space drawing the IR represents; they are skipped explicitly."""
-    if owner_handle is not None and owner_handle in paperspace_handles:
-        return True
-    if not callable(placement_of):
+) -> tuple[int | None, bool]:
+    """Owner block handle of an entity, and whether it lives in paper space.
+
+    The placement stored in the common entity data decides when ``ezdwg`` exposes
+    it (``Document.entity_placement``). The owner handle of the type-specific
+    decoders is absent for several entity types (HATCH, SPLINE, SOLID, ...),
+    which moved block contents into model space, and it can name another object
+    for a model-space INSERT.
+
+    Paper-space entities (layout frames, viewports, title blocks) are not part
+    of the model-space drawing the IR represents; they are skipped explicitly.
+    """
+    owner_handle = _optional_int(_dxf(source_entity).get("owner_handle"))
+    placement = _entity_placement(source_entity, placement_of)
+    if placement is not None:
+        mode, placement_owner = placement
+        if mode == 1:
+            return None, True
+        if mode == 2:
+            owner_handle = None
+        elif mode == 0 and placement_owner is not None:
+            owner_handle = placement_owner
+    return owner_handle, owner_handle is not None and owner_handle in paperspace_handles
+
+
+def _is_hidden_attribute(source_entity: Any, in_block: bool) -> bool:
+    """Attribute text that a drawing does not show.
+
+    An attribute definition inside a block definition is a template: a block
+    reference shows the values of its own ``ATTRIB`` entities instead. Constant
+    definitions (flag 2) have no ``ATTRIB`` and are part of the block. Invisible
+    attributes (flag 1) are never shown.
+    """
+    kind = _source_kind(source_entity)
+    if kind not in {"ATTRIB", "ATTDEF"}:
         return False
+    flags = _optional_int(_dxf(source_entity).get("attribute_flags")) or 0
+    if flags & 1:
+        return True
+    return kind == "ATTDEF" and in_block and not flags & 2
+
+
+def _entity_placement(
+    source_entity: Any, placement_of: Any
+) -> tuple[int, int | None] | None:
+    """``(entmode, owner_handle)``: 0 = owner stored, 1 = paper space, 2 = model space."""
+    if not callable(placement_of):
+        return None
     try:
         placement = placement_of(getattr(source_entity, "handle"))
     except Exception:
-        return False
-    if not isinstance(placement, tuple) or not placement:
-        return False
-    return placement[0] == 1
+        return None
+    if not isinstance(placement, tuple) or len(placement) < 2:
+        return None
+    mode = _optional_int(placement[0])
+    if mode is None:
+        return None
+    return mode, _optional_int(placement[1])
 
 
 def _append_summary_diagnostics(context: _ConversionContext) -> None:
+    if context.hidden_attributes:
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="DWG_HIDDEN_ATTRIBUTE_SKIPPED",
+                severity="info",
+                message=(
+                    f"Skipped {context.hidden_attributes} DWG attribute definitions "
+                    "inside blocks and invisible attributes (not shown in the drawing)."
+                ),
+                action="skipped",
+            )
+        )
+    if context.renamed_blocks:
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="DWG_DUPLICATE_BLOCK_NAME_RENAMED",
+                severity="info",
+                message=(
+                    f"Renamed {context.renamed_blocks} DWG blocks that share their "
+                    "name with another block."
+                ),
+                action="renamed",
+            )
+        )
     if context.paperspace_skipped:
         context.diagnostics.append(
             ImportDiagnostic(

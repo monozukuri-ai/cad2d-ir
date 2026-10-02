@@ -24,7 +24,9 @@ entity/source identifiers and structured details.
 | `DGN_UNSUPPORTED_ENTITY` | warning | skipped | DGN import | An unsupported DGN graphic entity was skipped. |
 | `DGN_V8_EXTRA_MODELS_SKIPPED` | warning | skipped | DGN import | A multi-model V8 file was reduced to the first model containing drawable entities. |
 | `DWG_CURVE_APPROXIMATED` | warning | approximated | DWG import | Source geometry was approximated. |
+| `DWG_DUPLICATE_BLOCK_NAME_RENAMED` | info | renamed | DWG import | Blocks that share their name with another block were renamed; the last one keeps the name, and dimensions reach their block through `definition.block`. |
 | `DWG_ENTITY_CONVERSION_FAILED` | error | skipped | DWG import | A malformed DWG entity was skipped. |
+| `DWG_HIDDEN_ATTRIBUTE_SKIPPED` | info | skipped | DWG import | Attribute definitions inside block definitions (templates; block references show their own attribute values) and invisible attributes were skipped. |
 | `DWG_HEADER_UNITS_UNREADABLE` | warning | - | DWG import | The DWG header variables could not be decoded for units. |
 | `DWG_MINSERT_ARRAY_PRESERVED` | warning | preserved_metadata | DWG import | MINSERT array data was preserved as metadata. |
 | `DWG_NONPLANAR_PROJECTED` | warning | projected | DWG import | Non-planar geometry was projected to XY. |

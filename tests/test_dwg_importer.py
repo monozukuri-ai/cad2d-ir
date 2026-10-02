@@ -455,3 +455,346 @@ def test_convert_dwg_file_releases_ezdwg_decode_caches(monkeypatch, tmp_path) ->
 
     assert result.document["entities"]
     assert cleared == 1
+
+
+def _line_entity(handle: int, **dxf: Any) -> _Entity:
+    return _Entity(
+        "LINE",
+        handle,
+        {"start": (0.0, float(handle), 0.0), "end": (10.0, float(handle), 0.0), **dxf},
+    )
+
+
+_LINETYPES = {
+    0x14: ("ByBlock", "", []),
+    0x15: ("ByLayer", "", []),
+    0x16: ("Continuous", "Solid line", []),
+    0x30: ("CENTER", "Center ____ _ ____", [31.75, -6.35, 6.35, -6.35]),
+    0x31: ("HIDDEN", "", [6.35, -3.175]),
+}
+
+
+def test_dwg_linetypes_reach_the_tables_layers_and_entities() -> None:
+    document = _Document(
+        [
+            _line_entity(1, **_style(layer_handle=16)),
+            _line_entity(
+                2, linetype="BYLAYER", linetype_scale=1.0, **_style(layer_handle=32)
+            ),
+            _line_entity(
+                3, linetype="HIDDEN", linetype_scale=0.5, **_style(layer_handle=16)
+            ),
+            _line_entity(4, linetype="CONTINUOUS", **_style(layer_handle=32)),
+            _line_entity(5, linetype="BYBLOCK", **_style(layer_handle=16)),
+            _line_entity(
+                6, linetype=None, linetype_scale=1.0, **_style(layer_handle=16)
+            ),
+        ]
+    )
+    result = dwg_document_to_ir(
+        document,
+        layer_names_by_handle={16: "0", 32: "Center"},
+        linetypes_by_handle=_LINETYPES,
+        layer_linetypes_by_handle={16: 0x16, 32: 0x30},
+    )
+    ir = result.document
+
+    # The table holds the named linetypes with the DWG dash lengths (drawing units).
+    linetypes = ir["tables"]["linetypes"]
+    assert list(linetypes) == ["BYLAYER", "CONTINUOUS", "CENTER", "HIDDEN"]
+    assert linetypes["CENTER"] == {
+        "pattern_mm": [31.75, -6.35, 6.35, -6.35],
+        "description": "Center ____ _ ____",
+    }
+    assert linetypes["HIDDEN"] == {"pattern_mm": [6.35, -3.175]}
+    assert linetypes["CONTINUOUS"]["pattern_mm"] == []
+
+    layers = ir["tables"]["layers"]
+    assert layers["0"]["linetype"] == "CONTINUOUS"
+    assert layers["Center"]["linetype"] == "CENTER"
+
+    names = [entity["linetype"] for entity in ir["entities"]]
+    assert names == ["BYLAYER", "BYLAYER", "HIDDEN", "CONTINUOUS", "BYBLOCK", "BYLAYER"]
+    scales = [entity.get("linetype_scale") for entity in ir["entities"]]
+    assert scales == [None, None, 0.5, None, None, None]
+    validate_ir(ir, strict_jsonschema=True)
+
+
+def test_dwg_entity_linetype_missing_from_the_table_stays_a_valid_reference() -> None:
+    document = _Document([_line_entity(1, linetype="DASHDOT2", **_style())])
+    ir = dwg_document_to_ir(document, layer_names_by_handle={16: "0"}).document
+
+    assert ir["entities"][0]["linetype"] == "DASHDOT2"
+    assert ir["tables"]["linetypes"]["DASHDOT2"] == {"pattern_mm": []}
+    validate_ir(ir, strict_jsonschema=True)
+
+
+def test_dwg_unusable_linetype_scale_is_dropped() -> None:
+    document = _Document(
+        [
+            _line_entity(1, linetype="BYLAYER", linetype_scale=0.0, **_style()),
+            _line_entity(
+                2, linetype="BYLAYER", linetype_scale=float("nan"), **_style()
+            ),
+            _line_entity(3, linetype="BYLAYER", linetype_scale="2", **_style()),
+            _line_entity(4, linetype="BYLAYER", linetype_scale=4, **_style()),
+        ]
+    )
+    ir = dwg_document_to_ir(document, layer_names_by_handle={16: "0"}).document
+
+    scales = [entity.get("linetype_scale") for entity in ir["entities"]]
+    assert scales == [None, None, None, 4.0]
+
+
+def _hatch_entity(handle: int, **dxf: Any) -> _Entity:
+    square = [(0.0, 0.0, 0.0), (10.0, 0.0, 0.0), (10.0, 10.0, 0.0), (0.0, 10.0, 0.0)]
+    return _Entity(
+        "HATCH",
+        handle,
+        {
+            "pattern_name": "ANSI31",
+            "solid_fill": False,
+            "associative": False,
+            "paths": [{"closed": True, "points": square}],
+            **_style(),
+            **dxf,
+        },
+    )
+
+
+def test_dwg_hatch_pattern_definition_reaches_the_ir() -> None:
+    lines = [
+        {"angle": 45.0, "base": (0.0, 0.0), "offset": (-2.2451, 2.2451), "dashes": []},
+        {"angle": 0.0, "base": (1.0, 2.0), "offset": (3.0, 4.0), "dashes": [6.0, -3.0]},
+        # A family whose offset runs along its own lines has no spacing.
+        {"angle": 0.0, "base": (0.0, 0.0), "offset": (5.0, 0.0), "dashes": []},
+        {"angle": float("nan"), "base": (0.0, 0.0), "offset": (0.0, 1.0), "dashes": []},
+    ]
+    document = _Document(
+        [
+            _hatch_entity(
+                1, pattern_angle=30.0, pattern_scale=25.4, pattern_lines=lines
+            ),
+            _hatch_entity(2),
+            _hatch_entity(3, solid_fill=True, pattern_lines=lines[:1]),
+        ]
+    )
+    ir = dwg_document_to_ir(document, layer_names_by_handle={16: "0"}).document
+    patterned, bare, solid = ir["entities"]
+
+    assert patterned["solid"] is False
+    assert patterned["pattern_angle"] == 30.0
+    assert patterned["pattern_scale"] == 25.4
+    assert patterned["pattern_lines"] == [
+        {"angle": 45.0, "base": [0.0, 0.0], "offset": [-2.2451, 2.2451]},
+        {"angle": 0.0, "base": [1.0, 2.0], "offset": [3.0, 4.0], "dashes": [6.0, -3.0]},
+    ]
+    # A pattern fill without a readable definition keeps its name only.
+    assert "pattern_lines" not in bare and bare["solid"] is False
+    assert "pattern_lines" not in solid and solid["solid"] is True
+    validate_ir(ir, strict_jsonschema=True)
+
+
+def _dimension_entity(handle: int, block_handle: int | None, **dxf: Any) -> _Entity:
+    return _Entity(
+        "DIMENSION",
+        handle,
+        {
+            "dimtype": "LINEAR",
+            "defpoint": (0.0, 5.0, 0.0),
+            "defpoint2": (0.0, 0.0, 0.0),
+            "defpoint3": (10.0, 0.0, 0.0),
+            "text_midpoint": (5.0, 5.0, 0.0),
+            "anonymous_block_handle": block_handle,
+            **_style(),
+            **dxf,
+        },
+    )
+
+
+def _block_line(handle: int, owner_handle: int, length: float) -> _Entity:
+    return _Entity(
+        "LINE",
+        handle,
+        {
+            "start": (0.0, 0.0, 0.0),
+            "end": (length, 0.0, 0.0),
+            **_style(owner_handle=owner_handle),
+        },
+    )
+
+
+def test_dwg_dimension_names_the_block_with_its_saved_graphics() -> None:
+    document = _Document(
+        [
+            _dimension_entity(1, 200, anonymous_block_name="*D7"),
+            # No block, an unknown handle, and a block without entities.
+            _dimension_entity(2, None),
+            _dimension_entity(3, 999),
+            _dimension_entity(4, 201, anonymous_block_name="*D8"),
+            _block_line(10, 200, 10.0),
+        ]
+    )
+    ir = dwg_document_to_ir(
+        document,
+        layer_names_by_handle={16: "0"},
+        block_names_by_handle={200: "*D7", 201: "*D8"},
+    ).document
+
+    assert list(ir["tables"]["blocks"]) == ["*D7"]
+    first, *others = ir["entities"]
+    assert first["definition"]["block"] == "*D7"
+    assert all("block" not in entity["definition"] for entity in others)
+    validate_ir(ir, strict_jsonschema=True)
+
+
+def test_dwg_blocks_sharing_a_name_stay_separate() -> None:
+    document = _Document(
+        [
+            _dimension_entity(1, 200, anonymous_block_name="*D3"),
+            _dimension_entity(2, 201, anonymous_block_name="*D3"),
+            _Entity(
+                "INSERT",
+                3,
+                {"insert": (0.0, 0.0, 0.0), "name": "SYMBOL", **_style()},
+            ),
+            _block_line(10, 200, 10.0),
+            _block_line(11, 201, 20.0),
+            _block_line(12, 202, 30.0),
+            _block_line(13, 300, 40.0),
+            _block_line(14, 301, 50.0),
+        ]
+    )
+    result = dwg_document_to_ir(
+        document,
+        layer_names_by_handle={16: "0"},
+        block_names_by_handle={
+            200: "*D3",
+            201: "*D3",
+            202: "*D1",
+            300: "SYMBOL",
+            301: "SYMBOL",
+        },
+    )
+    ir = result.document
+    blocks = ir["tables"]["blocks"]
+
+    def length(name: str) -> float:
+        (line,) = blocks[name]["entities"]
+        return line["p2"][0]
+
+    # The last header keeps the shared name, as a name reference resolved before;
+    # the other one gets the next free anonymous number ("*D1" is taken).
+    assert set(blocks) == {"*D1", "*D2", "*D3", "SYMBOL", "SYMBOL_12C"}
+    assert (length("*D2"), length("*D3")) == (10.0, 20.0)
+    assert (length("SYMBOL_12C"), length("SYMBOL")) == (40.0, 50.0)
+    assert blocks["*D2"]["metadata"]["dwg"] == {
+        "block_header_handle": "0xC8",
+        "base_point_status": "not exposed by ezdwg",
+        "source_name": "*D3",
+    }
+    assert "source_name" not in blocks["*D3"]["metadata"]["dwg"]
+
+    # Each dimension reaches its own block through the handle.
+    first, second, insert = ir["entities"]
+    assert first["definition"]["block"] == "*D2"
+    assert second["definition"]["block"] == "*D3"
+    assert insert["block"] == "SYMBOL"
+    renamed = [
+        d for d in result.diagnostics if d.code == "DWG_DUPLICATE_BLOCK_NAME_RENAMED"
+    ]
+    assert len(renamed) == 1 and "2 DWG blocks" in renamed[0].message
+    validate_ir(ir, strict_jsonschema=True)
+
+
+def test_dwg_stored_placement_decides_the_owner_block() -> None:
+    line = {"start": (0.0, 0.0, 0.0), "end": (1.0, 0.0, 0.0)}
+    document = _PlacementDocument(
+        [
+            # Block content whose decoder reports no owner handle.
+            _hatch_entity(1),
+            # A model-space insert whose decoder names another object as owner.
+            _Entity(
+                "INSERT",
+                2,
+                {
+                    "insert": (5.0, 5.0, 0.0),
+                    "name": "SYMBOL",
+                    **_style(owner_handle=100),
+                },
+            ),
+            # The stored owner wins over the reported one.
+            _Entity("LINE", 3, {**line, **_style(owner_handle=100)}),
+            # Without a stored placement the reported owner is used.
+            _Entity("LINE", 4, {**line, **_style(owner_handle=100)}),
+            # Stored in a layout block other than the active paper space.
+            _Entity("LINE", 5, {**line, **_style()}),
+        ],
+        placements={1: (0, 100), 2: (2, None), 3: (0, 101), 5: (0, 88)},
+    )
+    result = dwg_document_to_ir(
+        document,
+        layer_names_by_handle={16: "0"},
+        block_names_by_handle={100: "SYMBOL", 101: "OTHER", 88: "*Paper_Space0"},
+    )
+    ir = result.document
+
+    assert [entity["kind"] for entity in ir["entities"]] == ["INSERT"]
+    blocks = ir["tables"]["blocks"]
+    assert [entity["kind"] for entity in blocks["SYMBOL"]["entities"]] == [
+        "HATCH",
+        "LINE",
+    ]
+    assert [entity["kind"] for entity in blocks["OTHER"]["entities"]] == ["LINE"]
+    assert result.statistics["converted_block_entities"] == 3
+    skipped = [
+        d for d in result.diagnostics if d.code == "DWG_PAPERSPACE_ENTITY_SKIPPED"
+    ]
+    assert len(skipped) == 1 and "Skipped 1 paper-space" in skipped[0].message
+    validate_ir(ir, strict_jsonschema=True)
+
+
+def _attribute_entity(
+    kind: str, handle: int, flags: int, owner_handle: int | None
+) -> _Entity:
+    return _Entity(
+        kind,
+        handle,
+        {
+            "insert": (0.0, float(handle), 0.0),
+            "height": 2.5,
+            "text": f"{kind}{handle}",
+            "tag": "TAG",
+            "attribute_flags": flags,
+            **_style(owner_handle=owner_handle),
+        },
+    )
+
+
+def test_dwg_attribute_templates_and_invisible_attributes_are_not_drawn() -> None:
+    document = _Document(
+        [
+            # The value a block reference shows, and an invisible one.
+            _attribute_entity("ATTRIB", 1, 0, None),
+            _attribute_entity("ATTRIB", 2, 1, None),
+            # Inside a block: the template is skipped, a constant definition is block content.
+            _attribute_entity("ATTDEF", 3, 0, 100),
+            _attribute_entity("ATTDEF", 4, 2, 100),
+            _attribute_entity("ATTDEF", 5, 3, 100),
+            # In model space a definition is shown.
+            _attribute_entity("ATTDEF", 6, 0, None),
+        ]
+    )
+    result = dwg_document_to_ir(
+        document, layer_names_by_handle={16: "0"}, block_names_by_handle={100: "TITLE"}
+    )
+    ir = result.document
+
+    assert [entity["text"] for entity in ir["entities"]] == ["ATTRIB1", "ATTDEF6"]
+    block = ir["tables"]["blocks"]["TITLE"]["entities"]
+    assert [entity["text"] for entity in block] == ["ATTDEF4"]
+    skipped = [
+        d for d in result.diagnostics if d.code == "DWG_HIDDEN_ATTRIBUTE_SKIPPED"
+    ]
+    assert len(skipped) == 1 and "Skipped 3 DWG attribute" in skipped[0].message
+    validate_ir(ir, strict_jsonschema=True)

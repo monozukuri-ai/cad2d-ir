@@ -354,6 +354,45 @@ def test_invalid_writer_options_are_rejected() -> None:
         )
 
 
+@pytest.mark.parametrize("target_version", ["AC1024", "AC1009"])
+def test_line_breaks_in_text_keep_one_value_per_line(target_version: str) -> None:
+    # Importers keep a multi-line MTEXT as raw line breaks (DWG, MI). A raw break
+    # in a DXF value would shift every following group code.
+    document = {
+        "format": "cad2d-ir",
+        "version": "0.2.0",
+        "header": {"units": "mm", "angle_unit": "deg", "coord_space": "world"},
+        "tables": {"layers": {"0": {}}},
+        "entities": [
+            {
+                "id": "E1",
+                "kind": "MTEXT",
+                "insert": [0, 0],
+                "height": 2.5,
+                "text": "first\nsecond\r\nthird",
+            },
+            {
+                "id": "E2",
+                "kind": "TEXT",
+                "insert": [0, 10],
+                "height": 2.5,
+                "text": "a\nb",
+            },
+            {"id": "E3", "kind": "LINE", "p1": [0, 0], "p2": [1, 0]},
+        ],
+    }
+    text = ir_to_dxf(document, target_version=target_version)  # type: ignore[arg-type]
+
+    lines = text.splitlines()
+    assert len(lines) % 2 == 0
+    assert all(code.strip().lstrip("-").isdigit() for code in lines[0::2])
+    if target_version == "AC1024":
+        assert "first\\Psecond\\Pthird" in lines
+    assert "a^Jb" in lines
+    restored = dxf_to_ir(text)
+    assert [entity["kind"] for entity in restored["entities"]][-1] == "LINE"
+
+
 def test_unknown_entity_and_constraints_have_structured_export_diagnostics() -> None:
     document = {
         "format": "cad2d-ir",
