@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.10.2
+
+- Linetype scale reaches the IR. `header.linetype_scale` carries the global scale
+  (DXF and DWG `$LTSCALE`) and entities carry `linetype_scale` (DXF group 48);
+  both are omitted when they are 1. A dash is
+  `pattern_mm * header.linetype_scale * entity.linetype_scale` drawing units
+  long. The scale used to be dropped, so the dash patterns of real-size model
+  space drawings (`$LTSCALE` 50 to 2000 in architectural files) came out hundreds
+  of times too short for any renderer. DXF export writes both back; R12 output
+  keeps `$LTSCALE` and reports a per-entity scale with
+  `DXF_R12_LINETYPE_SCALE_OMITTED`. Group 48 after an entity-specific subclass
+  marker (the MTEXT column width) is not read as a linetype scale.
+- JWW line types follow the Jw_cad numbering: 2-4 are dashed lines, 5-6 chain
+  lines, 7-8 double-dot chain lines and 9 the construction line type. The
+  importer had named 3-9 after a different sequence (`DASHDOT`, `CENTER`, `DOT`,
+  ...), so a chain line (5) became a dotted line and construction lines became
+  `DOT2`. The linetypes are now `JWW_DASHED1`-`3`, `JWW_DASHDOT1`-`2`,
+  `JWW_DIVIDE1`-`2`, `JWW_CONSTRUCTION`, the double-length types
+  `JWW_DASHDOT_X2`, `JWW_DIVIDE_X2`, `JWW_DASHED_X2`, `JWW_DASHED_X4` (pen
+  styles 16-19) and `SXF_*` for SXF-compatible line types (pen style 30 + SXF
+  code, listed only when used). Their `pattern_mm` is the default pattern stored
+  in JWW headers at the default printer pitch, in millimetres on paper (see
+  docs/IMPORTERS.md). **This renames the linetypes of JWW-derived IR**; consumers
+  that match on the old names need updating.
+- `tables.linetypes.*.plot` (boolean, default true). `false` marks a linetype that
+  is shown on screen but never printed; the JWW construction line type sets it.
+- SXF linetype definitions carry `pattern_mm`: predefined line types use the SXF
+  Ver.3.1 reference pitches and user-defined ones the pitch list of their
+  `user_defined_font` feature (SFC only). They previously had a description only.
+- The default (non-strict) validator checks the new fields.
+- DXF encoding detection no longer trusts `$DWGCODEPAGE` over the bytes. DXF text
+  is UTF-8 from AC1021 (AutoCAD 2007) on, yet writers keep declaring the system
+  codepage (`ANSI_932` on Japanese systems); such files were decoded as CP932, so
+  every Japanese layer name and text came out as mojibake with U+FFFD
+  replacements. UTF-8 is now selected when the non-ASCII bytes are valid UTF-8
+  and the file is AC1021 or later, or the declared codepage cannot decode them
+  (`encoding_source` reads `utf-8-probe ($DWGCODEPAGE=... ignored)`). The same
+  rule applies to binary DXF strings. In a corpus of 1,342 real-world DXF files
+  this affected about 180.
+
 ## 0.10.1
 
 - IDW: `IDW_VIEW_RASTER_ONLY` now recognizes views whose only stored display item

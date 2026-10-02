@@ -533,6 +533,12 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "DXF R12 export",
         "Lineweight was omitted from R12 output.",
     ),
+    "DXF_R12_LINETYPE_SCALE_OMITTED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "DXF R12 export",
+        "A per-entity linetype scale was omitted from R12 output.",
+    ),
     "DXF_R12_INSUNITS_OMITTED": DiagnosticCode(
         "warning", "skipped", "DXF R12 export", "INSUNITS was omitted from R12 output."
     ),

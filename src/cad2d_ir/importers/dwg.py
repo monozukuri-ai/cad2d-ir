@@ -144,6 +144,28 @@ def _resolve_header_units(
     return units, {"insunits": code}
 
 
+def _resolve_linetype_scale(dwg_document: Any) -> float | None:
+    """``$LTSCALE`` from the DWG header when it is a usable value other than 1.
+
+    Entity linetypes are not exposed by ``ezdwg`` yet, so this only records the
+    global scale; failures are silent because the units lookup already reports an
+    unreadable header.
+    """
+    header_variables = getattr(dwg_document, "header_variables", None)
+    if not callable(header_variables):
+        return None
+    try:
+        value = header_variables().get("ltscale")
+    except Exception:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    scale = float(value)
+    if not math.isfinite(scale) or scale <= 0.0 or abs(scale - 1.0) < 1e-12:
+        return None
+    return scale
+
+
 def dwg_document_to_ir(
     dwg_document: Any,
     *,
@@ -280,6 +302,9 @@ def dwg_document_to_ir(
         "tables": tables,
         "entities": entities,
     }
+    linetype_scale = _resolve_linetype_scale(dwg_document)
+    if linetype_scale is not None:
+        document["header"]["linetype_scale"] = linetype_scale
 
     if import_options.validate:
         validate_ir(document)

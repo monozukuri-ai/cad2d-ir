@@ -17,6 +17,7 @@ from cad2d_ir.importers.base import (
     ImportResult,
     MissingOptionalDependencyError,
 )
+from cad2d_ir.importers.linetypes import sxf_linetype_pattern
 from cad2d_ir.schema import validate_ir
 
 _EPSILON = 1.0e-12
@@ -42,6 +43,7 @@ class _ConversionContext:
     skipped_counts: Counter[str] = field(default_factory=Counter)
     layers: dict[str, dict[str, Any]] = field(default_factory=dict)
     linetypes: dict[str, dict[str, Any]] = field(default_factory=dict)
+    user_linetype_patterns: dict[str, list[float]] = field(default_factory=dict)
     text_styles: dict[str, dict[str, Any]] = field(default_factory=dict)
     preserved_dimensions: int = 0
     next_entity_number: int = 1
@@ -122,6 +124,7 @@ def sxf_drawing_to_ir(
         options=import_options,
         container=container,
         feature_by_id=feature_by_id,
+        user_linetype_patterns=_user_linetype_patterns(typed_features),
     )
 
     paths = list(_iter_attr(drawing, "paths"))
@@ -702,6 +705,42 @@ def _primitive_common_values(
     }
 
 
+def _user_linetype_patterns(
+    typed_features: Sequence[Mapping[str, Any]],
+) -> dict[str, list[float]]:
+    """Dash patterns of SXF user-defined line types, keyed by line type name.
+
+    ``pitch`` alternates drawn and blank lengths in millimetres on the sheet. Only
+    SFC exposes these features; P21 line types keep their name-derived pattern.
+    """
+    patterns: dict[str, list[float]] = {}
+    for feature in typed_features:
+        if str(feature.get("kind")) != "user_defined_font":
+            continue
+        name = feature.get("name")
+        pitch = feature.get("pitch")
+        if not isinstance(name, str) or not name:
+            continue
+        if not isinstance(pitch, Sequence) or isinstance(pitch, (str, bytes)):
+            continue
+        count = feature.get("segment_count")
+        values = list(pitch)[: int(count)] if isinstance(count, int) else list(pitch)
+        try:
+            lengths = [abs(float(value)) for value in values]
+        except (TypeError, ValueError):
+            continue
+        if len(lengths) < 2 or not all(math.isfinite(value) for value in lengths):
+            continue
+        patterns.setdefault(
+            name,
+            [
+                value if index % 2 == 0 else -value
+                for index, value in enumerate(lengths)
+            ],
+        )
+    return patterns
+
+
 def _register_style(
     context: _ConversionContext,
     *,
@@ -723,10 +762,14 @@ def _register_style(
         },
     )
     layer_def["plot"] = bool(layer_def.get("plot", False)) or visible
-    context.linetypes.setdefault(
-        linetype,
-        {"description": f"SXF line type: {linetype}"},
-    )
+    if linetype not in context.linetypes:
+        definition: dict[str, Any] = {"description": f"SXF line type: {linetype}"}
+        pattern = context.user_linetype_patterns.get(linetype)
+        if pattern is None:
+            pattern = sxf_linetype_pattern(linetype)
+        if pattern is not None:
+            definition["pattern_mm"] = pattern
+        context.linetypes[linetype] = definition
     if font_name is not None:
         context.text_styles.setdefault(font_name, {"font": font_name})
 

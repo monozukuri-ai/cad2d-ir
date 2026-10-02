@@ -15,7 +15,10 @@ Dispatches to the DXF, DWG, DGN, DWF/DWFx, JWW, MI/BI, or SXF adapter and return
 - `warnings`: compatibility property containing warning/error messages
 
 For DXF files, `encoding="auto"` checks a BOM, then `$DWGCODEPAGE`,
-then tries UTF-8, and finally falls back to CP932. The chosen encoding is available
+then tries UTF-8, and finally falls back to CP932. A declared codepage is
+ignored in favour of UTF-8 when the non-ASCII bytes are valid UTF-8 and either
+`$ACADVER` is AC1021 (AutoCAD 2007) or later, where DXF text is UTF-8 by
+definition, or the declared codepage cannot decode them. The chosen encoding is available
 in the `DXF_ENCODING_DETECTED.details` mapping, in
 `result.statistics["encoding"]`, and in
 `document["source"]["metadata"]["encoding"]`. Decode replacement is reported

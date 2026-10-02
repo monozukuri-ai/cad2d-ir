@@ -153,6 +153,9 @@ def _fallback_validate(document: Any) -> None:
     if header.get("coord_space") not in {"world", "normalized"}:
         raise IRValidationError("header.coord_space must be 'world' or 'normalized'")
 
+    if "linetype_scale" in header:
+        _require_positive_number(header, "linetype_scale", "header")
+
     _validate_tables(document.get("tables"))
     _validate_source(document.get("source"), "source")
 
@@ -170,6 +173,16 @@ def _validate_tables(tables: Any) -> None:
         return
     if not isinstance(tables, dict):
         raise IRValidationError("tables must be an object")
+
+    linetypes = tables.get("linetypes")
+    if isinstance(linetypes, dict):
+        for name, definition in linetypes.items():
+            if (
+                isinstance(definition, dict)
+                and "plot" in definition
+                and not isinstance(definition["plot"], bool)
+            ):
+                raise IRValidationError(f"tables.linetypes.{name}.plot must be boolean")
 
     blocks = tables.get("blocks")
     if blocks is None:
@@ -238,6 +251,8 @@ def _validate_entity(entity: Any, path: str) -> None:
         raise IRValidationError(f"{path}.id has invalid format")
     if entity["kind"] not in _SUPPORTED_KINDS:
         raise IRValidationError(f"{path}.kind is not supported")
+    if "linetype_scale" in entity:
+        _require_positive_number(entity, "linetype_scale", path)
 
     kind = entity["kind"]
     if kind == "LINE":

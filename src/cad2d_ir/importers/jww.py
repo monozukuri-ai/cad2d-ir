@@ -16,6 +16,10 @@ from cad2d_ir.importers.base import (
     ImportResult,
     MissingOptionalDependencyError,
 )
+from cad2d_ir.importers.linetypes import (
+    SXF_LINETYPE_NAMES,
+    SXF_LINETYPE_PATTERNS_MM,
+)
 from cad2d_ir.schema import validate_ir
 
 _TAU = 2.0 * math.pi
@@ -29,34 +33,84 @@ _METADATA_SETTING_KEYS = {
     "Draw_BmpTOUKA",
 }
 
-_LINE_TYPES = {
-    0: "CONTINUOUS",
-    1: "CONTINUOUS",
-    2: "DASHED",
-    3: "DASHDOT",
-    4: "CENTER",
-    5: "DOT",
-    6: "DASHED2",
-    7: "DASHDOT2",
-    8: "CENTER2",
-    9: "DOT2",
-}
+# One pattern bit prints as (printer pitch / 32) mm. Jw_cad stores, for its
+# SXF-compatible line types, both the bit pattern with its printer pitch and the
+# SXF segment lengths in millimetres; the two agree at exactly this ratio in every
+# header inspected. ``ezjww`` does not expose the per-file printer pitch, so the
+# Jw_cad default (10 for the standard line types) is assumed.
+_PATTERN_UNIT_MM = 1.0 / 32.0
 
+
+def _bit_pattern(runs: tuple[int, ...], printer_pitch: int) -> list[float]:
+    """Alternating dash/gap run lengths in pattern bits -> signed ``pattern_mm``."""
+    unit = printer_pitch * _PATTERN_UNIT_MM
+    return [
+        runs[index] * unit * (1.0 if index % 2 == 0 else -1.0)
+        for index in range(len(runs))
+    ]
+
+
+# Jw_cad line type number (entity ``pen_style``) -> (name, description, runs, pitch).
+# The runs are the default line type patterns saved in the JWW header
+# (``m_alLType``): 2-4 are dashed lines, 5-6 chain lines, 7-8 double-dot chain
+# lines, 9 the construction line type that is shown on screen but never printed,
+# and 16-19 the double-length variants.
+_STANDARD_LINE_TYPES: dict[int, tuple[str, str, tuple[int, ...], int]] = {
+    2: ("JWW_DASHED1", "Jw_cad dashed line 1", (2, 2), 10),
+    3: ("JWW_DASHED2", "Jw_cad dashed line 2", (4, 4), 10),
+    4: ("JWW_DASHED3", "Jw_cad dashed line 3", (6, 2), 10),
+    5: ("JWW_DASHDOT1", "Jw_cad chain line 1", (10, 2, 2, 2), 10),
+    6: ("JWW_DASHDOT2", "Jw_cad chain line 2", (26, 2, 2, 2), 10),
+    7: ("JWW_DIVIDE1", "Jw_cad double-dot chain line 1", (8, 2, 1, 2, 1, 2), 10),
+    8: ("JWW_DIVIDE2", "Jw_cad double-dot chain line 2", (24, 2, 1, 2, 1, 2), 10),
+    9: ("JWW_CONSTRUCTION", "Jw_cad construction line (not printed)", (1, 3), 10),
+    16: ("JWW_DASHDOT_X2", "Jw_cad double-length chain line", (26, 2, 2, 2), 20),
+    17: (
+        "JWW_DIVIDE_X2",
+        "Jw_cad double-length double-dot chain line",
+        (24, 2, 1, 2, 1, 2),
+        20,
+    ),
+    18: ("JWW_DASHED_X2", "Jw_cad double-length dashed line", (30, 2), 20),
+    19: ("JWW_DASHED_X4", "Jw_cad quadruple-length dashed line", (30, 2), 40),
+}
+_NON_PLOTTING_PEN_STYLES = {9}
+# Jw_cad numbers its SXF-compatible line types as 30 + SXF line type code.
+_SXF_PEN_STYLE_OFFSET = 30
+
+_LINE_TYPES: dict[int, str] = {0: "CONTINUOUS", 1: "CONTINUOUS"}
 _LINETYPE_TABLE: dict[str, dict[str, Any]] = {
     "CONTINUOUS": {"description": "Continuous line", "pattern_mm": []},
-    "DASHED": {"description": "Dashed line", "pattern_mm": [0.6, -0.3]},
-    "DASHDOT": {"description": "Dash-dot line", "pattern_mm": [0.6, -0.2, 0.1, -0.2]},
-    "CENTER": {"description": "Center line", "pattern_mm": [1.25, -0.25, 0.25, -0.25]},
-    "DOT": {"description": "Dotted line", "pattern_mm": [0.1, -0.1]},
-    "DASHED2": {"description": "Dashed line x2", "pattern_mm": [1.2, -0.6]},
-    "DASHDOT2": {
-        "description": "Dash-dot line x2",
-        "pattern_mm": [1.2, -0.4, 0.2, -0.4],
-    },
-    "CENTER2": {"description": "Center line x2", "pattern_mm": [2.5, -0.5, 0.5, -0.5]},
-    "DOT2": {"description": "Dotted line x2", "pattern_mm": [0.2, -0.2]},
     "BYLAYER": {"description": "Use the layer linetype", "pattern_mm": []},
 }
+for _pen_style, (_name, _description, _runs, _pitch) in _STANDARD_LINE_TYPES.items():
+    _LINE_TYPES[_pen_style] = _name
+    _LINETYPE_TABLE[_name] = {
+        "description": _description,
+        "pattern_mm": _bit_pattern(_runs, _pitch),
+    }
+    if _pen_style in _NON_PLOTTING_PEN_STYLES:
+        _LINETYPE_TABLE[_name]["plot"] = False
+for _code, _sxf_name in SXF_LINETYPE_NAMES.items():
+    if _code == 1:
+        _LINE_TYPES[_SXF_PEN_STYLE_OFFSET + _code] = "CONTINUOUS"
+        continue
+    _name = "SXF_" + _sxf_name.upper().replace(" ", "_").replace("-", "_")
+    _LINE_TYPES[_SXF_PEN_STYLE_OFFSET + _code] = _name
+    _LINETYPE_TABLE[_name] = {
+        "description": f"SXF line type: {_sxf_name}",
+        "pattern_mm": list(SXF_LINETYPE_PATTERNS_MM[_sxf_name]),
+    }
+
+
+def _linetype_table(used: set[str]) -> dict[str, dict[str, Any]]:
+    """The Jw_cad line types, plus the SXF-compatible ones the drawing uses."""
+    table: dict[str, dict[str, Any]] = {}
+    for name, definition in _LINETYPE_TABLE.items():
+        if name.startswith("SXF_") and name not in used:
+            continue
+        table[name] = {**definition, "pattern_mm": list(definition["pattern_mm"])}
+    return table
 
 
 @dataclass(slots=True)
@@ -65,6 +119,7 @@ class _ConversionContext:
     layers: dict[str, dict[str, Any]]
     layer_names: dict[tuple[int, int], str]
     block_names: dict[int, str]
+    used_linetypes: set[str] = field(default_factory=set)
     diagnostics: list[ImportDiagnostic] = field(default_factory=list)
     converted_counts: Counter[str] = field(default_factory=Counter)
     skipped_counts: Counter[str] = field(default_factory=Counter)
@@ -162,7 +217,7 @@ def jww_document_to_ir(
 
     tables: dict[str, Any] = {
         "layers": context.layers,
-        "linetypes": _LINETYPE_TABLE,
+        "linetypes": _linetype_table(context.used_linetypes),
         "text_styles": text_styles,
     }
     if blocks:
@@ -464,10 +519,12 @@ def _entity_common(
 
     pen_style = int(base.get("pen_style", 0))
     pen_width = int(base.get("pen_width", 0))
+    linetype = _LINE_TYPES.get(pen_style, "BYLAYER")
+    context.used_linetypes.add(linetype)
     common: dict[str, Any] = {
         "id": context.allocate_id(),
         "layer": layer_name,
-        "linetype": _LINE_TYPES.get(pen_style, "BYLAYER"),
+        "linetype": linetype,
         "color": _map_color(int(base.get("pen_color", 0))),
     }
     if context.options.entity_provenance:

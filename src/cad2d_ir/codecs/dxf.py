@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import math
 from pathlib import Path
 import re
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Iterable, Literal
 
 from cad2d_ir.constants import CURRENT_IR_VERSION
 from cad2d_ir.diagnostics import ExportAction, ExportDiagnostic
@@ -432,7 +432,9 @@ def _pairs_to_ir(
         # Lenient pairing must not turn arbitrary bytes into an empty drawing.
         raise ValueError("Not a DXF document: no SECTION record found")
 
-    units = _header_units(sections.get("HEADER", []))
+    header_variables = _header_variables(sections.get("HEADER", []))
+    units = _header_units(header_variables)
+    linetype_scale = _header_linetype_scale(header_variables)
     default_text_height = _DEFAULT_TEXT_HEIGHT_BY_UNIT.get(units, 2.5)
     entities = _entities_to_ir(
         sections.get("ENTITIES", []),
@@ -461,6 +463,8 @@ def _pairs_to_ir(
         "source": {"format": "dxf"},
         "entities": entities,
     }
+    if linetype_scale is not None:
+        ir_document["header"]["linetype_scale"] = linetype_scale
     if tables:
         ir_document["tables"] = tables
 
@@ -591,10 +595,14 @@ def _select_dxf_encoding(raw: bytes, requested: str) -> tuple[str, str]:
     if raw.startswith(codecs.BOM_UTF16_LE) or raw.startswith(codecs.BOM_UTF16_BE):
         return "utf-16", "bom"
 
-    codepage = _raw_dwg_codepage(raw)
+    codepage = _raw_header_string(raw, "$DWGCODEPAGE")
     if codepage is not None:
         mapped = _CODEPAGE_ENCODINGS.get(codepage.upper())
         if mapped is not None:
+            if _utf8_overrides_codepage(
+                _raw_header_string(raw, "$ACADVER"), mapped, [raw]
+            ):
+                return "utf-8", f"utf-8-probe ($DWGCODEPAGE={codepage} ignored)"
             return mapped, f"$DWGCODEPAGE={codepage}"
 
     try:
@@ -604,16 +612,56 @@ def _select_dxf_encoding(raw: bytes, requested: str) -> tuple[str, str]:
     return "utf-8", "utf-8-probe"
 
 
-def _raw_dwg_codepage(raw: bytes) -> str | None:
+def _raw_header_string(raw: bytes, name: str) -> str | None:
+    """Value of a string header variable, read before the encoding is known."""
     text = raw.decode("latin-1")
     lines = text.splitlines()
     for index in range(0, len(lines) - 3, 2):
         if lines[index].strip() != "9":
             continue
-        if lines[index + 1].strip().upper() != "$DWGCODEPAGE":
+        if lines[index + 1].strip().upper() != name:
             continue
         return lines[index + 3].strip()
     return None
+
+
+def _utf8_overrides_codepage(
+    version: str | None, mapped: str, values: Iterable[bytes]
+) -> bool:
+    """Whether text is UTF-8 although ``$DWGCODEPAGE`` names another encoding.
+
+    DXF text is UTF-8 from AC1021 (AutoCAD 2007) on, and writers keep declaring
+    the system codepage (``ANSI_932`` on Japanese systems). Trusting the codepage
+    turns every non-ASCII string of such a file into mojibake. Legacy-encoded
+    Japanese text is practically never valid UTF-8, so UTF-8 wins when the
+    non-ASCII bytes decode strictly as UTF-8 and either the file is AC1021 or
+    later or the declared codepage cannot decode them.
+    """
+    if codecs.lookup(mapped).name == "utf-8":
+        return False
+    non_ascii = False
+    declared_ok = True
+    for value in values:
+        if value.isascii():
+            continue
+        non_ascii = True
+        try:
+            value.decode("utf-8", errors="strict")
+        except UnicodeDecodeError:
+            return False
+        if declared_ok:
+            try:
+                value.decode(mapped, errors="strict")
+            except UnicodeDecodeError:
+                declared_ok = False
+    if not non_ascii:
+        return False
+    modern = (
+        version is not None
+        and re.fullmatch(r"AC\d{4}", version.upper()) is not None
+        and version.upper() >= "AC1021"
+    )
+    return modern or not declared_ok
 
 
 def _header_to_pairs(
@@ -633,6 +681,9 @@ def _header_to_pairs(
         (9, "$ACADVER"),
         (1, target_version),
     ]
+    linetype_scale = _linetype_scale_value(header.get("linetype_scale"))
+    if linetype_scale is not None:
+        pairs.extend([(9, "$LTSCALE"), (40, _num(linetype_scale))])
     if target_version == "AC1024":
         pairs.extend([(9, "$INSUNITS"), (70, str(units))])
         if handseed is not None:
@@ -935,15 +986,28 @@ def _read_binary_dxf(
         selected_encoding, encoding_source = _select_dxf_encoding(b"", encoding)
     else:
         selected_encoding, encoding_source = "cp932", "cp932-fallback"
-        codepage: str | None = None
+        header_strings: dict[bytes, str] = {}
         for index, (code, value) in enumerate(typed_pairs):
-            if code == 9 and value == b"$DWGCODEPAGE" and index + 1 < len(typed_pairs):
+            if (
+                code == 9
+                and value in (b"$DWGCODEPAGE", b"$ACADVER")
+                and index + 1 < len(typed_pairs)
+            ):
                 next_value = typed_pairs[index + 1][1]
                 if isinstance(next_value, bytes):
-                    codepage = next_value.decode("latin-1").strip()
-                break
+                    header_strings[value] = next_value.decode("latin-1").strip()
+                if len(header_strings) == 2:
+                    break
+        codepage = header_strings.get(b"$DWGCODEPAGE")
         mapped = _CODEPAGE_ENCODINGS.get(codepage.upper()) if codepage else None
-        if mapped is not None:
+        if mapped is not None and _utf8_overrides_codepage(
+            header_strings.get(b"$ACADVER"),
+            mapped,
+            (value for _, value in typed_pairs if isinstance(value, bytes)),
+        ):
+            selected_encoding = "utf-8"
+            encoding_source = f"utf-8-probe ($DWGCODEPAGE={codepage} ignored)"
+        elif mapped is not None:
             selected_encoding, encoding_source = mapped, f"$DWGCODEPAGE={codepage}"
         else:
             try:
@@ -1146,7 +1210,7 @@ def _split_sections(pairs: list[DXFPair]) -> dict[str, list[DXFPair]]:
     return sections
 
 
-def _header_units(header_pairs: list[DXFPair]) -> str:
+def _header_variables(header_pairs: list[DXFPair]) -> dict[str, list[DXFPair]]:
     current_name: str | None = None
     variables: dict[str, list[DXFPair]] = {}
 
@@ -1157,11 +1221,52 @@ def _header_units(header_pairs: list[DXFPair]) -> str:
             continue
         if current_name is not None:
             variables[current_name].append((code, value))
+    return variables
 
+
+def _header_units(variables: dict[str, list[DXFPair]]) -> str:
     if "$INSUNITS" not in variables:
         return "mm"
     insunits = _first_int(variables["$INSUNITS"], 70, default=4)
     return _INSUNITS_TO_IR.get(insunits, "mm")
+
+
+def _header_linetype_scale(variables: dict[str, list[DXFPair]]) -> float | None:
+    """``$LTSCALE`` when it is a usable value other than the default 1."""
+    if "$LTSCALE" not in variables:
+        return None
+    try:
+        value = _first_float(variables["$LTSCALE"], 40, default=None)
+    except ValueError:
+        return None
+    return _linetype_scale_or_none(value)
+
+
+def _linetype_scale_or_none(value: float | None) -> float | None:
+    """Keep a linetype scale only when it is finite, positive and not 1."""
+    if value is None or not math.isfinite(value) or value <= 0.0:
+        return None
+    if abs(value - 1.0) < 1e-12:
+        return None
+    return value
+
+
+def _entity_linetype_scale(pairs: list[DXFPair]) -> float | None:
+    """Group 48 of the common entity data.
+
+    The same code means other things after an entity-specific subclass marker
+    (MTEXT stores its column width there), so the scan stops at the first
+    ``100`` marker other than ``AcDbEntity``.
+    """
+    for code, value in pairs:
+        if code == 100 and value.strip() != "AcDbEntity":
+            return None
+        if code == 48:
+            try:
+                return _linetype_scale_or_none(_to_float(value))
+            except ValueError:
+                return None
+    return None
 
 
 def _tables_to_ir(table_pairs: list[DXFPair]) -> dict[str, Any]:
@@ -1638,6 +1743,9 @@ def _common_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
     linetype = _first_string(pairs, 6)
     if linetype:
         entity["linetype"] = linetype
+    linetype_scale = _entity_linetype_scale(pairs)
+    if linetype_scale is not None:
+        entity["linetype_scale"] = linetype_scale
 
     true_color = _first_int(pairs, 420, default=None)
     if true_color is not None:
@@ -3839,6 +3947,7 @@ def _entity_common_values(entity: dict[str, Any]) -> dict[str, Any]:
         "id",
         "layer",
         "linetype",
+        "linetype_scale",
         "color",
         "lineweight_mm",
         "visible",
@@ -3886,6 +3995,21 @@ def _prepare_r12_entity(
             entity_id=entity_id,
             action="skipped",
         )
+    if "linetype_scale" in prepared:
+        scale = _linetype_scale_value(prepared.pop("linetype_scale"))
+        if scale is not None:
+            _diagnose(
+                diagnostics,
+                warnings,
+                code="DXF_R12_LINETYPE_SCALE_OMITTED",
+                severity="warning",
+                message=(
+                    f"[{entity.get('kind', 'ENTITY')}:{entity_id or '?'}] "
+                    f"linetype scale {scale:g} was omitted from DXF R12."
+                ),
+                entity_id=entity_id,
+                action="skipped",
+            )
     return prepared
 
 
@@ -4316,6 +4440,9 @@ def _common_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     linetype = entity.get("linetype")
     if linetype:
         pairs.append((6, str(linetype)))
+    linetype_scale = _linetype_scale_value(entity.get("linetype_scale"))
+    if linetype_scale is not None:
+        pairs.append((48, _num(linetype_scale)))
 
     color = entity.get("color")
     if isinstance(color, int):
@@ -4332,6 +4459,13 @@ def _common_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     if entity.get("visible") is False:
         pairs.append((60, "1"))
     return pairs
+
+
+def _linetype_scale_value(value: Any) -> float | None:
+    """An IR linetype scale worth writing: a positive number other than 1."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return _linetype_scale_or_none(float(value))
 
 
 def _dimension_point(

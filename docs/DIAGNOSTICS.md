@@ -60,6 +60,7 @@ entity/source identifiers and structured details.
 | `DXF_R12_ELLIPSE_APPROXIMATED` | warning | approximated | DXF R12 export | ELLIPSE was approximated by a polyline. |
 | `DXF_R12_HATCH_EXPLODED` | warning | exploded | DXF R12 export | HATCH was emitted as boundary polylines. |
 | `DXF_R12_INSUNITS_OMITTED` | warning | skipped | DXF R12 export | INSUNITS was omitted from R12 output. |
+| `DXF_R12_LINETYPE_SCALE_OMITTED` | warning | skipped | DXF R12 export | A per-entity linetype scale was omitted from R12 output. |
 | `DXF_R12_LINEWEIGHT_OMITTED` | warning | skipped | DXF R12 export | Lineweight was omitted from R12 output. |
 | `DXF_R12_LWPOLYLINE_EXPLODED` | info | exploded | DXF R12 export | LWPOLYLINE was emitted as POLYLINE records. |
 | `DXF_R12_MTEXT_EXPLODED` | warning | exploded | DXF R12 export | MTEXT was emitted as one or more TEXT entities. |

@@ -29,6 +29,12 @@
         },
         "angle_unit": { "type": "string", "enum": ["deg", "rad"] },
 
+        "linetype_scale": {
+          "description": "Global linetype scale (DXF $LTSCALE). A dash is drawn pattern length * header.linetype_scale * entity.linetype_scale drawing units long. Omitted means 1.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+
         "coord_space": {
           "description": "Coordinate space for entity geometry. 'world' is CAD-like. 'normalized' is [0,1] relative to source image.",
           "type": "string",
@@ -227,6 +233,11 @@
 
         "layer": { "type": "string", "default": "0" },
         "linetype": { "type": "string" },
+        "linetype_scale": {
+          "description": "Per-entity linetype scale (DXF group 48), multiplied with header.linetype_scale. Omitted means 1.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
         "color": { "$ref": "#/$defs/Color" },
         "lineweight_mm": { "type": "number", "minimum": 0 },
 
@@ -255,9 +266,14 @@
       "properties": {
         "description": { "type": "string" },
         "pattern_mm": {
-          "description": "Dash-gap pattern lengths in mm: [dash, gap, dash, gap, ...].",
+          "description": "Dash-gap pattern at linetype scale 1: positive = dash, negative = gap, 0 = dot. Lengths are in drawing units (millimetres when header.units is 'mm'); see header.linetype_scale.",
           "type": "array",
           "items": { "type": "number" }
+        },
+        "plot": {
+          "description": "false for linetypes that are shown on screen but never printed (Jw_cad construction lines).",
+          "type": "boolean",
+          "default": true
         }
       }
     },

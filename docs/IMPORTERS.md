@@ -42,6 +42,22 @@ The JWW adapter consumes `ezjww.read_document()` rather than `read_dxf_document(
 
 JWW pen color, pen style, pen width, layer/group state, source indices, file version, memo, paper size, and internal printer/view settings are retained through IR style fields, tables, provenance, or JWW metadata. `JWW_METADATA_SETTING_EXTRACTED` reports the source-entity-to-metadata separation.
 
+The entity pen style is the Jw_cad line type number:
+
+| Pen style | Jw_cad line type | IR linetype | `pattern_mm` |
+| --- | --- | --- | --- |
+| 1 | solid | `CONTINUOUS` | - |
+| 2, 3, 4 | dashed 1-3 | `JWW_DASHED1`-`3` | 0.625/0.625, 1.25/1.25, 1.875/0.625 |
+| 5, 6 | chain 1-2 | `JWW_DASHDOT1`-`2` | 3.125 and 8.125 long dash, then 0.625 gap, dash, gap |
+| 7, 8 | double-dot chain 1-2 | `JWW_DIVIDE1`-`2` | 2.5 and 7.5 long dash, 0.3125 dots, 0.625 gaps |
+| 9 | construction line | `JWW_CONSTRUCTION`, `plot: false` | 0.3125/0.9375 |
+| 11-15 | random (freehand-looking) line | `BYLAYER` | not modelled |
+| 16-19 | double-length chain, double-dot chain, dashed | `JWW_DASHDOT_X2`, `JWW_DIVIDE_X2`, `JWW_DASHED_X2`, `JWW_DASHED_X4` | 20 mm period (40 mm for X4) |
+| 31-45 | SXF line type 1-15 | `CONTINUOUS`, `SXF_DASHED`, ... | SXF Ver.3.1 reference pitches |
+| 47-62 | SXF user-defined | `BYLAYER` | definition not exposed by `ezjww` |
+
+The patterns are millimetres on paper, like JWW coordinates, so no linetype scale applies. They come from the default line type patterns stored in every JWW header (a bit mask per line type): one pattern bit prints as `printer pitch / 32` mm. Jw_cad stores, for its SXF-compatible line types, both such a bit pattern with its printer pitch and the SXF segment lengths in millimetres, and the two agree at exactly that ratio. `ezjww` does not expose the per-file settings, so the Jw_cad default printer pitch (10; 20 or 40 for the double-length types) is assumed; a drawing saved with another pitch prints proportionally shorter or longer dashes than the IR pattern says. Construction lines are displayed but never printed, which `plot: false` on the linetype records.
+
 ## DWG adapter
 
 The DWG adapter consumes `ezdwg.read()` and enumerates every entity through `Document.entities().query()` (falling back to `modelspace().query()` on `ezdwg` releases before the placement-aware layouts), then partitions them itself: entities owned by a named block record become block-definition bodies, paper-space entities (layout frames, viewports, title blocks; `entmode == 1` or owned by a `*Paper_Space*` record) are skipped with `DWG_PAPERSPACE_ENTITY_SKIPPED`, and the rest form the IR modelspace. Low-level public table decoders are used only to recover layer names/colors and block-header names.
@@ -56,6 +72,8 @@ The DWG adapter consumes `ezdwg.read()` and enumerates every entity through `Doc
 | `INSERT`, `MINSERT` | `INSERT` | signed scale retained; MINSERT array parameters remain metadata |
 | `DIMENSION` | semantic `DIMENSION` | subtype and complete native geometry payload retained |
 | block-owned entities | block table body | grouped when owner handles are exposed |
+
+`$LTSCALE` fills `header.linetype_scale` when it is not 1. It has no visible effect yet: `ezdwg` exposes neither entity linetypes nor the linetype table, so every DWG entity is `BYLAYER` on `CONTINUOUS` layers and the table holds no patterns.
 
 DWG units come from the `$INSUNITS` header variable (`ezdwg` >= 0.11 `Document.header_variables()`); mapped codes fill `header.units` (and therefore `$INSUNITS` on DXF export), the raw code is recorded in header metadata, and unmapped codes or R14 files (no `$INSUNITS`) fall back to `unknown` with the reason in metadata plus a diagnostic. Non-zero Z coordinates are projected to XY and reported. Unsupported 3D/presentation entities are skipped with aggregate diagnostics. Block base points are also not exposed; recovered block bodies use `[0, 0]` and state that limitation in metadata.
 
@@ -247,6 +265,8 @@ The SXF adapter parses either SFC or AP202/P21 and consumes `ezsxf._drawing.buil
 | text | `TEXT` / `MTEXT` | layer, RGB color, line width, font, anchor, angle, width retained |
 | marker/symbol insertion point | `POINT` | code, scale, and symbol name retained |
 | SFC dimension feature | semantic `DIMENSION` | native feature plus grouped rendered world-space paths/text retained |
+
+Line types keep their SXF name (`dashed`, `chain`, a user-defined name, ...). Predefined ones get the SXF Ver.3.1 reference pitches as `pattern_mm`; user-defined ones get the pitch list of their `user_defined_font` feature, which only SFC exposes. Lengths are millimetres on the sheet.
 
 SFC `typed_features` allow dimension kinds and source curve kinds to be recovered. P21 currently exposes generic STEP entities but no equivalent typed feature model, so the adapter preserves rendered primitives and emits `SXF_P21_SEMANTICS_FLATTENED`. Externally defined hatch/symbol limitations reported by `ezsxf` are forwarded as diagnostics.
 

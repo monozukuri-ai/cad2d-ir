@@ -251,3 +251,83 @@ def test_text_escapes_outside_codepage_are_decoded() -> None:
     assert entities[0]["text"] == "日本語 ABC"
     # MIF (\M+1 = cp932) decodes; a lone surrogate escape stays literal
     assert entities[1]["text"] == "寸法 \\U+D83D"
+
+
+def _versioned_dxf(version: str, *, codepage: str = "ANSI_932") -> str:
+    return _text_dxf(codepage=False).replace(
+        "HEADER\n",
+        f"HEADER\n9\n$ACADVER\n1\n{version}\n9\n$DWGCODEPAGE\n3\n{codepage}\n",
+        1,
+    )
+
+
+def test_ac1021_and_later_dxf_is_utf8_despite_the_declared_codepage(
+    tmp_path: Path,
+) -> None:
+    # AutoCAD 2007+ writes UTF-8 and still declares the system codepage.
+    source = tmp_path / "ac1032.dxf"
+    source.write_text(_versioned_dxf("AC1032"), encoding="utf-8")
+
+    result = convert_dxf_file_to_ir(source)
+
+    assert result.encoding == "utf-8"
+    assert result.document["entities"][0]["text"] == "\u5bf8\u6cd5"
+    assert (
+        result.document["entities"][0]["layer"]
+        == "\u65e5\u672c\u8a9e\u30ec\u30a4\u30e4"
+    )
+    codes = [diagnostic.code for diagnostic in result.diagnostics]
+    assert "DXF_DECODE_REPLACED" not in codes
+    diagnostic = next(
+        item for item in result.diagnostics if item.code == "DXF_ENCODING_DETECTED"
+    )
+    assert diagnostic.details == {
+        "encoding": "utf-8",
+        "source": "utf-8-probe ($DWGCODEPAGE=ANSI_932 ignored)",
+    }
+
+
+def test_declared_codepage_still_wins_when_the_bytes_are_not_utf8(
+    tmp_path: Path,
+) -> None:
+    # Some writers emit AC1021+ headers with legacy-encoded text.
+    modern = tmp_path / "ac1032-cp932.dxf"
+    modern.write_bytes(_versioned_dxf("AC1032").encode("cp932"))
+    legacy = tmp_path / "ac1015-cp932.dxf"
+    legacy.write_bytes(_versioned_dxf("AC1015").encode("cp932"))
+
+    for source in (modern, legacy):
+        result = convert_file_to_ir(source)
+        assert result.statistics["encoding"] == "cp932"
+        assert result.statistics["encoding_source"] == "$DWGCODEPAGE=ANSI_932"
+        assert result.document["entities"][0]["text"] == "\u5bf8\u6cd5"
+
+
+def test_utf8_bytes_the_codepage_cannot_decode_are_read_as_utf8(
+    tmp_path: Path,
+) -> None:
+    # Pre-AC1021 header, but the text is UTF-8 and not valid CP932.
+    source = tmp_path / "ac1015-utf8.dxf"
+    raw = _versioned_dxf("AC1015").encode("utf-8")
+    with pytest.raises(UnicodeDecodeError):
+        raw.decode("cp932")
+    source.write_bytes(raw)
+
+    result = convert_dxf_file_to_ir(source)
+
+    assert result.encoding == "utf-8"
+    assert result.document["entities"][0]["text"] == "\u5bf8\u6cd5"
+
+
+def test_ascii_only_dxf_keeps_the_declared_codepage(tmp_path: Path) -> None:
+    source = tmp_path / "ascii.dxf"
+    text = _versioned_dxf("AC1032")
+    text = text.replace("\u65e5\u672c\u8a9e\u30ec\u30a4\u30e4", "LAYER0").replace(
+        "\u5bf8\u6cd5", "DIM"
+    )
+    source.write_text(text, encoding="ascii")
+
+    result = convert_file_to_ir(source)
+
+    assert result.statistics["encoding"] == "cp932"
+    assert result.statistics["encoding_source"] == "$DWGCODEPAGE=ANSI_932"

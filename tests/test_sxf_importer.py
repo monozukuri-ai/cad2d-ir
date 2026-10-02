@@ -458,3 +458,39 @@ def test_real_ezsxf_curves_survive_compound_figure_placements(tmp_path: Path) ->
     assert "LWPOLYLINE" not in by_kind
     assert result.statistics["approximated_entities"] == 0
     validate_ir(result.document, strict_jsonschema=True)
+
+
+def test_sxf_linetypes_carry_dash_patterns() -> None:
+    drawing = _Drawing(
+        paths=[
+            _Path(
+                ((0.0, 0.0), (10.0, 0.0)),
+                False,
+                _Style(line_type="long dashed dotted"),
+                1,
+            ),
+            _Path(((0.0, 1.0), (10.0, 1.0)), False, _Style(line_type="user-1"), 1),
+            _Path(((0.0, 2.0), (10.0, 2.0)), False, _Style(line_type="mystery"), 1),
+        ]
+    )
+    parsed = _parsed()
+    parsed["typed_features"].append(
+        {
+            "id": 60,
+            "kind": "user_defined_font",
+            "keyword": "user_defined_font_feature",
+            "name": "user-1",
+            "segment_count": 4,
+            "pitch": [40.0, 10.0, 10.0, 10.0, 0.0, 0.0],
+        }
+    )
+
+    result = sxf_drawing_to_ir(drawing, parsed=parsed)
+    linetypes = result.document["tables"]["linetypes"]
+
+    # Predefined line types use the SXF reference pitches; user-defined ones use
+    # the pitch list of their feature (drawn lengths positive, blanks negative).
+    assert linetypes["long dashed dotted"]["pattern_mm"] == [12.0, -1.5, 0.25, -1.5]
+    assert linetypes["user-1"]["pattern_mm"] == [40.0, -10.0, 10.0, -10.0]
+    assert "pattern_mm" not in linetypes["mystery"]
+    validate_ir(result.document, strict_jsonschema=True)

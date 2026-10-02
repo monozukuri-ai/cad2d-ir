@@ -449,3 +449,98 @@ def test_file_style_consumption_releases_raw_entities_without_changing_results()
     assert raw["entities"].count(None) == reference.statistics[
         "converted_entities"
     ] + sum(reference.statistics["skipped_entity_counts"].values())
+
+
+def _line_with_pen_style(pen_style: int, y: float) -> dict:
+    return {
+        "type": "LINE",
+        "base": _base(pen_style=pen_style),
+        "start_x": 0.0,
+        "start_y": y,
+        "end_x": 10.0,
+        "end_y": y,
+    }
+
+
+def test_jww_line_types_follow_jw_cad_numbering() -> None:
+    document = _document()
+    pen_styles = [1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 18, 31, 32, 38, 47]
+    document["entities"] = [
+        _line_with_pen_style(pen_style, float(index))
+        for index, pen_style in enumerate(pen_styles)
+    ]
+    document["block_defs"] = []
+
+    result = jww_document_to_ir(document)
+    names = [entity["linetype"] for entity in result.document["entities"]]
+
+    assert names == [
+        "CONTINUOUS",
+        "JWW_DASHED1",
+        "JWW_DASHED2",
+        "JWW_DASHED3",
+        "JWW_DASHDOT1",
+        "JWW_DASHDOT2",
+        "JWW_DIVIDE1",
+        "JWW_DIVIDE2",
+        "JWW_CONSTRUCTION",
+        "BYLAYER",  # random (freehand-looking) line: no dash pattern
+        "JWW_DASHED_X2",
+        "CONTINUOUS",  # SXF line type 1
+        "SXF_DASHED",
+        "SXF_CHAIN",
+        "BYLAYER",  # SXF user-defined line type: pattern not exposed by ezjww
+    ]
+    linetypes = result.document["tables"]["linetypes"]
+    assert set(names) <= set(linetypes)
+    validate_ir(result.document, strict_jsonschema=True)
+
+
+def test_jww_line_type_patterns_are_paper_millimetres() -> None:
+    document = _document()
+    document["entities"] = [_line_with_pen_style(32, 0.0)]
+    document["block_defs"] = []
+
+    linetypes = jww_document_to_ir(document).document["tables"]["linetypes"]
+
+    # One pattern bit prints as printer pitch / 32 mm (default pitch 10).
+    assert linetypes["JWW_DASHED1"]["pattern_mm"] == [0.625, -0.625]
+    assert linetypes["JWW_DASHED3"]["pattern_mm"] == [1.875, -0.625]
+    assert linetypes["JWW_DASHDOT1"]["pattern_mm"] == [3.125, -0.625, 0.625, -0.625]
+    assert linetypes["JWW_DASHDOT2"]["pattern_mm"] == [8.125, -0.625, 0.625, -0.625]
+    assert linetypes["JWW_DIVIDE1"]["pattern_mm"] == [
+        2.5,
+        -0.625,
+        0.3125,
+        -0.625,
+        0.3125,
+        -0.625,
+    ]
+    assert linetypes["JWW_DASHED_X4"]["pattern_mm"] == [37.5, -2.5]
+    assert sum(abs(v) for v in linetypes["JWW_DASHDOT_X2"]["pattern_mm"]) == 20.0
+    # SXF-compatible line types appear only when the drawing uses them.
+    assert linetypes["SXF_DASHED"]["pattern_mm"] == [6.0, -1.5]
+    assert "SXF_CHAIN" not in linetypes
+
+
+def test_jww_construction_line_type_is_marked_as_not_plotted() -> None:
+    document = _document()
+    document["entities"] = [_line_with_pen_style(9, 0.0)]
+    document["block_defs"] = []
+
+    linetypes = jww_document_to_ir(document).document["tables"]["linetypes"]
+
+    assert linetypes["JWW_CONSTRUCTION"]["plot"] is False
+    assert all(
+        "plot" not in definition
+        for name, definition in linetypes.items()
+        if name != "JWW_CONSTRUCTION"
+    )
+
+
+def test_jww_linetype_table_is_not_shared_between_documents() -> None:
+    first = jww_document_to_ir(_document()).document["tables"]["linetypes"]
+    first["JWW_DASHED1"]["pattern_mm"].append(99.0)
+    second = jww_document_to_ir(_document()).document["tables"]["linetypes"]
+
+    assert second["JWW_DASHED1"]["pattern_mm"] == [0.625, -0.625]

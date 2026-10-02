@@ -313,6 +313,26 @@ def test_dwg_units_unsupported_code_falls_back_with_diagnostic() -> None:
     assert "DWG_UNSUPPORTED_INSUNITS" in codes
 
 
+def test_dwg_ltscale_becomes_header_linetype_scale() -> None:
+    result = dwg_document_to_ir(
+        _DocumentWithHeader(_line_entities(), {"insunits": 4, "ltscale": 100.0})
+    )
+
+    assert result.document["header"]["linetype_scale"] == 100.0
+    validate_ir(result.document, strict_jsonschema=True)
+
+
+def test_dwg_default_or_unusable_ltscale_is_omitted() -> None:
+    for value in (1.0, 0.0, -5.0, None, "100"):
+        result = dwg_document_to_ir(
+            _DocumentWithHeader(_line_entities(), {"insunits": 4, "ltscale": value})
+        )
+        assert "linetype_scale" not in result.document["header"]
+
+    absent = dwg_document_to_ir(_DocumentWithHeader(_line_entities(), {"insunits": 4}))
+    assert "linetype_scale" not in absent.document["header"]
+
+
 def test_dwg_units_absent_api_keeps_previous_behavior() -> None:
     result = dwg_document_to_ir(_document())
 
