@@ -28,9 +28,12 @@ entity/source identifiers and structured details.
 | `DWG_ENTITY_CONVERSION_FAILED` | error | skipped | DWG import | A malformed DWG entity was skipped. |
 | `DWG_HIDDEN_ATTRIBUTE_SKIPPED` | info | skipped | DWG import | Attribute definitions inside block definitions (templates; block references show their own attribute values) and invisible attributes without a block reference were skipped. Attributes of a block reference are kept on the `INSERT`, invisible ones with `visible: false`. |
 | `DWG_HEADER_UNITS_UNREADABLE` | warning | - | DWG import | The DWG header variables could not be decoded for units. |
+| `DWG_LAYOUT_PROMOTED` | info | promoted | DWG import | Model space holds no entity, so the active paper-space layout (or the first one with entities) became `entities`; `header.metadata.dwg.promoted_layout` names it. |
 | `DWG_MINSERT_ARRAY_PRESERVED` | warning | preserved_metadata | DWG import | MINSERT array data was preserved as metadata. |
 | `DWG_NONPLANAR_PROJECTED` | warning | projected | DWG import | Non-planar geometry was projected to XY. |
-| `DWG_PAPERSPACE_ENTITY_SKIPPED` | info | skipped | DWG import | Paper-space entities (layout frames, viewports, title blocks) were skipped; the IR represents model space. |
+| `DWG_PAPERSPACE_ENTITY_SKIPPED` | info | skipped | DWG import | Paper-space entities were skipped. Emitted by packages before 0.10.5 only; they are kept in `layouts` now (`DWG_PAPERSPACE_LAYOUT_PRESERVED`). |
+| `DWG_PAPERSPACE_LAYOUT_PRESERVED` | info | preserved_layout | DWG import | Paper-space entities (layout frames, title blocks) and viewports were kept in `layouts`, apart from the model-space `entities`. |
+| `DWG_TOLERANCE_EXPLODED` | warning | exploded | DWG import | Feature control frames (`TOLERANCE`) were drawn as the lines of their frame and one `TEXT` per compartment; compartment widths are estimated. |
 | `DWG_UNSUPPORTED_INSUNITS` | warning | normalized | DWG import | A `$INSUNITS` code without an IR units mapping fell back to unknown. |
 | `DWG_UNRESOLVED_BLOCK_REFERENCE` | warning | - | DWG import | A referenced DWG block was not resolved. |
 | `DWG_UNSUPPORTED_ENTITY` | warning | skipped | DWG import | An unsupported DWG entity was skipped. |
@@ -57,8 +60,13 @@ entity/source identifiers and structured details.
 | `DXF_HATCH_LOOP_SKIPPED` | warning | skipped | DXF import | A HATCH boundary loop could not be reconstructed (unknown edge type or too few vertices) and was skipped. |
 | `DXF_IMPORT_WARNING` | warning | - | DXF import | Legacy wrapper for a DXF parser warning. |
 | `DXF_INSERT_TRANSFORM_OMITTED` | warning | skipped | DXF export | An affine INSERT transform was omitted. |
+| `DXF_LAYOUT_OMITTED` | warning | skipped | DXF export | A paper-space layout other than the written one was omitted: the output holds one paper space (the active layout). |
+| `DXF_LAYOUT_PROMOTED` | info | promoted | DXF import | Model space holds no entity, so the active paper-space layout (or the first one with entities) became `entities`; `header.metadata.dxf.promoted_layout` names it. |
 | `DXF_LEADER_APPROXIMATED` | warning | approximated | DXF import | A LEADER entity was imported as an open polyline through its vertices; the arrowhead and the link to its annotation were omitted. |
+| `DXF_MESH_SKIPPED` | warning | skipped | DXF import | A `POLYLINE` that is a polygon mesh or a polyface mesh (a 3D surface) was skipped; its `VERTEX` records are no path. |
 | `DXF_NON_XY_PLANE_PROJECTED` | warning | projected | DXF import | Axis-aligned XZ/YZ WCS geometry was projected to IR XY, with CIRCLE/ARC OCS coordinates transformed into the same plane. |
+| `DXF_PAPERSPACE_LAYOUT_PRESERVED` | info | preserved_layout | DXF import | Paper-space entities (group 67 = 1, and the bodies of `*Paper_Space<n>` blocks) and viewports were kept in `layouts`, apart from the model-space `entities`. |
+| `DXF_POLYLINE_3D_PROJECTED` | warning | projected | DXF import | A 3D `POLYLINE` whose vertices leave the XY plane was projected to XY. |
 | `DXF_R12_ELLIPSE_APPROXIMATED` | warning | approximated | DXF R12 export | ELLIPSE was approximated by a polyline. |
 | `DXF_R12_HATCH_EXPLODED` | warning | exploded | DXF R12 export | HATCH was emitted as boundary polylines. |
 | `DXF_R12_INSUNITS_OMITTED` | warning | skipped | DXF R12 export | INSUNITS was omitted from R12 output. |
@@ -69,9 +77,11 @@ entity/source identifiers and structured details.
 | `DXF_R12_MTEXT_FORMATTING_NORMALIZED` | warning | normalized | DXF R12 export | MTEXT formatting codes were removed. |
 | `DXF_R12_SPLINE_APPROXIMATED` | warning | approximated | DXF R12 export | SPLINE was approximated by a polyline. |
 | `DXF_R12_TRUE_COLOR_APPROXIMATED` | warning | approximated | DXF R12 export | True color was approximated by an ACI color. |
+| `DXF_R12_VIEWPORT_OMITTED` | warning | skipped | DXF R12 export | The viewports of the written layout were omitted from R12 output. |
 | `DXF_STREAM_RESYNCED` | warning | skipped | DXF import | A group-code line could not be parsed (e.g. a missing line break merged two lines); the lines up to the next `0`/record-name pair were skipped and parsing resumed there. |
 | `DXF_TABLE_DEFAULTED` | info | normalized | DXF export | A required table record was synthesized. |
 | `DXF_TEXT_HEIGHT_DEFAULTED` | warning | normalized | DXF import | A TEXT/MTEXT record carried a non-positive height, which was replaced by a unit-based default (2.5 mm equivalent). |
+| `DXF_TOLERANCE_EXPLODED` | warning | exploded | DXF import | A feature control frame (`TOLERANCE`) was drawn as the lines of its frame and one `TEXT` per compartment; compartment widths are estimated. |
 | `DXF_TRAILING_DATA_IGNORED` | info | skipped | DXF import | Lines after the `0`/`EOF` marker were ignored. |
 | `DXF_TRAILING_LINE_IGNORED` | warning | skipped | DXF import | The text ended with an unpaired line (truncated file or stray data) that was ignored. |
 | `DXF_UNKNOWN_ENTITY_SKIPPED` | warning | skipped | DXF export | An unknown IR entity kind was skipped. |

@@ -1,5 +1,85 @@
 # Changelog
 
+## 0.10.5
+
+- Paper space is kept apart from model space. `entities` is model space; the
+  sheets of a DXF or DWG drawing (frame, title block, notes on paper) are
+  `layouts`, each with its name, tab order, paper and its own entities in
+  paper coordinates. See "Layouts" in docs/SCHEMA_NOTES.md. Both importers
+  mixed the two. The DXF importer read the entities of the current sheet
+  (group 67 = 1) as model space. The DWG importer dropped those, and read the
+  entities of every other sheet as model space, because it did not know the
+  block records of the sheets. Paper coordinates are millimetres or inches on
+  the sheet and have nothing to do with model coordinates, so a 420 x 297
+  frame landed inside or beside a model that is thousands of units wide. In
+  real-world drawings this concerns 60 of 1,342 DXF files (19,870 entities in
+  model space; in 33 of them the sheet overlaps the model) and 62 of 483 DWG
+  files (26,344 entities in model space), while the DWG importer dropped
+  17,281 entities of current sheets.
+- Viewports. A layout lists the windows through which it shows model space
+  (`viewports`): the window on the sheet, the model-space point at its center,
+  the height of the shown region and the view twist, the layers that are
+  frozen in it and whether it is switched off. `height / view_height` is the
+  scale of the view. The DXF codec reads and writes them, including the view
+  that R12-R14 files keep in extended data; the DWG importer needs `ezdwg`
+  0.12.12, which decodes viewport geometry and layout objects for the first
+  time. The viewport that stands for the sheet itself is left out. A DWG and
+  the DXF export of the same drawing give the same layouts, sheet entities and
+  viewports.
+- A drawing that is drafted on a sheet is the drawing. When model space holds
+  no entity, the active sheet (or the first one with entities) becomes
+  `entities`, and `header.metadata.<format>.promoted_layout` names it
+  (`DXF_LAYOUT_PROMOTED`, `DWG_LAYOUT_PROMOTED`). 4 of the DWG drawings above
+  came out empty before (5,147 entities); 7 DXF drawings (12,773 entities)
+  keep the result they had by accident.
+- The DXF export writes one layout: the active sheet, or the first one with
+  content. Its entities carry group 67 = 1 and, in R2010 output, its viewports
+  follow as `VIEWPORT` records (R12 keeps the view in extended data, which is
+  not written: `DXF_R12_VIEWPORT_OMITTED`). The writer produces no `OBJECTS`
+  section and therefore has one paper space; other sheets are reported with
+  `DXF_LAYOUT_OMITTED`. `entity_map` entries of a sheet have the scope
+  `layout:<name>`. Exported and read back, 309 real-world drawings with
+  layouts return the same model space, the written sheet and all 539 of its
+  viewports.
+- DWG 3D polylines are read: projected to XY with straight segments, like the
+  DXF importer reads them (`DWG_NONPLANAR_PROJECTED` counts the ones that
+  leave the plane). They were skipped as unsupported: 9,974 polylines in 32 of
+  483 real-world drawings, more than half of all entities in one of them. One
+  whose vertices cannot be read is still skipped, in strict mode too. R13/R14
+  files need `ezdwg` 0.12.12.
+- DXF meshes are skipped with `DXF_MESH_SKIPPED` instead of being joined into
+  a path (39 meshes in 6 of 1,342 real-world drawings). A polyface mesh keeps
+  its face records between its `VERTEX` records, and the importer read them as
+  vertices at the origin: 18 such meshes had become polylines with 28,721
+  vertices, 19,004 of them at (0, 0). A polygon mesh is a grid of points, not
+  a path either. The DWG importer skips both as before.
+- A spline-fit DXF `POLYLINE` follows its fitted vertices. The control points
+  of its frame (`VERTEX` flag 16), which the file stores in front of them, were
+  part of the path: 1,255 points in 99 polylines of 10 real-world drawings.
+- Feature control frames (`TOLERANCE`) are drawn: the box of each row, the
+  lines between its compartments and one centered `TEXT` per compartment, with
+  the characters of the GDT font as Unicode symbols (position, flatness,
+  diameter, maximum material condition, ...). The IR has no entity for them:
+  the DXF importer skipped them, and the DWG importer produced an `MTEXT`
+  holding the raw string with its formatting codes. The text height is the
+  one of the dimension style (DXF: `DIMTXT` times `DIMSCALE` from the
+  `DIMSTYLE` table, with the overrides of the entity; DWG: as `ezdwg` reports
+  it) and the gap is `DIMGAP`, half the text height when unknown. Compartment
+  widths are estimated, since no font is at hand (`DXF_TOLERANCE_EXPLODED`,
+  `DWG_TOLERANCE_EXPLODED`). The parts keep `source.kind == "TOLERANCE"` and
+  the string in `metadata.<format>.tolerance_text`.
+- DXF 3D polylines that leave the XY plane are reported
+  (`DXF_POLYLINE_3D_PROJECTED`); they were projected silently.
+- A DWF text with formatting codes (`MTEXT`) carries `attach: bottom_left`: its
+  position is the start of its baseline, and without `attach` an `MTEXT` hangs
+  below its insert point.
+- `statistics["layouts"]` and `statistics["converted_layout_entities"]` of the
+  DWG importer count what stays in `layouts`. `DWG_PAPERSPACE_ENTITY_SKIPPED` is
+  no longer emitted.
+- A strict conversion applies to sheets as it does to model space: a malformed
+  entity on a sheet stops it. None of the real-world drawings that converted
+  in strict mode before fails for that reason.
+
 ## 0.10.4
 
 - Justified text sits where the drawing has it. DXF and DWG store two points

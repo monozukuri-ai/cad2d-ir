@@ -18,7 +18,17 @@ from cad2d_ir.importers.base import (
     ImportResult,
     MissingOptionalDependencyError,
 )
+from cad2d_ir.layouts import (
+    layout_entity_count,
+    layout_paper,
+    order_layouts,
+    promote_layout_when_model_is_empty,
+    shows_the_sheet_itself,
+    unnamed_layout_name,
+    viewport_from_dxf_values,
+)
 from cad2d_ir.schema import validate_ir
+from cad2d_ir.tolerance import explode_tolerance
 
 _EPSILON = 1.0e-12
 _DEFAULT_LAYER = "0"
@@ -51,7 +61,7 @@ class _ConversionContext:
     projected_counts: Counter[str] = field(default_factory=Counter)
     projected_handles: set[int] = field(default_factory=set)
     preserved_dimensions: int = 0
-    paperspace_skipped: int = 0
+    exploded_tolerances: int = 0
     renamed_blocks: int = 0
     hidden_attributes: int = 0
     attached_attributes: int = 0
@@ -62,6 +72,14 @@ class _ConversionContext:
         entity_id = f"DWG_E{self.next_entity_number:08d}"
         self.next_entity_number += 1
         return entity_id
+
+
+@dataclass(slots=True)
+class _PaperSheet:
+    """What one paper-space block holds: converted entities and its viewports."""
+
+    entities: list[dict[str, Any]] = field(default_factory=list)
+    viewports: list[Any] = field(default_factory=list)
 
 
 def convert_dwg_file_to_ir(
@@ -304,7 +322,9 @@ def dwg_document_to_ir(
     }
     # An ATTRIB belongs to a block reference, which can come later in the file.
     attributes: list[tuple[Any, int | None]] = []
-    paperspace_inserts: set[int] = set()
+    # Paper-space entities by the block record of their sheet. The sheet that
+    # was current when the file was saved stores no owner: its key is None.
+    paper_sheets: dict[int | None, _PaperSheet] = {}
     source_entity_count = 0
     source_entity_counts: Counter[str] = Counter()
     try:
@@ -326,18 +346,24 @@ def dwg_document_to_ir(
             source_entity, paperspace_handles, placement_of
         )
         if in_paperspace:
-            context.paperspace_skipped += 1
-            if source_kind in {"INSERT", "MINSERT"}:
-                paperspace_inserts.add(_entity_handle(source_entity))
-            continue
-        if source_kind == "ATTRIB":
+            sheet = paper_sheets.setdefault(owner_handle, _PaperSheet())
+            if source_kind == "VIEWPORT":
+                # Converted once the sheet is known: one of them is the sheet itself.
+                sheet.viewports.append(source_entity)
+                continue
+            in_block = False
+            destination = sheet.entities
+        elif source_kind == "ATTRIB":
             attributes.append((source_entity, owner_handle))
             continue
-        in_block = owner_handle is not None and owner_handle in block_names
+        else:
+            in_block = owner_handle is not None and owner_handle in block_names
+            destination = (
+                block_entities_by_owner[owner_handle] if in_block else entities
+            )
         if _is_hidden_attribute(source_entity, in_block):
             context.hidden_attributes += 1
             continue
-        destination = block_entities_by_owner[owner_handle] if in_block else entities
         converted = _convert_entity_sequence((source_entity,), context)
         if source_kind == "ATTDEF" and not in_block:
             # Outside of a block the definition itself is displayed, by its tag.
@@ -347,13 +373,13 @@ def dwg_document_to_ir(
                     entity["text"] = str(tag)
         destination.extend(converted)
 
-    _attach_attributes(
-        attributes, paperspace_inserts, block_entities_by_owner, entities, context
-    )
+    _attach_attributes(attributes, block_entities_by_owner, entities, context)
     blocks, block_name_by_handle = _build_blocks(
         block_names, block_entities_by_owner, context
     )
-    _link_dimension_blocks(entities, blocks, block_name_by_handle)
+    layouts = _build_layouts(paper_sheets, _read_dwg_layouts(dwg_document), context)
+    layout_scopes = [layout["entities"] for layout in layouts]
+    _link_dimension_blocks(entities, blocks, block_name_by_handle, layout_scopes)
 
     next_entity_number = 1
     for entity in entities:
@@ -363,8 +389,16 @@ def dwg_document_to_ir(
         for entity in block["entities"]:
             entity["id"] = f"DWG_E{next_entity_number:08d}"
             next_entity_number += 1
+    for scope in layout_scopes:
+        for entity in scope:
+            entity["id"] = f"DWG_E{next_entity_number:08d}"
+            next_entity_number += 1
 
-    _append_unresolved_block_diagnostics(entities, blocks, context)
+    _append_unresolved_block_diagnostics(
+        [*entities, *(entity for scope in layout_scopes for entity in scope)],
+        blocks,
+        context,
+    )
     _append_summary_diagnostics(context)
 
     tables: dict[str, Any] = {
@@ -405,6 +439,35 @@ def dwg_document_to_ir(
     linetype_scale = _resolve_linetype_scale(dwg_document)
     if linetype_scale is not None:
         document["header"]["linetype_scale"] = linetype_scale
+    if layouts:
+        document["layouts"] = layouts
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="DWG_PAPERSPACE_LAYOUT_PRESERVED",
+                severity="info",
+                message=(
+                    f"Kept {layout_entity_count(document)} paper-space DWG entities "
+                    f"in {len(layouts)} layout(s), apart from model space."
+                ),
+                action="preserved_layout",
+                details={"layouts": [layout["name"] for layout in layouts]},
+            )
+        )
+        promoted = promote_layout_when_model_is_empty(document, metadata_key="dwg")
+        if promoted is not None:
+            entities = document["entities"]
+            context.diagnostics.append(
+                ImportDiagnostic(
+                    code="DWG_LAYOUT_PROMOTED",
+                    severity="info",
+                    message=(
+                        f"Model space is empty; layout {promoted['name']!r} is "
+                        "the drawing."
+                    ),
+                    action="promoted",
+                    details={"layout": promoted["name"]},
+                )
+            )
 
     if import_options.validate:
         validate_ir(document)
@@ -417,6 +480,8 @@ def dwg_document_to_ir(
         "source_block_definitions": len(block_names),
         "converted_entities": len(entities),
         "converted_block_entities": block_entity_count,
+        "converted_layout_entities": layout_entity_count(document),
+        "layouts": len(document.get("layouts", [])),
         "converted_entity_counts": dict(sorted(context.converted_counts.items())),
         "skipped_entities": sum(context.skipped_counts.values()),
         "skipped_entity_counts": dict(sorted(context.skipped_counts.items())),
@@ -456,9 +521,12 @@ def _read_dwg_tables(
     except Exception:
         pass
     try:
+        # The model-space and paper-space block records stay in the table: the
+        # entities of every sheet but the current one name their paper-space
+        # block record as owner, and that is how they are told from model space.
         for handle, name in raw.decode_block_header_names(decode_path):
             name_text = str(name)
-            if name_text and not _is_space_block(name_text):
+            if name_text:
                 block_names[int(handle)] = name_text
     except Exception:
         pass
@@ -669,6 +737,9 @@ def _convert_entity(
         ]
     if kind in {"LWPOLYLINE", "POLYLINE_2D"}:
         return [_convert_polyline(dxf, common, handle, kind, context)]
+    if kind == "POLYLINE_3D":
+        polyline = _convert_polyline_3d(dxf, common, handle, kind, context)
+        return [] if polyline is None else [polyline]
     if kind in {"LEADER", "MLINE"}:
         points = [
             _point(value, handle, kind, context) for value in dxf.get("points", [])
@@ -705,7 +776,7 @@ def _convert_entity(
         height = _finite_number(dxf.get("height"))
         if height is None or height <= 0.0:
             return []
-        return [_convert_tolerance(dxf, common, handle, kind, context)]
+        return _convert_tolerance(dxf, common, handle, kind, context, height)
     if kind == "SPLINE":
         return [_convert_spline(dxf, common, handle, kind, context)]
     if kind == "HATCH":
@@ -845,6 +916,39 @@ def _convert_polyline(
     return result
 
 
+def _convert_polyline_3d(
+    dxf: Mapping[str, Any],
+    common: dict[str, Any],
+    handle: int,
+    kind: str,
+    context: _ConversionContext,
+) -> dict[str, Any] | None:
+    """3D polyline as its projection to XY, the way the DXF importer reads it.
+
+    The vertices are joined by straight segments (a 3D polyline has no bulges).
+    A polyline that leaves the XY plane is counted as projected. ``None`` for a
+    polyline whose vertices could not be read: it is skipped as unsupported,
+    like every 3D polyline was before.
+    """
+    raw_points = dxf.get("points", [])
+    if not isinstance(raw_points, Sequence) or len(raw_points) < 2:
+        return None
+    points = [_point(value, handle, kind, context) for value in raw_points]
+    closed = bool(dxf.get("closed", False))
+    if closed and len(points) > 2 and _near(points[0], points[-1]):
+        points.pop()
+    if len(points) < 2:
+        return None
+    result: dict[str, Any] = {
+        **common,
+        "kind": "LWPOLYLINE",
+        "vertices": points,
+        "closed": closed,
+    }
+    result["metadata"]["dwg"]["flags"] = int(dxf.get("flags", 0))
+    return result
+
+
 def _convert_text(
     dxf: Mapping[str, Any],
     common: dict[str, Any],
@@ -926,7 +1030,6 @@ def _convert_attribute(
 
 def _attach_attributes(
     attributes: Sequence[tuple[Any, int | None]],
-    paperspace_inserts: set[int],
     block_entities_by_owner: Mapping[int, list[dict[str, Any]]],
     entities: list[dict[str, Any]],
     context: _ConversionContext,
@@ -935,8 +1038,7 @@ def _attach_attributes(
 
     ``attributes`` pairs each ATTRIB with the handle of its owner. An attribute
     whose block reference was not converted stays a TEXT where the file has it,
-    as long as it is visible; the ones of paper-space references are dropped
-    with them.
+    as long as it is visible.
     """
     for source_entity, owner_handle in attributes:
         insert = (
@@ -945,9 +1047,7 @@ def _attach_attributes(
             else None
         )
         if insert is None:
-            if owner_handle in paperspace_inserts:
-                context.paperspace_skipped += 1
-            elif _is_hidden_attribute(source_entity, False):
+            if _is_hidden_attribute(source_entity, False):
                 context.hidden_attributes += 1
             else:
                 destination = block_entities_by_owner.get(owner_handle, entities)
@@ -1023,19 +1123,25 @@ def _convert_tolerance(
     handle: int,
     kind: str,
     context: _ConversionContext,
-) -> dict[str, Any]:
-    result = {
-        **common,
-        "kind": "MTEXT",
-        "insert": _point(dxf["insert"], handle, kind, context),
-        "height": _positive(dxf.get("height", 0.0), "tolerance text height"),
-        "rotation": float(dxf.get("rotation", 0.0)),
-        "text": str(dxf.get("text", "")),
-        "style": "STANDARD",
-        "attach": "middle_left",
-    }
-    result["metadata"]["dwg"].update(_json_safe(dxf))
-    return result
+    height: float,
+) -> list[dict[str, Any]]:
+    """Feature control frame as the lines of its frame and one TEXT per compartment."""
+    common["metadata"]["dwg"]["tolerance_text"] = str(dxf.get("text", ""))
+    gap = _finite_number(dxf.get("dimgap"))
+    entities = explode_tolerance(
+        text=str(dxf.get("text", "")),
+        insert=_point(dxf["insert"], handle, kind, context),
+        height=height,
+        rotation_deg=float(dxf.get("rotation", 0.0)),
+        gap=abs(gap) if gap else None,
+        common=common,
+    )
+    if entities:
+        context.exploded_tolerances += 1
+    for entity in entities:
+        if entity["kind"] == "TEXT":
+            entity["style"] = "STANDARD"
+    return entities
 
 
 def _convert_spline(
@@ -1377,6 +1483,7 @@ def _link_dimension_blocks(
     entities: Sequence[dict[str, Any]],
     blocks: Mapping[str, dict[str, Any]],
     block_name_by_handle: Mapping[int, str],
+    extra_scopes: Sequence[Sequence[dict[str, Any]]] = (),
 ) -> None:
     """Name the block that holds the saved graphics of each dimension.
 
@@ -1384,7 +1491,11 @@ def _link_dimension_blocks(
     """
     if not block_name_by_handle:
         return
-    scopes = [entities, *(block["entities"] for block in blocks.values())]
+    scopes = [
+        entities,
+        *(block["entities"] for block in blocks.values()),
+        *extra_scopes,
+    ]
     for scope in scopes:
         for entity in scope:
             if entity.get("kind") != "DIMENSION":
@@ -1422,6 +1533,197 @@ def _append_unresolved_block_diagnostics(
         )
 
 
+def _read_dwg_layouts(dwg_document: Any) -> dict[int, dict[str, Any]]:
+    """Paper-space layouts by the handle of their block record.
+
+    Uses ``Document.layouts()`` (``ezdwg`` >= 0.12.12). Without it the sheets
+    are still told apart by their block record, but they have no name, paper or
+    list of viewports.
+    """
+    factory = getattr(dwg_document, "layouts", None)
+    if not callable(factory):
+        return {}
+    try:
+        table = factory()
+    except Exception:
+        return {}
+    if not isinstance(table, Mapping):
+        return {}
+    layouts: dict[int, dict[str, Any]] = {}
+    for name, entry in table.items():
+        if not isinstance(entry, Mapping) or entry.get("model"):
+            continue
+        block_record = _optional_int(entry.get("block_record_handle"))
+        if block_record is None:
+            continue
+        layouts[block_record] = {**entry, "name": str(name)}
+    return layouts
+
+
+def _build_layouts(
+    sheets: Mapping[int | None, _PaperSheet],
+    layout_infos: Mapping[int, Mapping[str, Any]],
+    context: _ConversionContext,
+) -> list[dict[str, Any]]:
+    """IR layouts of the paper-space sheets, in tab order.
+
+    A sheet that holds neither entities nor a viewport onto model space is left
+    out. Sheets without a layout object are named ``Layout1``, ``Layout2``, ...
+    """
+    active_block = next(
+        (block for block, info in layout_infos.items() if info.get("active")), None
+    )
+    merged: dict[int | None, _PaperSheet] = {}
+    for key, sheet in sheets.items():
+        target_key = active_block if key is None else key
+        target = merged.setdefault(target_key, _PaperSheet())
+        target.entities.extend(sheet.entities)
+        target.viewports.extend(sheet.viewports)
+
+    def order(key: int | None) -> tuple[int, int, int]:
+        tab_order = _optional_int(layout_infos.get(key, {}).get("tab_order"))
+        return (
+            0 if key is None or key == active_block else 1,
+            tab_order if tab_order is not None else 1 << 30,
+            key or 0,
+        )
+
+    layouts: list[dict[str, Any]] = []
+    # A sheet without a layout object must not take the name of one that has.
+    reserved_names = {
+        str(info["name"]) for info in layout_infos.values() if info.get("name")
+    }
+    used_names: set[str] = set()
+    for key in sorted(merged, key=order):
+        sheet = merged[key]
+        info = layout_infos.get(key, {})
+        viewports = _convert_viewports(sheet.viewports, info, context)
+        if not sheet.entities and not viewports:
+            continue
+        name = str(info.get("name") or unnamed_layout_name(reserved_names | used_names))
+        while name in used_names:
+            name += "_"
+        used_names.add(name)
+        layout: dict[str, Any] = {"name": name, "entities": sheet.entities}
+        if viewports:
+            layout["viewports"] = viewports
+        tab_order = _optional_int(info.get("tab_order"))
+        if tab_order is not None and tab_order >= 0:
+            layout["tab_order"] = tab_order
+        if key is None or key == active_block:
+            layout["active"] = True
+        paper = layout_paper(
+            name=info.get("paper_size"),
+            width_mm=info.get("paper_width"),
+            height_mm=info.get("paper_height"),
+            margins_mm=info.get("margins"),
+            units_code=info.get("paper_units"),
+            rotation_code=info.get("plot_rotation"),
+        )
+        if paper:
+            layout["paper"] = paper
+        dwg_metadata: dict[str, Any] = {}
+        if key is not None:
+            dwg_metadata["block_record_handle"] = _handle_text(key)
+        layout_handle = _optional_int(info.get("handle"))
+        if layout_handle is not None:
+            dwg_metadata["layout_handle"] = _handle_text(layout_handle)
+        if dwg_metadata:
+            layout["metadata"] = {"dwg": dwg_metadata}
+        layouts.append(layout)
+    return order_layouts(layouts)
+
+
+def _convert_viewports(
+    viewport_entities: Sequence[Any],
+    layout_info: Mapping[str, Any],
+    context: _ConversionContext,
+) -> list[dict[str, Any]]:
+    """IR viewports of one sheet.
+
+    Every sheet has one viewport that stands for the sheet itself: the first of
+    the layout's viewport list (R2004+), otherwise the one with the lowest
+    handle, as long as its view is its own window. It shows no model space and
+    is left out. Viewports without geometry (``ezdwg`` < 0.12.12) are counted as
+    unsupported.
+    """
+    if not viewport_entities:
+        return []
+    ordered = sorted(viewport_entities, key=_entity_handle)
+    listed = [
+        handle
+        for handle in (
+            _optional_int(value) for value in layout_info.get("viewport_handles") or []
+        )
+        if handle is not None
+    ]
+    sheet_viewport: int | None
+    if listed:
+        sheet_viewport = listed[0]
+    else:
+        first = _dxf(ordered[0])
+        sheet_viewport = _entity_handle(ordered[0])
+        if "center" in first and not shows_the_sheet_itself(
+            center=first["center"],
+            height=first.get("height"),
+            view_center=first.get("view_center"),
+            view_height=first.get("view_height"),
+        ):
+            sheet_viewport = None
+    viewports: list[dict[str, Any]] = []
+    for source_entity in ordered:
+        handle = _entity_handle(source_entity)
+        if handle == sheet_viewport:
+            continue
+        dxf = _dxf(source_entity)
+        if "center" not in dxf:
+            context.skipped_counts["VIEWPORT"] += 1
+            continue
+        common = _entity_common(source_entity, context)
+        frozen_handles = dxf.get("frozen_layer_handles")
+        if isinstance(frozen_handles, Sequence) and not isinstance(
+            frozen_handles, (str, bytes)
+        ):
+            frozen_layers = [
+                context.layer_names[layer_handle]
+                for layer_handle in (_optional_int(value) for value in frozen_handles)
+                if layer_handle in context.layer_names
+            ]
+        else:
+            frozen_layers = [
+                str(name)
+                for name in dxf.get("frozen_layers") or []
+                if str(name) in context.layers
+            ]
+        clip = _optional_int(dxf.get("clip_boundary_handle"))
+        try:
+            viewport = viewport_from_dxf_values(
+                source_format="dwg",
+                handle=_handle_text(handle),
+                center=dxf["center"],
+                width=dxf.get("width"),
+                height=dxf.get("height"),
+                view_center=dxf.get("view_center"),
+                view_height=dxf.get("view_height"),
+                twist_deg=dxf.get("view_twist_angle"),
+                target=dxf.get("view_target"),
+                direction=dxf.get("view_direction"),
+                status_flags=dxf.get("status_flags"),
+                layer=common["layer"],
+                frozen_layers=frozen_layers,
+                clip_boundary=_handle_text(clip) if clip is not None else None,
+            )
+        except (KeyError, TypeError, ValueError, IndexError, OverflowError):
+            # A viewport without a usable window (zero size, as minimized or
+            # never regenerated ones have) shows nothing. It is counted with the
+            # unsupported entities, as every viewport was before, in strict mode
+            # too.
+            context.skipped_counts["VIEWPORT"] += 1
+            continue
+        viewports.append(viewport)
+    return viewports
+
+
 def _enumerate_source_entities(dwg_document: Any) -> Any:
     """Enumerate every entity of the drawing.
 
@@ -1454,8 +1756,10 @@ def _entity_owner(
     which moved block contents into model space, and it can name another object
     for a model-space INSERT.
 
-    Paper-space entities (layout frames, viewports, title blocks) are not part
-    of the model-space drawing the IR represents; they are skipped explicitly.
+    Paper-space entities (layout frames, viewports, title blocks) belong to a
+    sheet: the returned owner is the block record of that sheet, or ``None`` for
+    the sheet that was current when the file was saved, whose entities store no
+    owner.
     """
     owner_handle = _optional_int(_dxf(source_entity).get("owner_handle"))
     placement = _entity_placement(source_entity, placement_of)
@@ -1531,16 +1835,17 @@ def _append_summary_diagnostics(context: _ConversionContext) -> None:
                 action="renamed",
             )
         )
-    if context.paperspace_skipped:
+    if context.exploded_tolerances:
         context.diagnostics.append(
             ImportDiagnostic(
-                code="DWG_PAPERSPACE_ENTITY_SKIPPED",
-                severity="info",
+                code="DWG_TOLERANCE_EXPLODED",
+                severity="warning",
                 message=(
-                    f"Skipped {context.paperspace_skipped} paper-space DWG entities "
-                    "(layouts are not part of the model-space IR)."
+                    f"Drew {context.exploded_tolerances} DWG feature control frames "
+                    "as lines and texts; compartment widths are estimated."
                 ),
-                action="skipped",
+                source_kind="TOLERANCE",
+                action="exploded",
             )
         )
     for source_kind, count in sorted(context.skipped_counts.items()):

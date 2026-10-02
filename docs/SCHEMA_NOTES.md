@@ -46,10 +46,61 @@ Package `0.10.4` adds:
 - `tables.layers.*.visible` (see "Visibility")
 - `INSERT.attribute_texts` (see "Block attributes")
 
+Package `0.10.5` adds:
+
+- `layouts` (see "Layouts")
+
 Documents without them are unchanged. Documents that use them still pass the
 default validator of earlier packages, but not their `strict_jsonschema=True`
-mode, because `header`, layer and linetype definitions and entities reject
-unknown keys there.
+mode, because the document, `header`, layer and linetype definitions and
+entities reject unknown keys there.
+
+## Layouts
+
+`entities` is model space: the drawing at full size. A drawing can also have
+sheets (paper space). A sheet has entities of its own, in paper coordinates
+(the frame, the title block, notes) and viewports: windows that show model
+space at some scale. `layouts` holds them:
+
+    {"name": "A3", "tab_order": 1, "active": true,
+     "paper": {"name": "ISO_A3", "size_mm": [420.0, 297.0], "units": "mm"},
+     "entities": [...],
+     "viewports": [{"center": [200.0, 150.0], "width": 300.0, "height": 200.0,
+                    "view_center": [2500.0, 0.0], "view_height": 4000.0}]}
+
+A consumer that reads `entities` alone sees the model and nothing of the
+sheets. The two must not be mixed: the coordinates of a sheet are millimetres
+or inches on paper, those of the model are drawing units.
+
+A viewport shows the model-space region of height `view_height` around
+`view_center`, rotated by `rotation` (the view twist, counter-clockwise). A
+model point `p` appears on the sheet at
+
+    center + R(rotation) * (p - view_center) * (height / view_height)
+
+so `height / view_height` is the scale of the view (0.05 for 1:20). `visible:
+false` marks a viewport that is switched off, and `frozen_layers` names the
+layers that are hidden in this viewport only. `view_center` and `view_height`
+are missing when the source shows a view the IR cannot express (a view from
+another direction than the top, or a perspective) or does not state the view;
+the values of the source stay in `metadata`. Every sheet of a DXF or DWG file
+also has one viewport that stands for the sheet itself; it shows no model space
+and is not part of the IR.
+
+`active` marks the sheet that was current when the source was saved, and
+`tab_order` is its position among the layout tabs. A sheet that holds neither
+entities nor a viewport is left out.
+
+Some drawings are drafted on a sheet and leave model space empty. Their sheet
+is the drawing, so the importers make its entities `entities` when model space
+holds none: the active sheet, or the first one with entities. That layout is
+removed from `layouts`, and `header.metadata.<format>.promoted_layout` names
+it.
+
+The DXF codec reads and writes layouts. The export holds one paper space (the
+writer produces no `OBJECTS` section): the active sheet with its viewports,
+or the first sheet with content. Other sheets are reported with
+`DXF_LAYOUT_OMITTED`.
 
 ## Text anchor
 
@@ -178,4 +229,6 @@ When changing schema behavior:
 - `constraints` are IR-only metadata today and are omitted on DXF export.
 - `GENERIC` dimensions are exported as visual LINE/TEXT/POINT/polyline primitives by default; they are not mislabeled as native DXF `DIMENSION` entities.
 - `HATCH` mapping currently focuses on polyline-like loops.
+- Feature control frames (`TOLERANCE`) have no entity of their own: the importers draw them as the lines of their frame and one `TEXT` per compartment, with the geometric characteristic symbols as Unicode characters. Compartment widths are estimated.
+- Polygon meshes and polyface meshes are 3D surfaces and are skipped. 3D polylines are projected to XY.
 - Ellipse start/end parameters are always radians, independent of `header.angle_unit`, matching the DXF ellipse parameter convention.

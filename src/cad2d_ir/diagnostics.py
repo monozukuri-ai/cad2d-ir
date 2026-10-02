@@ -107,6 +107,36 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "DXF import",
         "A HATCH boundary loop could not be reconstructed and was skipped.",
     ),
+    "DXF_PAPERSPACE_LAYOUT_PRESERVED": DiagnosticCode(
+        "info",
+        "preserved_layout",
+        "DXF import",
+        "Paper-space entities were kept in layouts, apart from model space.",
+    ),
+    "DXF_LAYOUT_PROMOTED": DiagnosticCode(
+        "info",
+        "promoted",
+        "DXF import",
+        "Model space was empty, so a paper-space layout became the drawing.",
+    ),
+    "DXF_MESH_SKIPPED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "DXF import",
+        "A polygon mesh or polyface mesh (3D surface) was skipped.",
+    ),
+    "DXF_POLYLINE_3D_PROJECTED": DiagnosticCode(
+        "warning",
+        "projected",
+        "DXF import",
+        "A 3D polyline that leaves the XY plane was projected to XY.",
+    ),
+    "DXF_TOLERANCE_EXPLODED": DiagnosticCode(
+        "warning",
+        "exploded",
+        "DXF import",
+        "A feature control frame was drawn as lines and texts.",
+    ),
     "JWW_ENTITY_CONVERSION_FAILED": DiagnosticCode(
         "error", "skipped", "JWW import", "A malformed JWW entity was skipped."
     ),
@@ -183,7 +213,25 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "info",
         "skipped",
         "DWG import",
-        "Paper-space entities were skipped; the IR represents model space.",
+        "Paper-space entities were skipped (packages before 0.10.5).",
+    ),
+    "DWG_PAPERSPACE_LAYOUT_PRESERVED": DiagnosticCode(
+        "info",
+        "preserved_layout",
+        "DWG import",
+        "Paper-space entities were kept in layouts, apart from model space.",
+    ),
+    "DWG_LAYOUT_PROMOTED": DiagnosticCode(
+        "info",
+        "promoted",
+        "DWG import",
+        "Model space was empty, so a paper-space layout became the drawing.",
+    ),
+    "DWG_TOLERANCE_EXPLODED": DiagnosticCode(
+        "warning",
+        "exploded",
+        "DWG import",
+        "Feature control frames were drawn as lines and texts.",
     ),
     "DWG_CURVE_APPROXIMATED": DiagnosticCode(
         "warning", "approximated", "DWG import", "Source geometry was approximated."
@@ -553,6 +601,18 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
     ),
     "DXF_R12_INSUNITS_OMITTED": DiagnosticCode(
         "warning", "skipped", "DXF R12 export", "INSUNITS was omitted from R12 output."
+    ),
+    "DXF_R12_VIEWPORT_OMITTED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "DXF R12 export",
+        "The viewports of a layout were omitted from R12 output.",
+    ),
+    "DXF_LAYOUT_OMITTED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "DXF export",
+        "A paper-space layout other than the written one was omitted.",
     ),
 }
 

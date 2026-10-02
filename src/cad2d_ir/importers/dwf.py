@@ -562,7 +562,7 @@ def _convert_text(
     has_mtext_formatting = _MTEXT_FORMAT_CODE_RE.search(text) is not None
     if has_mtext_formatting:
         common["metadata"]["dwf"]["mtext_formatting_detected"] = True
-    return {
+    result = {
         **common,
         "kind": "MTEXT" if has_mtext_formatting else "TEXT",
         "insert": insert,
@@ -571,6 +571,11 @@ def _convert_text(
         "text": text,
         "style": style_name,
     }
+    if has_mtext_formatting:
+        # The DWF text position is the start of the baseline; an MTEXT without
+        # attach would hang below its insert point (top_left).
+        result["attach"] = "bottom_left"
+    return result
 
 
 def _convert_triangles(

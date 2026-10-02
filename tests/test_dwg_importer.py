@@ -270,9 +270,7 @@ def _line_entities() -> list[_Entity]:
 
 
 def test_dwg_units_resolved_from_insunits() -> None:
-    result = dwg_document_to_ir(
-        _DocumentWithHeader(_line_entities(), {"insunits": 4})
-    )
+    result = dwg_document_to_ir(_DocumentWithHeader(_line_entities(), {"insunits": 4}))
 
     header = result.document["header"]
     assert header["units"] == "mm"
@@ -283,9 +281,7 @@ def test_dwg_units_resolved_from_insunits() -> None:
 
 
 def test_dwg_units_imperial_code_maps_to_inch() -> None:
-    result = dwg_document_to_ir(
-        _DocumentWithHeader(_line_entities(), {"insunits": 1})
-    )
+    result = dwg_document_to_ir(_DocumentWithHeader(_line_entities(), {"insunits": 1}))
 
     assert result.document["header"]["units"] == "inch"
 
@@ -301,9 +297,7 @@ def test_dwg_units_r14_without_insunits_stays_unknown() -> None:
 
 
 def test_dwg_units_unsupported_code_falls_back_with_diagnostic() -> None:
-    result = dwg_document_to_ir(
-        _DocumentWithHeader(_line_entities(), {"insunits": 3})
-    )
+    result = dwg_document_to_ir(_DocumentWithHeader(_line_entities(), {"insunits": 3}))
 
     header = result.document["header"]
     assert header["units"] == "unknown"
@@ -359,12 +353,20 @@ class _PlacementDocument:
 
     version = "AC1032"
 
-    def __init__(self, entities: list[_Entity], placements: dict[int, tuple[int, int | None]]):
+    def __init__(
+        self, entities: list[_Entity], placements: dict[int, tuple[int, int | None]]
+    ):
         self._entities = entities
         self._placements = placements
 
     def modelspace(self) -> _Layout:  # filtered view; the adapter must not rely on it
-        return _Layout([e for e in self._entities if self._placements.get(e.handle, (2, None))[0] == 2])
+        return _Layout(
+            [
+                e
+                for e in self._entities
+                if self._placements.get(e.handle, (2, None))[0] == 2
+            ]
+        )
 
     def entities(self) -> _Layout:
         return _Layout(self._entities)
@@ -373,28 +375,54 @@ class _PlacementDocument:
         return self._placements.get(handle)
 
 
-def test_dwg_document_to_ir_uses_entities_and_skips_paper_space() -> None:
+def test_dwg_document_to_ir_uses_entities_and_keeps_paper_space_apart() -> None:
     document = _PlacementDocument(
         [
-            _Entity("LINE", 1, {"start": (0.0, 0.0, 0.0), "end": (1.0, 0.0, 0.0), **_style()}),
+            _Entity(
+                "LINE",
+                1,
+                {"start": (0.0, 0.0, 0.0), "end": (1.0, 0.0, 0.0), **_style()},
+            ),
             # block-definition content, only reachable through entities()
             _Entity(
                 "LINE",
                 2,
-                {"start": (0.0, 0.0, 0.0), "end": (0.0, 1.0, 0.0), **_style(owner_handle=100)},
+                {
+                    "start": (0.0, 0.0, 0.0),
+                    "end": (0.0, 1.0, 0.0),
+                    **_style(owner_handle=100),
+                },
             ),
-            _Entity("INSERT", 3, {"insert": (5.0, 5.0, 0.0), "name": "SYMBOL", **_style()}),
+            _Entity(
+                "INSERT", 3, {"insert": (5.0, 5.0, 0.0), "name": "SYMBOL", **_style()}
+            ),
             # paper-space title-block line: entmode 1
-            _Entity("LINE", 4, {"start": (0.0, 0.0, 0.0), "end": (9.0, 0.0, 0.0), **_style()}),
+            _Entity(
+                "LINE",
+                4,
+                {"start": (0.0, 0.0, 0.0), "end": (9.0, 0.0, 0.0), **_style()},
+            ),
         ],
         placements={1: (2, None), 2: (0, 100), 3: (2, None), 4: (1, None)},
     )
-    result = dwg_document_to_ir(document, block_names_by_handle={100: "SYMBOL", 31: "*Model_Space"})
+    result = dwg_document_to_ir(
+        document, block_names_by_handle={100: "SYMBOL", 31: "*Model_Space"}
+    )
     kinds = [entity["kind"] for entity in result.document["entities"]]
     assert kinds == ["LINE", "INSERT"]
     assert len(result.document["tables"]["blocks"]["SYMBOL"]["entities"]) == 1
+    # The title-block line is on a sheet, not in model space.
+    (layout,) = result.document["layouts"]
+    assert (layout["name"], layout["active"]) == ("Layout1", True)
+    (paper_line,) = layout["entities"]
+    assert (paper_line["kind"], paper_line["p2"]) == ("LINE", [9.0, 0.0])
+    ids = [entity["id"] for entity in result.document["entities"]]
+    assert paper_line["id"] not in ids
+    assert result.statistics["converted_layout_entities"] == 1
     codes = [diagnostic.code for diagnostic in result.diagnostics]
-    assert "DWG_PAPERSPACE_ENTITY_SKIPPED" in codes
+    assert "DWG_PAPERSPACE_LAYOUT_PRESERVED" in codes
+    assert "DWG_PAPERSPACE_ENTITY_SKIPPED" not in codes
+    validate_ir(result.document, strict_jsonschema=True)
 
 
 class _StreamingLayout:
@@ -747,10 +775,15 @@ def test_dwg_stored_placement_decides_the_owner_block() -> None:
     ]
     assert [entity["kind"] for entity in blocks["OTHER"]["entities"]] == ["LINE"]
     assert result.statistics["converted_block_entities"] == 3
-    skipped = [
-        d for d in result.diagnostics if d.code == "DWG_PAPERSPACE_ENTITY_SKIPPED"
+    # The sheet is told apart by its block record; it is not the active one.
+    (layout,) = ir["layouts"]
+    assert [entity["kind"] for entity in layout["entities"]] == ["LINE"]
+    assert "active" not in layout
+    assert layout["metadata"] == {"dwg": {"block_record_handle": "0x58"}}
+    kept = [
+        d for d in result.diagnostics if d.code == "DWG_PAPERSPACE_LAYOUT_PRESERVED"
     ]
-    assert len(skipped) == 1 and "Skipped 1 paper-space" in skipped[0].message
+    assert len(kept) == 1 and "Kept 1 paper-space" in kept[0].message
     validate_ir(ir, strict_jsonschema=True)
 
 
@@ -830,7 +863,7 @@ def test_dwg_attributes_belong_to_their_block_reference() -> None:
             _Entity("INSERT", 12, {**insert, "name": "INNER", **_style()}),
             _attribute_entity("ATTRIB", 3, 0, None, "PART"),
             _Entity("LINE", 14, {**line, **_style()}),
-            # Paper space: the reference goes, and its attribute with it.
+            # Paper space: the reference is on a sheet, with its attribute.
             _Entity("INSERT", 13, {**insert, "name": "TITLE", **_style()}),
             _attribute_entity("ATTRIB", 4, 0, None, "NAME"),
         ],
@@ -893,12 +926,18 @@ def test_dwg_attributes_belong_to_their_block_reference() -> None:
     assert inner["attributes"] == {"PART": "ATTRIB3"}
     assert [text["text"] for text in inner["attribute_texts"]] == ["ATTRIB3"]
 
-    assert result.statistics["attached_attributes"] == 3
-    assert result.statistics["converted_entity_counts"] == {"INSERT": 2, "LINE": 2}
-    skipped = [
-        d for d in result.diagnostics if d.code == "DWG_PAPERSPACE_ENTITY_SKIPPED"
+    (layout,) = ir["layouts"]
+    (sheet_title,) = layout["entities"]
+    assert sheet_title["kind"] == "INSERT"
+    assert sheet_title["attributes"] == {"NAME": "ATTRIB4"}
+    assert [text["text"] for text in sheet_title["attribute_texts"]] == ["ATTRIB4"]
+
+    assert result.statistics["attached_attributes"] == 4
+    assert result.statistics["converted_entity_counts"] == {"INSERT": 3, "LINE": 2}
+    kept = [
+        d for d in result.diagnostics if d.code == "DWG_PAPERSPACE_LAYOUT_PRESERVED"
     ]
-    assert len(skipped) == 1 and "Skipped 2 paper-space" in skipped[0].message
+    assert len(kept) == 1 and "Kept 1 paper-space" in kept[0].message
     assert not [d for d in result.diagnostics if d.severity == "error"]
     validate_ir(ir, strict_jsonschema=True)
 
@@ -1074,8 +1113,23 @@ def test_dwg_tolerance_without_a_stored_height_is_skipped() -> None:
         layer_names_by_handle={16: "0"},
     )
 
-    (entity,) = result.document["entities"]
-    assert (entity["kind"], entity["height"]) == ("MTEXT", 2.5)
+    # The one with a height is drawn: the box of its row, the line between
+    # its two compartments and one text per compartment.
+    entities = result.document["entities"]
+    assert [entity["kind"] for entity in entities] == [
+        "LWPOLYLINE",
+        "TEXT",
+        "LINE",
+        "TEXT",
+    ]
+    assert [entity["text"] for entity in entities if entity["kind"] == "TEXT"] == [
+        "\u2316",
+        "0.1",
+    ]
+    assert {entity["source"]["kind"] for entity in entities} == {"TOLERANCE"}
     assert result.statistics["skipped_entity_counts"] == {"TOLERANCE": 1}
     skipped = [d for d in result.diagnostics if d.code == "DWG_UNSUPPORTED_ENTITY"]
     assert len(skipped) == 1 and skipped[0].source_kind == "TOLERANCE"
+    exploded = [d for d in result.diagnostics if d.code == "DWG_TOLERANCE_EXPLODED"]
+    assert len(exploded) == 1 and "Drew 1 DWG feature control" in exploded[0].message
+    validate_ir(result.document, strict_jsonschema=True)

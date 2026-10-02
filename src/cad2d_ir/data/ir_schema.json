@@ -128,6 +128,12 @@
       "items": { "$ref": "#/$defs/Entity" }
     },
 
+    "layouts": {
+      "description": "Optional paper-space layouts (sheets). 'entities' stays model space, so a consumer that ignores 'layouts' sees the model only.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/LayoutDef" }
+    },
+
     "constraints": {
       "description": "Optional geometric constraints for post-processing (snapping/orthogonality/parallelism etc.).",
       "type": "array",
@@ -318,6 +324,107 @@
           "type": "array",
           "items": { "$ref": "#/$defs/Entity" }
         },
+        "metadata": { "type": "object" }
+      }
+    },
+
+    "LayoutDef": {
+      "description": "Paper-space layout (sheet). Its entities use the same schema as top-level entities, with coordinates in the paper space of this layout.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "entities"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "entities": {
+          "description": "Entities drawn on the sheet. Entity id values must be unique within this layout.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/Entity" }
+        },
+        "viewports": {
+          "description": "Windows on the sheet that show model space.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/LayoutViewport" }
+        },
+        "tab_order": {
+          "description": "Position of the sheet among the layout tabs, starting at 1 (0 is the model tab).",
+          "type": "integer",
+          "minimum": 0
+        },
+        "active": {
+          "description": "true for the sheet that was current when the source was saved.",
+          "type": "boolean"
+        },
+        "paper": {
+          "description": "Paper of the sheet, as far as the source states it.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": { "type": "string" },
+            "size_mm": {
+              "description": "Paper width and height in millimetres, before rotation.",
+              "$ref": "#/$defs/Point2"
+            },
+            "margins_mm": {
+              "description": "Unprintable margins [left, bottom, right, top] in millimetres.",
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": { "type": "number" }
+            },
+            "units": {
+              "description": "Unit of the layout coordinates on paper.",
+              "type": "string",
+              "enum": ["mm", "inch", "px"]
+            },
+            "rotation": {
+              "description": "Plot rotation in degrees counter-clockwise.",
+              "enum": [0, 90, 180, 270]
+            }
+          }
+        },
+        "metadata": { "type": "object" }
+      }
+    },
+
+    "LayoutViewport": {
+      "description": "Rectangular window of a layout onto model space. A model point p appears at center + R(rotation) * (p - view_center) * (height / view_height). view_center and view_height are omitted when the source shows a view the IR cannot express (a 3D view) or does not state it.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["center", "width", "height"],
+      "properties": {
+        "id": { "type": "string" },
+        "center": {
+          "description": "Center of the window on the sheet.",
+          "$ref": "#/$defs/Point2"
+        },
+        "width": { "type": "number", "exclusiveMinimum": 0 },
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "view_center": {
+          "description": "Model-space point shown at the center of the window.",
+          "$ref": "#/$defs/Point2"
+        },
+        "view_height": {
+          "description": "Height of the model-space region the window shows, in model units.",
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "rotation": {
+          "description": "Rotation of the model inside the window (view twist), counter-clockwise in header.angle_unit.",
+          "type": "number",
+          "default": 0
+        },
+        "layer": { "type": "string" },
+        "frozen_layers": {
+          "description": "Layers that are hidden in this window.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "visible": {
+          "description": "false for a window that is switched off: it shows nothing.",
+          "type": "boolean",
+          "default": true
+        },
+        "source": { "$ref": "#/$defs/EntitySource" },
         "metadata": { "type": "object" }
       }
     },

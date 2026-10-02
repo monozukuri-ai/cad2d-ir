@@ -51,7 +51,8 @@ IR entities include `LINE`, `CIRCLE`, `ARC`, `POINT`,
 `ELLIPSE`, `LWPOLYLINE`, `SPLINE`, `TEXT`,
 `MTEXT`, `INSERT`, `HATCH`, and `DIMENSION`.
 Layer, linetype, text-style, dimension-style, and block tables are represented
-by the schema.
+by the schema. `entities` is model space; the paper-space sheets of a DXF or
+DWG drawing, with their viewports onto model space, are kept apart in `layouts`.
 
 Import adapters:
 

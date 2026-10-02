@@ -10,7 +10,20 @@ from typing import TYPE_CHECKING, Any, Iterable, Literal
 
 from cad2d_ir.constants import CURRENT_IR_VERSION
 from cad2d_ir.diagnostics import ExportAction, ExportDiagnostic
+from cad2d_ir.layouts import (
+    is_active_paper_space_block_name,
+    is_paper_space_block_name,
+    layout_entity_count,
+    layout_paper,
+    order_layouts,
+    promote_layout_when_model_is_empty,
+    shows_the_sheet_itself,
+    unnamed_layout_name,
+    viewport_from_dxf_values,
+    viewport_to_dxf_view,
+)
 from cad2d_ir.schema import validate_ir
+from cad2d_ir.tolerance import explode_tolerance
 
 if TYPE_CHECKING:
     from cad2d_ir.importers.base import ImportDiagnostic
@@ -35,7 +48,7 @@ _CODEPAGE_ENCODINGS = {
 _DXF_TEXT_ESCAPE = re.compile(r"\\(?:U\+([0-9A-Fa-f]{4})|M\+([1-5])([0-9A-Fa-f]{4}))")
 _MIF_ENCODINGS = {"1": "cp932", "2": "cp950", "3": "cp949", "4": "cp1361", "5": "cp936"}
 
-_ENTITY_COMMON_CODES = {6, 8, 48, 60, 62, 370, 420}
+_ENTITY_COMMON_CODES = {6, 8, 48, 60, 62, 67, 370, 420}
 _ENTITY_SUBCLASSES: dict[str, tuple[str, ...]] = {
     "LINE": ("AcDbLine",),
     "CIRCLE": ("AcDbCircle",),
@@ -52,6 +65,7 @@ _ENTITY_SUBCLASSES: dict[str, tuple[str, ...]] = {
     "ENDBLK": ("AcDbBlockEnd",),
     "ATTRIB": ("AcDbText", "AcDbAttribute"),
     "SEQEND": ("AcDbSequenceEnd",),
+    "VIEWPORT": ("AcDbViewport",),
 }
 _TABLE_RECORD_SUBCLASSES = {
     "LTYPE": "AcDbLinetypeTableRecord",
@@ -436,21 +450,41 @@ def _pairs_to_ir(
     units = _header_units(header_variables)
     linetype_scale = _header_linetype_scale(header_variables)
     default_text_height = _DEFAULT_TEXT_HEIGHT_BY_UNIT.get(units, 2.5)
-    entities = _entities_to_ir(
-        sections.get("ENTITIES", []),
+    # Paper-space entities (group 67 = 1) are drawn on a sheet, in paper
+    # coordinates. They are kept apart from model space, as layouts.
+    model_records, paper_records = _split_paper_space_records(
+        _pairs_to_records(sections.get("ENTITIES", []))
+    )
+    dimstyles = _dimstyle_sizes(sections.get("TABLES", []))
+    entities = _entity_records_to_ir(
+        model_records,
         warnings=warnings,
         diagnostics=diagnostics,
         default_text_height=default_text_height,
+        dimstyles=dimstyles,
     )
+    paper_space_blocks: dict[str, list[tuple[str, list[DXFPair]]]] = {}
     blocks = _blocks_to_ir(
         sections.get("BLOCKS", []),
         warnings=warnings,
         diagnostics=diagnostics,
         default_text_height=default_text_height,
+        paper_space_blocks=paper_space_blocks,
+        dimstyles=dimstyles,
     )
     tables = _tables_to_ir(sections.get("TABLES", []))
     if blocks:
         tables["blocks"] = blocks
+    layouts = _layouts_to_ir(
+        paper_records,
+        paper_space_blocks,
+        table_pairs=sections.get("TABLES", []),
+        object_pairs=sections.get("OBJECTS", []),
+        warnings=warnings,
+        diagnostics=diagnostics,
+        default_text_height=default_text_height,
+        dimstyles=dimstyles,
+    )
 
     ir_document: dict[str, Any] = {
         "format": "cad2d-ir",
@@ -467,6 +501,33 @@ def _pairs_to_ir(
         ir_document["header"]["linetype_scale"] = linetype_scale
     if tables:
         ir_document["tables"] = tables
+    if layouts:
+        ir_document["layouts"] = layouts
+        _import_diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_PAPERSPACE_LAYOUT_PRESERVED",
+            severity="info",
+            message=(
+                f"Kept {layout_entity_count(ir_document)} paper-space DXF entities "
+                f"in {len(layouts)} layout(s), apart from model space."
+            ),
+            action="preserved_layout",
+            details={"layouts": [layout["name"] for layout in layouts]},
+        )
+        promoted = promote_layout_when_model_is_empty(ir_document, metadata_key="dxf")
+        if promoted is not None:
+            _import_diagnose(
+                diagnostics,
+                warnings,
+                code="DXF_LAYOUT_PROMOTED",
+                severity="info",
+                message=(
+                    f"Model space is empty; layout {promoted['name']!r} is the drawing."
+                ),
+                action="promoted",
+                details={"layout": promoted["name"]},
+            )
 
     if validate:
         validate_ir(ir_document)
@@ -526,6 +587,7 @@ def ir_to_dxf(
     if allocator is not None:
         table_pairs = _add_r2010_subclasses(table_pairs)
         table_pairs, _ = _add_record_handles(table_pairs, allocator)
+    layer_handles = _layer_record_handles(table_pairs)
 
     block_pairs = _blocks_to_pairs(
         export_document.get("tables", {}).get("blocks", {}),
@@ -563,6 +625,18 @@ def ir_to_dxf(
             warnings=warnings,
             entity_map=generated_map,
         )
+    _append_layout_output(
+        entity_pairs,
+        export_document,
+        target_version=target_version,
+        curve_segments=curve_segments,
+        generic_dimensions=generic_dimensions,
+        allocator=allocator,
+        layer_handles=layer_handles,
+        diagnostics=export_diagnostics,
+        warnings=warnings,
+        entity_map=generated_map,
+    )
     entity_pairs.append((0, "ENDSEC"))
 
     header_pairs = _header_to_pairs(
@@ -1371,7 +1445,22 @@ def _entities_to_ir(
     diagnostics: list[ImportDiagnostic] | None = None,
     default_text_height: float = 2.5,
 ) -> list[dict[str, Any]]:
-    records = _pairs_to_records(entity_pairs)
+    return _entity_records_to_ir(
+        _pairs_to_records(entity_pairs),
+        warnings=warnings,
+        diagnostics=diagnostics,
+        default_text_height=default_text_height,
+    )
+
+
+def _entity_records_to_ir(
+    records: list[tuple[str, list[DXFPair]]],
+    *,
+    warnings: list[str] | None = None,
+    diagnostics: list[ImportDiagnostic] | None = None,
+    default_text_height: float = 2.5,
+    dimstyles: dict[str, dict[str, float]] | None = None,
+) -> list[dict[str, Any]]:
     projection = _detect_axis_projection(records)
     if projection is not None:
         _import_diagnose(
@@ -1397,6 +1486,7 @@ def _entities_to_ir(
         context="ENTITIES",
         default_text_height=default_text_height,
         projection=projection,
+        dimstyles=dimstyles,
     )
 
 
@@ -1406,7 +1496,16 @@ def _blocks_to_ir(
     warnings: list[str] | None = None,
     diagnostics: list[ImportDiagnostic] | None = None,
     default_text_height: float = 2.5,
+    paper_space_blocks: dict[str, list[tuple[str, list[DXFPair]]]] | None = None,
+    dimstyles: dict[str, dict[str, float]] | None = None,
 ) -> dict[str, dict[str, Any]]:
+    """Block definitions by name.
+
+    The blocks of the paper-space layouts (``*Paper_Space``, ``*Paper_Space0``,
+    ...) are sheets, not definitions a drawing refers to. With
+    ``paper_space_blocks`` their records are handed back under their name
+    instead of becoming blocks.
+    """
     records = _pairs_to_records(block_pairs)
     blocks: dict[str, dict[str, Any]] = {}
     index = 0
@@ -1436,6 +1535,10 @@ def _blocks_to_ir(
             entity_records.append((inner_kind, inner_pairs))
             index += 1
 
+        if paper_space_blocks is not None and is_paper_space_block_name(name):
+            paper_space_blocks.setdefault(name, []).extend(entity_records)
+            continue
+
         blocks[name] = {
             "base_point": base_point,
             "entities": _records_to_entities(
@@ -1444,9 +1547,383 @@ def _blocks_to_ir(
                 diagnostics=diagnostics,
                 context=f"BLOCK:{name}",
                 default_text_height=default_text_height,
+                dimstyles=dimstyles,
             ),
         }
     return blocks
+
+
+def _is_paper_space_record(pairs: list[DXFPair]) -> bool:
+    """Group 67 = 1 in the common entity data: the entity is in paper space.
+
+    The scan stops at the first subclass marker other than ``AcDbEntity``,
+    behind which the code belongs to the entity type.
+    """
+    for code, value in pairs:
+        if code == 100 and value.strip() != "AcDbEntity":
+            return False
+        if code == 67:
+            try:
+                return int(float(value)) == 1
+            except ValueError:
+                return False
+    return False
+
+
+def _split_paper_space_records(
+    records: list[tuple[str, list[DXFPair]]],
+) -> tuple[list[tuple[str, list[DXFPair]]], list[tuple[str, list[DXFPair]]]]:
+    """Model-space and paper-space records of an ENTITIES section.
+
+    A POLYLINE keeps its VERTEX and SEQEND records and an INSERT its ATTRIB and
+    SEQEND records, whatever those say themselves.
+    """
+    model: list[tuple[str, list[DXFPair]]] = []
+    paper: list[tuple[str, list[DXFPair]]] = []
+    index = 0
+    while index < len(records):
+        kind, pairs = records[index]
+        end = index + 1
+        followers = {"POLYLINE": "VERTEX", "INSERT": "ATTRIB"}.get(kind)
+        if followers is not None:
+            while end < len(records) and records[end][0] == followers:
+                end += 1
+            if end < len(records) and records[end][0] == "SEQEND":
+                end += 1
+        destination = paper if _is_paper_space_record(pairs) else model
+        destination.extend(records[index:end])
+        index = end
+    return model, paper
+
+
+def _table_handles(table_pairs: list[DXFPair]) -> tuple[dict[str, str], dict[str, str]]:
+    """Layer names and block record names by handle (upper-case hex)."""
+    layers: dict[str, str] = {}
+    block_records: dict[str, str] = {}
+    for kind, pairs in _pairs_to_records(table_pairs):
+        if kind not in {"LAYER", "BLOCK_RECORD"}:
+            continue
+        handle = _first_string(pairs, 5)
+        name = _first_string(pairs, 2)
+        if not handle or not name:
+            continue
+        target = layers if kind == "LAYER" else block_records
+        target[handle.strip().upper()] = name
+    return layers, block_records
+
+
+def _layout_objects(object_pairs: list[DXFPair]) -> dict[str, dict[str, Any]]:
+    """LAYOUT objects by the handle of their block record (upper-case hex).
+
+    A LAYOUT object is the plot settings of a sheet (``AcDbPlotSettings``)
+    followed by the layout itself (``AcDbLayout``): its name, its position among
+    the tabs and the block record that holds its entities.
+    """
+    layouts: dict[str, dict[str, Any]] = {}
+    for kind, pairs in _pairs_to_records(object_pairs):
+        if kind != "LAYOUT":
+            continue
+        split = next(
+            (
+                index
+                for index, (code, value) in enumerate(pairs)
+                if code == 100 and value.strip() == "AcDbLayout"
+            ),
+            None,
+        )
+        if split is None:
+            continue
+        plot_pairs, layout_pairs = pairs[:split], pairs[split + 1 :]
+        block_record = _first_string(layout_pairs, 330)
+        name = _first_string(layout_pairs, 1)
+        if not block_record or not name:
+            continue
+        try:
+            info: dict[str, Any] = {
+                "name": name,
+                "tab_order": _first_int(layout_pairs, 71, default=None),
+                "paper": layout_paper(
+                    name=_first_string(plot_pairs, 4),
+                    width_mm=_first_float(plot_pairs, 44, default=None),
+                    height_mm=_first_float(plot_pairs, 45, default=None),
+                    margins_mm=[
+                        _first_float(plot_pairs, code, default=None)
+                        for code in (40, 41, 42, 43)
+                    ],
+                    units_code=_first_int(plot_pairs, 72, default=None),
+                    rotation_code=_first_int(plot_pairs, 73, default=None),
+                ),
+            }
+        except ValueError:
+            continue
+        layouts[block_record.strip().upper()] = info
+    return layouts
+
+
+def _mview_extended_data(pairs: list[DXFPair]) -> dict[str, Any] | None:
+    """The view of a viewport as R12-R14 files keep it: ``ACAD`` / ``MVIEW`` xdata.
+
+    The list is positional: the view target and the view direction (two points,
+    groups 1010/1020/1030), then reals (1040) for the twist angle in radians,
+    the view height and the X and Y of the view center. The names of the layers
+    that are frozen in the viewport follow as 1003 groups.
+    """
+    start = next(
+        (
+            index
+            for index, (code, value) in enumerate(pairs)
+            if code == 1000 and value.strip().upper() == "MVIEW"
+        ),
+        None,
+    )
+    if start is None:
+        return None
+    xdata = pairs[start + 1 :]
+    try:
+        xs = [float(value) for code, value in xdata if code == 1010]
+        ys = [float(value) for code, value in xdata if code == 1020]
+        zs = [float(value) for code, value in xdata if code == 1030]
+        reals = [float(value) for code, value in xdata if code == 1040]
+    except ValueError:
+        return None
+    if len(reals) < 4 or min(len(xs), len(ys), len(zs)) < 2:
+        return None
+    return {
+        "target": [xs[0], ys[0], zs[0]],
+        "direction": [xs[1], ys[1], zs[1]],
+        "twist_deg": math.degrees(reals[0]),
+        "view_height": reals[1],
+        "view_center": [reals[2], reals[3]],
+        "frozen_layers": [value for code, value in xdata if code == 1003 and value],
+    }
+
+
+def _viewport_from_pairs(
+    pairs: list[DXFPair], layer_names_by_handle: dict[str, str]
+) -> dict[str, Any]:
+    """IR viewport of a VIEWPORT record.
+
+    R2000 and later state the view in the record itself; R12-R14 files keep it
+    in extended data.
+    """
+    handle = _first_string(pairs, 5)
+    frozen_layers = [
+        layer_names_by_handle[value.strip().upper()]
+        for code, value in pairs
+        if code == 331 and value.strip().upper() in layer_names_by_handle
+    ]
+
+    def point(codes: tuple[int, ...]) -> list[float] | None:
+        values = [_first_float(pairs, code, default=None) for code in codes]
+        if values[0] is None or values[1] is None:
+            return None
+        return [value if value is not None else 0.0 for value in values]
+
+    view: dict[str, Any] = {
+        "view_center": point((12, 22)),
+        "view_height": _first_float(pairs, 45, default=None),
+        "twist_deg": _first_float(pairs, 51, default=None),
+        "target": point((17, 27, 37)),
+        "direction": point((16, 26, 36)),
+    }
+    if view["view_height"] is None:
+        mview = _mview_extended_data(pairs)
+        if mview is not None:
+            frozen_layers = mview.pop("frozen_layers")
+            view = mview
+
+    return viewport_from_dxf_values(
+        source_format="dxf",
+        handle=handle,
+        center=[_required_float(pairs, 10), _required_float(pairs, 20)],
+        width=_required_float(pairs, 40),
+        height=_required_float(pairs, 41),
+        status_flags=_first_int(pairs, 90, default=None),
+        status=_first_int(pairs, 68, default=None),
+        layer=_first_string(pairs, 8),
+        frozen_layers=frozen_layers,
+        clip_boundary=_first_string(pairs, 340),
+        **view,
+    )
+
+
+def _viewport_has_no_window(pairs: list[DXFPair]) -> bool:
+    try:
+        width = _first_float(pairs, 40, default=None)
+        height = _first_float(pairs, 41, default=None)
+    except ValueError:
+        return False
+    return width is not None and height is not None and (width <= 0.0 or height <= 0.0)
+
+
+def _sheet_viewport_index(viewport_records: list[list[DXFPair]]) -> int | None:
+    """Index of the viewport that stands for the sheet itself, if there is one.
+
+    Every layout has one such viewport. It shows no model space and is not part
+    of the IR. In the sheet that was current when the file was written it has
+    id 1 (group 69). The viewports of the other sheets all carry id 0; there it
+    is the first one, as long as its view is its own window.
+    """
+    for index, pairs in enumerate(viewport_records):
+        try:
+            if _first_int(pairs, 69, default=None) == 1:
+                return index
+        except ValueError:
+            continue
+    if not viewport_records:
+        return None
+    first = viewport_records[0]
+    try:
+        center = [
+            _first_float(first, 10, default=None),
+            _first_float(first, 20, default=None),
+        ]
+        view_center = [
+            _first_float(first, 12, default=None),
+            _first_float(first, 22, default=None),
+        ]
+        view_height = _first_float(first, 45, default=None)
+        if view_height is None:
+            mview = _mview_extended_data(first)
+            if mview is not None:
+                view_center, view_height = mview["view_center"], mview["view_height"]
+        looks_like_sheet = shows_the_sheet_itself(
+            center=center,
+            height=_first_float(first, 41, default=None),
+            view_center=None if None in view_center else view_center,
+            view_height=view_height,
+        )
+    except ValueError:
+        return None
+    return 0 if looks_like_sheet else None
+
+
+def _paper_space_block_order(name: str) -> tuple[int, int, str]:
+    """The active sheet first, then ``*Paper_Space0``, ``*Paper_Space1``, ..."""
+    if is_active_paper_space_block_name(name):
+        return (0, 0, "")
+    suffix = name.strip().upper().removeprefix("*PAPER_SPACE")
+    if suffix.isdigit():
+        return (1, int(suffix), "")
+    return (2, 0, name.upper())
+
+
+def _layouts_to_ir(
+    active_records: list[tuple[str, list[DXFPair]]],
+    paper_space_blocks: dict[str, list[tuple[str, list[DXFPair]]]],
+    *,
+    table_pairs: list[DXFPair],
+    object_pairs: list[DXFPair],
+    warnings: list[str] | None,
+    diagnostics: list[ImportDiagnostic] | None,
+    default_text_height: float,
+    dimstyles: dict[str, dict[str, float]] | None = None,
+) -> list[dict[str, Any]]:
+    """Paper-space layouts of a DXF file, in tab order.
+
+    The entities of the sheet that was current when the file was written are in
+    the ENTITIES section with group 67 = 1; those of the other sheets are the
+    bodies of the ``*Paper_Space<n>`` blocks. LAYOUT objects name the sheets and
+    describe their paper; files without them (R12, minimal files) get
+    ``Layout1``, ``Layout2``, ... A sheet that holds neither entities nor a
+    viewport onto model space is left out.
+    """
+    sources: dict[str, list[tuple[str, list[DXFPair]]]] = {}
+    block_names: dict[str, str] = {}
+    if active_records:
+        sources["*PAPER_SPACE"] = list(active_records)
+        block_names["*PAPER_SPACE"] = "*Paper_Space"
+    for name, records in paper_space_blocks.items():
+        key = (
+            "*PAPER_SPACE"
+            if is_active_paper_space_block_name(name)
+            else name.strip().upper()
+        )
+        sources.setdefault(key, []).extend(records)
+        block_names.setdefault(key, name)
+    if not any(sources.values()):
+        return []
+
+    layer_names_by_handle, block_record_names = _table_handles(table_pairs)
+    layout_infos: dict[str, dict[str, Any]] = {}
+    for block_record, info in _layout_objects(object_pairs).items():
+        block_name = block_record_names.get(block_record)
+        if block_name is None:
+            continue
+        key = (
+            "*PAPER_SPACE"
+            if is_active_paper_space_block_name(block_name)
+            else block_name.strip().upper()
+        )
+        layout_infos[key] = info
+
+    layouts: list[dict[str, Any]] = []
+    # A sheet without a layout object must not take the name of one that has.
+    reserved_names = {str(info["name"]) for info in layout_infos.values()}
+    used_names: set[str] = set()
+    ordered = sorted(
+        sources, key=lambda key: _paper_space_block_order(block_names[key])
+    )
+    for key in ordered:
+        records = sources[key]
+        info = layout_infos.get(key, {})
+        name = str(info.get("name") or unnamed_layout_name(reserved_names | used_names))
+        while name in used_names:
+            name += "_"
+        entity_records = [record for record in records if record[0] != "VIEWPORT"]
+        entities = _records_to_entities(
+            entity_records,
+            warnings=warnings,
+            diagnostics=diagnostics,
+            context=f"LAYOUT:{name}",
+            default_text_height=default_text_height,
+            in_block=False,
+            dimstyles=dimstyles,
+        )
+        viewports: list[dict[str, Any]] = []
+        viewport_records = [pairs for kind, pairs in records if kind == "VIEWPORT"]
+        sheet_viewport = _sheet_viewport_index(viewport_records)
+        for index, pairs in enumerate(viewport_records):
+            if index == sheet_viewport:
+                continue
+            if _viewport_has_no_window(pairs):
+                # A viewport of size zero (switched off and never regenerated)
+                # shows nothing; it is no malformed record.
+                _warn(
+                    warnings, f"[LAYOUT:{name}] DXF VIEWPORT without a window skipped"
+                )
+                continue
+            try:
+                viewport = _viewport_from_pairs(pairs, layer_names_by_handle)
+            except (ValueError, TypeError, IndexError, OverflowError) as exc:
+                _import_diagnose(
+                    diagnostics,
+                    warnings,
+                    code="DXF_ENTITY_CONVERSION_FAILED",
+                    severity="error",
+                    message=f"[LAYOUT:{name}] Skipped malformed DXF VIEWPORT: {exc}",
+                    source_id=_first_string(pairs, 5),
+                    source_kind="VIEWPORT",
+                    action="skipped",
+                )
+                continue
+            viewports.append(viewport)
+        if not entities and not viewports:
+            continue
+
+        used_names.add(name)
+        layout: dict[str, Any] = {"name": name, "entities": entities}
+        if viewports:
+            layout["viewports"] = viewports
+        tab_order = info.get("tab_order")
+        if isinstance(tab_order, int) and tab_order >= 0:
+            layout["tab_order"] = tab_order
+        if key == "*PAPER_SPACE":
+            layout["active"] = True
+        if info.get("paper"):
+            layout["paper"] = info["paper"]
+        layouts.append(layout)
+    return order_layouts(layouts)
 
 
 def _pairs_to_records(pairs: list[DXFPair]) -> list[tuple[str, list[DXFPair]]]:
@@ -1550,6 +2027,7 @@ _CONVERTIBLE_DXF_KINDS = frozenset(
         "SOLID",
         "TRACE",
         "LEADER",
+        "TOLERANCE",
     }
 )
 
@@ -1562,6 +2040,8 @@ def _records_to_entities(
     context: str = "ENTITIES",
     default_text_height: float = 2.5,
     projection: _AxisProjection | None = None,
+    in_block: bool | None = None,
+    dimstyles: dict[str, dict[str, float]] | None = None,
 ) -> list[dict[str, Any]]:
     """Convert entity records to IR entities.
 
@@ -1576,11 +2056,15 @@ def _records_to_entities(
     used_ids: set[str] = set()
     record_index = 0
     serial = 1
+    if in_block is None:
+        in_block = context != "ENTITIES"
 
     while record_index < len(records):
         kind, pairs = records[record_index]
         consumed = 1
         entity: dict[str, Any] | None = None
+        # A record that is drawn as several entities (TOLERANCE).
+        exploded: list[dict[str, Any]] = []
 
         # Compound records (POLYLINE/VERTEX/SEQEND, INSERT/ATTRIB/SEQEND) consume
         # their trailing records even when the head record turns out malformed.
@@ -1628,15 +2112,49 @@ def _records_to_entities(
             elif kind == "LWPOLYLINE":
                 entity = _lwpolyline_from_pairs(pairs, serial)
             elif kind == "POLYLINE":
+                polyline_flags = _first_int(pairs, 70, default=0) or 0
+                if polyline_flags & (_POLYLINE_POLYGON_MESH | _POLYLINE_POLYFACE_MESH):
+                    # A mesh is a surface: its VERTEX records are a grid of points
+                    # or face indices, not a path.
+                    mesh = (
+                        "polyface mesh"
+                        if polyline_flags & _POLYLINE_POLYFACE_MESH
+                        else "polygon mesh"
+                    )
+                    _import_diagnose(
+                        diagnostics,
+                        warnings,
+                        code="DXF_MESH_SKIPPED",
+                        severity="warning",
+                        message=f"[{context}] Skipped DXF {mesh} (3D surface).",
+                        source_id=_first_string(pairs, 5),
+                        source_kind="POLYLINE",
+                        action="skipped",
+                    )
+                    record_index += consumed
+                    continue
                 entity = _polyline_from_pairs(pairs, vertex_pairs, serial)
+                if polyline_flags & _POLYLINE_3D and _vertices_leave_xy_plane(
+                    vertex_pairs
+                ):
+                    _import_diagnose(
+                        diagnostics,
+                        warnings,
+                        code="DXF_POLYLINE_3D_PROJECTED",
+                        severity="warning",
+                        message=(
+                            f"[{context}] 3D POLYLINE {entity['id']} projected to XY."
+                        ),
+                        source_id=str(entity["id"]),
+                        source_kind="POLYLINE",
+                        action="projected",
+                    )
             elif kind == "TEXT":
                 entity = _text_from_pairs(pairs, serial)
             elif kind == "MTEXT":
                 entity = _mtext_from_pairs(pairs, serial)
             elif kind == "ATTDEF":
-                entity = _attdef_from_pairs(
-                    pairs, serial, in_block=context != "ENTITIES"
-                )
+                entity = _attdef_from_pairs(pairs, serial, in_block=in_block)
             elif kind == "INSERT":
                 entity = _insert_from_pairs(
                     pairs, serial, attributes if attributes else None
@@ -1668,6 +2186,31 @@ def _records_to_entities(
                     source_kind="LEADER",
                     action="approximated",
                 )
+            elif kind == "TOLERANCE":
+                exploded = _tolerance_from_pairs(
+                    pairs,
+                    serial,
+                    dimstyles=dimstyles or {},
+                    default_text_height=default_text_height,
+                )
+                for part in exploded:
+                    part["source"]["kind"] = kind
+                    validate_entity(part, f"{context}.{kind}")
+                if exploded:
+                    _import_diagnose(
+                        diagnostics,
+                        warnings,
+                        code="DXF_TOLERANCE_EXPLODED",
+                        severity="warning",
+                        message=(
+                            f"[{context}] TOLERANCE {_first_string(pairs, 5) or serial} "
+                            "drawn as lines and texts; compartment widths are "
+                            "estimated."
+                        ),
+                        source_id=_first_string(pairs, 5),
+                        source_kind="TOLERANCE",
+                        action="exploded",
+                    )
             if entity is not None:
                 entity.setdefault("source", {"format": "dxf"})["kind"] = kind
                 if projection is not None:
@@ -1716,12 +2259,123 @@ def _records_to_entities(
             continue
 
         if entity is not None:
-            _make_entity_id_unique(entity, used_ids)
-            entities.append(entity)
+            exploded = [entity]
+        for produced in exploded:
+            _make_entity_id_unique(produced, used_ids)
+            entities.append(produced)
+        if exploded:
             serial += 1
         record_index += consumed
 
     return entities
+
+
+# Initial values of the dimension variables DIMTXT and DIMGAP.
+_DIMTXT_INITIAL = 0.18
+_DIMGAP_INITIAL = 0.09
+
+
+def _dimstyle_sizes(table_pairs: list[DXFPair]) -> dict[str, dict[str, float]]:
+    """Sizes of every dimension style by upper-case name.
+
+    ``dimtxt`` (group 140) is the text height, ``dimgap`` (147) the distance
+    between a text and its frame and ``dimscale`` (40) the overall scale.
+    """
+    styles: dict[str, dict[str, float]] = {}
+    current_table: str | None = None
+    for kind, pairs in _pairs_to_records(table_pairs):
+        if kind == "TABLE":
+            current_table = (_first_string(pairs, 2) or "").upper()
+            continue
+        if kind == "ENDTAB":
+            current_table = None
+            continue
+        if current_table != "DIMSTYLE" or kind != "DIMSTYLE":
+            continue
+        name = _first_string(pairs, 2)
+        if not name:
+            continue
+        sizes: dict[str, float] = {}
+        for key, code in (("dimscale", 40), ("dimtxt", 140), ("dimgap", 147)):
+            try:
+                value = _first_float(pairs, code, default=None)
+            except ValueError:
+                value = None
+            if value is not None and math.isfinite(value):
+                sizes[key] = value
+        styles[name.strip().upper()] = sizes
+    return styles
+
+
+def _dimstyle_overrides(pairs: list[DXFPair]) -> dict[int, float]:
+    """Dimension variable overrides of an entity (``ACAD`` / ``DSTYLE`` xdata).
+
+    The override list alternates the group code of a dimension variable (1070)
+    with its value.
+    """
+    overrides: dict[int, float] = {}
+    in_dstyle = False
+    variable: int | None = None
+    for code, value in pairs:
+        if code == 1000:
+            in_dstyle = value.strip().upper() == "DSTYLE"
+            variable = None
+        elif code == 1001:
+            in_dstyle = False
+        elif in_dstyle and code == 1070 and variable is None:
+            try:
+                variable = int(float(value))
+            except ValueError:
+                variable = None
+        elif in_dstyle and variable is not None and code in (1040, 1070):
+            try:
+                overrides[variable] = float(value)
+            except ValueError:
+                pass
+            variable = None
+    return overrides
+
+
+def _tolerance_from_pairs(
+    pairs: list[DXFPair],
+    idx: int,
+    *,
+    dimstyles: dict[str, dict[str, float]],
+    default_text_height: float,
+) -> list[dict[str, Any]]:
+    """Feature control frame as the lines of its frame and one TEXT per compartment.
+
+    The text height is the one of the dimension style (``DIMTXT`` times
+    ``DIMSCALE``), which the entity can override.
+    """
+    common = _common_from_pairs(pairs, idx)
+    text = _first_string(pairs, 1) or ""
+    style = dimstyles.get((_first_string(pairs, 3) or "").strip().upper())
+    overrides = _dimstyle_overrides(pairs)
+    # A DIMSTYLE record leaves out the variables that have their initial value.
+    defaults = (
+        {} if style is None else {"dimtxt": _DIMTXT_INITIAL, "dimgap": _DIMGAP_INITIAL}
+    )
+    values = {**defaults, **(style or {})}
+    dimtxt = overrides.get(140, values.get("dimtxt"))
+    dimscale = overrides.get(40, values.get("dimscale")) or 1.0
+    height = dimtxt * dimscale if dimtxt is not None and dimtxt > 0.0 else None
+    if height is None or not height > 0.0:
+        height = default_text_height
+    dimgap = overrides.get(147, values.get("dimgap"))
+    gap = abs(dimgap) * dimscale if dimgap else None
+    direction_x = _first_float(pairs, 11, default=1.0)
+    direction_y = _first_float(pairs, 21, default=0.0)
+    rotation = math.degrees(math.atan2(direction_y or 0.0, direction_x or 0.0))
+    common.setdefault("metadata", {}).setdefault("dxf", {})["tolerance_text"] = text
+    return explode_tolerance(
+        text=text,
+        insert=[_required_float(pairs, 10), _required_float(pairs, 20)],
+        height=height,
+        rotation_deg=rotation,
+        gap=gap,
+        common=common,
+    )
 
 
 def _make_entity_id_unique(entity: dict[str, Any], used_ids: set[str]) -> None:
@@ -1992,6 +2646,39 @@ def _lwpolyline_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
     return entity
 
 
+# POLYLINE flags (group 70).
+_POLYLINE_3D = 8
+_POLYLINE_POLYGON_MESH = 16
+_POLYLINE_POLYFACE_MESH = 64
+# VERTEX flag (group 70): control point of the frame of a spline-fit polyline.
+_VERTEX_SPLINE_FRAME = 16
+
+
+def _vertices_leave_xy_plane(vertex_pairs: list[list[DXFPair]]) -> bool:
+    for vertex in vertex_pairs:
+        try:
+            z = _first_float(vertex, 30, default=0.0) or 0.0
+        except ValueError:
+            continue
+        if abs(z) > 1e-12:
+            return True
+    return False
+
+
+def _polyline_path_vertices(vertex_pairs: list[list[DXFPair]]) -> list[list[DXFPair]]:
+    """The VERTEX records a polyline is drawn through.
+
+    A spline-fit polyline also stores the control points of its frame. The
+    curve runs through the fitted vertices; the frame is not displayed.
+    """
+    path = [
+        vertex
+        for vertex in vertex_pairs
+        if not (_first_int(vertex, 70, default=0) or 0) & _VERTEX_SPLINE_FRAME
+    ]
+    return path if len(path) >= 2 else vertex_pairs
+
+
 def _polyline_from_pairs(
     pairs: list[DXFPair],
     vertex_pairs: list[list[DXFPair]],
@@ -2000,7 +2687,7 @@ def _polyline_from_pairs(
     entity = _common_from_pairs(pairs, idx)
     entity["kind"] = "LWPOLYLINE"
     vertices: list[list[float]] = []
-    for vertex in vertex_pairs:
+    for vertex in _polyline_path_vertices(vertex_pairs):
         point = [_required_float(vertex, 10), _required_float(vertex, 20)]
         bulge = _first_float(vertex, 42, default=None)
         if bulge is not None:
@@ -3476,6 +4163,7 @@ def _dimension_geometry_blocks_are_missing(document: dict[str, Any]) -> bool:
     scopes.extend(
         block.get("entities") for block in blocks.values() if isinstance(block, dict)
     )
+    scopes.extend(_layout_scopes(document))
     for entities in scopes:
         if not isinstance(entities, list):
             continue
@@ -3518,6 +4206,7 @@ def _ensure_dimension_geometry_blocks(
         entities = block.get("entities")
         if isinstance(entities, list):
             scope_entities.append(entities)
+    scope_entities.extend(_layout_scopes(document))
 
     used_names = {str(name).upper() for name in blocks}
     next_number = 0
@@ -3678,8 +4367,20 @@ def _normalized_tables(
                 for entity in definition.get("entities", [])
                 if isinstance(entity, dict)
             )
+    for scope in _layout_scopes(ir_document):
+        entities.extend(entity for entity in scope if isinstance(entity, dict))
 
     referenced_layers = {str(entity.get("layer", "0")) for entity in entities}
+    for layout in ir_document.get("layouts") or []:
+        if not isinstance(layout, dict):
+            continue
+        for viewport in layout.get("viewports") or []:
+            if not isinstance(viewport, dict):
+                continue
+            referenced_layers.add(str(viewport.get("layer") or "0"))
+            referenced_layers.update(
+                str(name) for name in viewport.get("frozen_layers") or []
+            )
     referenced_linetypes = {
         str(entity["linetype"])
         for entity in entities
@@ -3989,6 +4690,7 @@ def _append_entity_output(
     warnings: list[str] | None,
     entity_map: list[EntityMapEntry],
     ir_id_override: str | None = None,
+    paper_space: bool = False,
 ) -> None:
     rendered, reason_code = _render_entity(
         entity,
@@ -4013,7 +4715,7 @@ def _append_entity_output(
         return
 
     for item in rendered:
-        pairs = item.pairs
+        pairs = _mark_paper_space(item.pairs) if paper_space else item.pairs
         handle: str | None = None
         if allocator is not None:
             pairs = _add_r2010_subclasses(pairs)
@@ -4027,6 +4729,290 @@ def _append_entity_output(
                 "index": _next_output_index(entity_map),
                 "scope": scope,
             }
+        )
+
+
+def _mark_paper_space(pairs: list[DXFPair]) -> list[DXFPair]:
+    """Group 67 = 1 behind every record head: the entity is in paper space."""
+    result: list[DXFPair] = []
+    for code, value in pairs:
+        result.append((code, value))
+        if code == 0:
+            result.append((67, "1"))
+    return result
+
+
+def _layer_record_handles(table_pairs: list[DXFPair]) -> dict[str, str]:
+    """Handles of the written LAYER records by layer name (empty for R12)."""
+    handles: dict[str, str] = {}
+    for kind, pairs in _pairs_to_records(table_pairs):
+        if kind != "LAYER":
+            continue
+        name = _first_string(pairs, 2)
+        handle = _first_string(pairs, 5)
+        if name and handle:
+            handles[name] = handle
+    return handles
+
+
+def _layout_scopes(document: dict[str, Any]) -> list[list[Any]]:
+    """Entity lists of the paper-space layouts of a document."""
+    layouts = document.get("layouts")
+    if not isinstance(layouts, list):
+        return []
+    return [
+        layout["entities"]
+        for layout in layouts
+        if isinstance(layout, dict) and isinstance(layout.get("entities"), list)
+    ]
+
+
+def _layout_extents(layout: dict[str, Any]) -> tuple[float, float, float, float] | None:
+    """Rough extents of a sheet: the points of its entities and its windows."""
+    xs: list[float] = []
+    ys: list[float] = []
+
+    def add(point: Any, radius: float = 0.0) -> None:
+        if not _point_like(point):
+            return
+        x, y = float(point[0]), float(point[1])
+        if math.isfinite(x) and math.isfinite(y):
+            xs.extend((x - radius, x + radius))
+            ys.extend((y - radius, y + radius))
+
+    for entity in layout.get("entities", []):
+        if not isinstance(entity, dict):
+            continue
+        for key in ("p1", "p2", "insert", "position"):
+            add(entity.get(key))
+        radius = entity.get("radius")
+        add(
+            entity.get("center"),
+            float(radius) if isinstance(radius, (int, float)) else 0.0,
+        )
+        for key in ("vertices", "control_points"):
+            for point in entity.get(key) or []:
+                add(point)
+        for loop in entity.get("loops") or []:
+            if isinstance(loop, dict):
+                for point in loop.get("vertices") or []:
+                    add(point)
+    for viewport in layout.get("viewports") or []:
+        if not isinstance(viewport, dict) or not _point_like(viewport.get("center")):
+            continue
+        half_width = float(viewport.get("width", 0.0)) / 2.0
+        half_height = float(viewport.get("height", 0.0)) / 2.0
+        center = viewport["center"]
+        add([center[0] - half_width, center[1] - half_height])
+        add([center[0] + half_width, center[1] + half_height])
+    if not xs:
+        return None
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def _viewport_to_pairs(
+    viewport: dict[str, Any],
+    *,
+    viewport_id: int,
+    layer_handles: dict[str, str],
+) -> list[DXFPair]:
+    """VIEWPORT record of a window onto model space (R2000+ form)."""
+    center = viewport["center"]
+    view = viewport_to_dxf_view(viewport)
+    stored: dict[str, Any] = {}
+    metadata = viewport.get("metadata")
+    if isinstance(metadata, dict):
+        for value in metadata.values():
+            if isinstance(value, dict):
+                stored = value
+                break
+    flags = stored.get("status_flags")
+    flags = (
+        int(flags) if isinstance(flags, int) and not isinstance(flags, bool) else 0x8060
+    )
+    flags &= ~0x10000  # the clip boundary entity is not written
+    visible = viewport.get("visible") is not False
+    flags = flags & ~0x20000 if visible else flags | 0x20000
+
+    direction: Any = [0.0, 0.0, 1.0]
+    target: Any = [0.0, 0.0, 0.0]
+    view_center: Any = None
+    view_height: Any = None
+    twist = 0.0
+    if view is not None:
+        view_center, view_height, twist = (
+            view["view_center"],
+            view["view_height"],
+            view["twist_deg"],
+        )
+    elif isinstance(stored.get("view"), dict):
+        # A view the IR does not express (3D or perspective), as the source had it.
+        source_view = stored["view"]
+        if _point_like(source_view.get("direction")):
+            direction = [*source_view["direction"], 1.0][:3]
+        if _point_like(source_view.get("target")):
+            target = [*source_view["target"], 0.0][:3]
+        if _point_like(source_view.get("center")):
+            view_center = source_view["center"]
+        if isinstance(source_view.get("height"), (int, float)):
+            view_height = source_view["height"]
+        if isinstance(source_view.get("twist"), (int, float)):
+            twist = float(source_view["twist"])
+    if view_center is None:
+        view_center = [center[0], center[1]]
+    if not isinstance(view_height, (int, float)) or not view_height > 0:
+        view_height = viewport["height"]
+
+    pairs: list[DXFPair] = [
+        (0, "VIEWPORT"),
+        (67, "1"),
+        (8, str(viewport.get("layer") or "0")),
+        (10, _num(center[0])),
+        (20, _num(center[1])),
+        (30, "0"),
+        (40, _num(viewport["width"])),
+        (41, _num(viewport["height"])),
+        (68, str(viewport_id) if visible else "0"),
+        (69, str(viewport_id)),
+        (12, _num(view_center[0])),
+        (22, _num(view_center[1])),
+        (13, "0"),
+        (23, "0"),
+        (14, "10"),
+        (24, "10"),
+        (15, "10"),
+        (25, "10"),
+        (16, _num(direction[0])),
+        (26, _num(direction[1])),
+        (36, _num(direction[2])),
+        (17, _num(target[0])),
+        (27, _num(target[1])),
+        (37, _num(target[2])),
+        (42, "50"),
+        (43, "0"),
+        (44, "0"),
+        (45, _num(view_height)),
+        (50, "0"),
+        (51, _num(twist)),
+        (72, "1000"),
+    ]
+    for name in viewport.get("frozen_layers") or []:
+        handle = layer_handles.get(str(name))
+        if handle:
+            pairs.append((331, handle))
+    pairs.append((90, str(flags)))
+    return pairs
+
+
+def _append_layout_output(
+    output_pairs: list[DXFPair],
+    document: dict[str, Any],
+    *,
+    target_version: TargetVersion,
+    curve_segments: int,
+    generic_dimensions: GenericDimensionMode,
+    allocator: _HandleAllocator | None,
+    layer_handles: dict[str, str],
+    diagnostics: list[ExportDiagnostic],
+    warnings: list[str] | None,
+    entity_map: list[EntityMapEntry],
+) -> None:
+    """Write one paper-space layout into the ENTITIES section.
+
+    The writer produces no OBJECTS section, so it has one paper space: the
+    entities carry group 67 = 1 and a reader puts them on its first layout. The
+    active sheet is written (the first sheet with content when none is marked);
+    the others are reported and left out. R12 keeps the view of a viewport in
+    extended data, which is not written: R12 output has no viewports.
+    """
+    layouts = document.get("layouts")
+    if not isinstance(layouts, list):
+        return
+    with_content = [
+        layout
+        for layout in layouts
+        if isinstance(layout, dict)
+        and (layout.get("entities") or layout.get("viewports"))
+    ]
+    if not with_content:
+        return
+    chosen = next(
+        (layout for layout in with_content if layout.get("active")), with_content[0]
+    )
+    for layout in with_content:
+        if layout is chosen:
+            continue
+        _diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_LAYOUT_OMITTED",
+            severity="warning",
+            message=(
+                f"Layout {layout.get('name')!r} with "
+                f"{len(layout.get('entities') or [])} entities was omitted: the DXF "
+                f"output holds one paper-space layout ({chosen.get('name')!r})."
+            ),
+            action="skipped",
+        )
+
+    name = str(chosen.get("name", ""))
+    viewports = [
+        viewport
+        for viewport in chosen.get("viewports") or []
+        if isinstance(viewport, dict)
+        and _point_like(viewport.get("center"))
+        and isinstance(viewport.get("width"), (int, float))
+        and isinstance(viewport.get("height"), (int, float))
+    ]
+    if viewports and target_version == "AC1009":
+        _diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_R12_VIEWPORT_OMITTED",
+            severity="warning",
+            message=(
+                f"{len(viewports)} viewport(s) of layout {name!r} were omitted "
+                "from DXF R12."
+            ),
+            action="skipped",
+        )
+    elif viewports:
+        extents = _layout_extents(chosen) or (0.0, 0.0, 420.0, 297.0)
+        width = max(extents[2] - extents[0], 1e-6)
+        height = max(extents[3] - extents[1], 1e-6)
+        # Viewport 1 stands for the sheet itself.
+        sheet: dict[str, Any] = {
+            "center": [
+                (extents[0] + extents[2]) / 2.0,
+                (extents[1] + extents[3]) / 2.0,
+            ],
+            "width": width * 1.1,
+            "height": height * 1.1,
+        }
+        sheet["view_center"] = list(sheet["center"])
+        sheet["view_height"] = sheet["height"]
+        for viewport_id, viewport in enumerate([sheet, *viewports], start=1):
+            pairs = _viewport_to_pairs(
+                viewport, viewport_id=viewport_id, layer_handles=layer_handles
+            )
+            if allocator is not None:
+                pairs = _add_r2010_subclasses(pairs)
+                pairs, _ = _add_record_handles(pairs, allocator)
+            output_pairs.extend(pairs)
+
+    for entity in chosen.get("entities") or []:
+        _append_entity_output(
+            output_pairs,
+            entity,
+            scope=f"layout:{name}",
+            target_version=target_version,
+            curve_segments=curve_segments,
+            generic_dimensions=generic_dimensions,
+            allocator=allocator,
+            diagnostics=diagnostics,
+            warnings=warnings,
+            entity_map=entity_map,
+            paper_space=True,
         )
 
 

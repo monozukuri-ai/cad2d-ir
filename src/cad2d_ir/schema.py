@@ -165,6 +165,8 @@ def _fallback_validate(document: Any) -> None:
 
     _validate_entity_scope(entities, "entities")
 
+    _validate_layouts(document.get("layouts"))
+
     _validate_constraints(document.get("constraints"))
 
 
@@ -226,6 +228,141 @@ def _validate_tables(tables: Any) -> None:
             block_entities,
             f"tables.blocks.{block_name}.entities",
         )
+
+
+_LAYOUT_KEYS = {
+    "name",
+    "entities",
+    "viewports",
+    "tab_order",
+    "active",
+    "paper",
+    "metadata",
+}
+_LAYOUT_PAPER_KEYS = {"name", "size_mm", "margins_mm", "units", "rotation"}
+_LAYOUT_VIEWPORT_KEYS = {
+    "id",
+    "center",
+    "width",
+    "height",
+    "view_center",
+    "view_height",
+    "rotation",
+    "layer",
+    "frozen_layers",
+    "visible",
+    "source",
+    "metadata",
+}
+
+
+def _validate_layouts(layouts: Any) -> None:
+    if layouts is None:
+        return
+    if not isinstance(layouts, list):
+        raise IRValidationError("layouts must be an array")
+
+    seen_names: dict[str, int] = {}
+    for index, layout in enumerate(layouts):
+        path = f"layouts[{index}]"
+        if not isinstance(layout, dict):
+            raise IRValidationError(f"{path} must be an object")
+        unknown = set(layout) - _LAYOUT_KEYS
+        if unknown:
+            raise IRValidationError(f"{path} has unknown properties: {sorted(unknown)}")
+        name = layout.get("name")
+        if not isinstance(name, str) or not name:
+            raise IRValidationError(f"{path}.name must be a non-empty string")
+        first_index = seen_names.get(name)
+        if first_index is not None:
+            raise IRValidationError(
+                f"{path}.name duplicates layouts[{first_index}].name: {name!r}"
+            )
+        seen_names[name] = index
+
+        entities = layout.get("entities")
+        if not isinstance(entities, list):
+            raise IRValidationError(f"{path}.entities must be an array")
+        _validate_entity_scope(entities, f"{path}.entities")
+
+        if "tab_order" in layout:
+            tab_order = layout["tab_order"]
+            if (
+                isinstance(tab_order, bool)
+                or not isinstance(tab_order, int)
+                or tab_order < 0
+            ):
+                raise IRValidationError(f"{path}.tab_order must be an integer >= 0")
+        if "active" in layout and not isinstance(layout["active"], bool):
+            raise IRValidationError(f"{path}.active must be boolean")
+        if "paper" in layout:
+            _validate_layout_paper(layout["paper"], f"{path}.paper")
+        if "viewports" in layout:
+            viewports = layout["viewports"]
+            if not isinstance(viewports, list):
+                raise IRValidationError(f"{path}.viewports must be an array")
+            for viewport_index, viewport in enumerate(viewports):
+                _validate_layout_viewport(
+                    viewport, f"{path}.viewports[{viewport_index}]"
+                )
+
+
+def _validate_layout_paper(paper: Any, path: str) -> None:
+    if not isinstance(paper, dict):
+        raise IRValidationError(f"{path} must be an object")
+    unknown = set(paper) - _LAYOUT_PAPER_KEYS
+    if unknown:
+        raise IRValidationError(f"{path} has unknown properties: {sorted(unknown)}")
+    if "name" in paper and not isinstance(paper["name"], str):
+        raise IRValidationError(f"{path}.name must be a string")
+    if "size_mm" in paper:
+        _require_point2(paper, "size_mm", path)
+    if "margins_mm" in paper:
+        margins = paper["margins_mm"]
+        if (
+            not isinstance(margins, list)
+            or len(margins) != 4
+            or not all(isinstance(value, (int, float)) for value in margins)
+        ):
+            raise IRValidationError(
+                f"{path}.margins_mm must be [left, bottom, right, top]"
+            )
+    if "units" in paper and paper["units"] not in {"mm", "inch", "px"}:
+        raise IRValidationError(f"{path}.units is invalid")
+    if "rotation" in paper and (
+        isinstance(paper["rotation"], bool)
+        or paper["rotation"] not in (0, 90, 180, 270)
+    ):
+        raise IRValidationError(f"{path}.rotation must be 0, 90, 180 or 270")
+
+
+def _validate_layout_viewport(viewport: Any, path: str) -> None:
+    if not isinstance(viewport, dict):
+        raise IRValidationError(f"{path} must be an object")
+    unknown = set(viewport) - _LAYOUT_VIEWPORT_KEYS
+    if unknown:
+        raise IRValidationError(f"{path} has unknown properties: {sorted(unknown)}")
+    _require_point2(viewport, "center", path)
+    _require_positive_number(viewport, "width", path)
+    _require_positive_number(viewport, "height", path)
+    if "view_center" in viewport:
+        _require_point2(viewport, "view_center", path)
+    if "view_height" in viewport:
+        _require_positive_number(viewport, "view_height", path)
+    if "rotation" in viewport:
+        _require_number(viewport, "rotation", path)
+    for key in ("id", "layer"):
+        if key in viewport and not isinstance(viewport[key], str):
+            raise IRValidationError(f"{path}.{key} must be a string")
+    if "frozen_layers" in viewport:
+        frozen_layers = viewport["frozen_layers"]
+        if not isinstance(frozen_layers, list) or not all(
+            isinstance(name, str) for name in frozen_layers
+        ):
+            raise IRValidationError(f"{path}.frozen_layers must be a string array")
+    if "visible" in viewport and not isinstance(viewport["visible"], bool):
+        raise IRValidationError(f"{path}.visible must be boolean")
+    _validate_source(viewport.get("source"), f"{path}.source")
 
 
 def validate_entity(entity: Any, path: str = "entity") -> None:

@@ -68,7 +68,7 @@ The table lists the Jw_cad defaults. A file records its own line type settings, 
 
 ## DWG adapter
 
-The DWG adapter consumes `ezdwg.read()` and enumerates every entity through `Document.entities().query()` (falling back to `modelspace().query()` on `ezdwg` releases before the placement-aware layouts), then partitions them itself: entities owned by a named block record become block-definition bodies, paper-space entities (layout frames, viewports, title blocks; `entmode == 1` or owned by a `*Paper_Space*` record) are skipped with `DWG_PAPERSPACE_ENTITY_SKIPPED`, and the rest form the IR modelspace. Low-level public table decoders are used only to recover layer names/colors, linetypes and block-header names.
+The DWG adapter consumes `ezdwg.read()` and enumerates every entity through `Document.entities().query()` (falling back to `modelspace().query()` on `ezdwg` releases before the placement-aware layouts), then partitions them itself: entities owned by a named block record become block-definition bodies, paper-space entities (layout frames, viewports, title blocks; `entmode == 1` or owned by a `*Paper_Space*` record) become `layouts`, and the rest form the IR modelspace. Low-level public table decoders are used only to recover layer names/colors, linetypes and block-header names.
 
 The owner of an entity is the placement stored in its common entity data (`Document.entity_placement()`: owner handle, paper space or model space). The `owner_handle` of the type-specific decoders is only the fallback when no placement is available (R13/R14 files with `ezdwg` before 0.12.11): it is absent for several entity types (`HATCH`, `SPLINE`, `SOLID`, `ELLIPSE`, ...), which used to move block contents into model space, and it can name another object for a model-space `INSERT`.
 
@@ -78,9 +78,12 @@ Block names are unique in the IR. When two block headers carry the same name (an
 | --- | --- | --- |
 | `LINE`, `CIRCLE`, `ARC`, `ELLIPSE`, `POINT` | matching IR entity | direct XY mapping |
 | `LWPOLYLINE`, `POLYLINE_2D` | `LWPOLYLINE` | bulges and widths metadata retained; fitted interpolation is diagnosed |
+| `POLYLINE_3D` | `LWPOLYLINE` | projected to XY with straight segments, like the DXF importer reads it; one that leaves the XY plane counts as projected (`DWG_NONPLANAR_PROJECTED`); one whose vertices cannot be read is skipped |
+| `POLYLINE_MESH`, `POLYLINE_PFACE` | none | 3D surfaces; skipped with `DWG_UNSUPPORTED_ENTITY` |
 | `SPLINE` | `SPLINE` | degree, controls, knots, weights, closure retained |
 | `TEXT`, `MTEXT` | `TEXT` / `MTEXT` | placement and exposed formatting retained; a justified `TEXT` is anchored at its alignment point |
-| `TOLERANCE` | `MTEXT` | the content of the feature control frame with its formatting codes, at the text height `ezdwg` reports (stored with the entity in R13/R14, otherwise the one of the dimension style); skipped with `DWG_UNSUPPORTED_ENTITY` when no height is known |
+| `TOLERANCE` | `LWPOLYLINE`, `LINE`, `TEXT` | the feature control frame drawn as the box of each row, the lines between its compartments and one centered `TEXT` per compartment, with the symbols of the GDT font as Unicode characters (`DWG_TOLERANCE_EXPLODED`); the text height is the one `ezdwg` reports (stored with the entity in R13/R14, otherwise the one of the dimension style) and compartment widths are estimated; skipped with `DWG_UNSUPPORTED_ENTITY` when no height is known |
+| `VIEWPORT` | `viewports` of its layout | window and view of a paper-space viewport (`ezdwg` 0.12.12 or later); the viewport that stands for the sheet itself is left out |
 | `ATTRIB` | `attribute_texts` and `attributes` of its `INSERT` | attached by owner handle, with its own position, size, justification, layer and color; invisible ones carry `visible: false`; one whose `INSERT` is unknown stays a `TEXT` (and is skipped when invisible) |
 | `ATTDEF` | `TEXT` | definitions inside a block definition (templates) are skipped with `DWG_HIDDEN_ATTRIBUTE_SKIPPED`, constant definitions stay in the block with their value; a definition outside of a block is shown by its tag |
 | `HATCH`, `SOLID`, `TRACE`, planar `3DFACE` | `HATCH` | polygon loops retained; pattern fills carry `pattern_lines` |
@@ -100,7 +103,9 @@ Layer state and lineweights need `ezdwg` 0.12.11 or later. A layer that is off o
 
 A justified `TEXT` is anchored at its alignment point (see "Text anchor" in docs/SCHEMA_NOTES.md); both stored points stay in `metadata.dwg`.
 
-Each `ATTRIB` is attached to the `INSERT` that owns it, wherever that reference lives: in model space or inside a block definition. The attributes of a paper-space reference are dropped with it. `statistics["attached_attributes"]` counts them.
+Each `ATTRIB` is attached to the `INSERT` that owns it, wherever that reference lives: in model space, inside a block definition or on a sheet. `statistics["attached_attributes"]` counts them.
+
+Paper space becomes `layouts` (see "Layouts" in docs/SCHEMA_NOTES.md), one per sheet that holds entities or a viewport onto model space. With `ezdwg` 0.12.12 or later, `Document.layouts()` gives each sheet its name, tab order and paper, and tells which sheet was current when the file was saved (its entities are stored without an owner). Viewports need that release as well: older ones decode no viewport geometry, and those viewports are counted under `DWG_UNSUPPORTED_ENTITY`. Without layout objects (older `ezdwg`, or files written before R2000) the sheets are told apart by their block record and named `Layout1`, `Layout2`, ... When model space holds no entity, the active sheet becomes `entities` (`DWG_LAYOUT_PROMOTED`). `statistics["layouts"]` and `statistics["converted_layout_entities"]` count what stays in `layouts`. R13/R14 keep the view of a viewport in extended data, which is not read: their viewports have a window but no view.
 
 DWG units come from the `$INSUNITS` header variable (`ezdwg` >= 0.11 `Document.header_variables()`); mapped codes fill `header.units` (and therefore `$INSUNITS` on DXF export), the raw code is recorded in header metadata, and unmapped codes or R14 files (no `$INSUNITS`) fall back to `unknown` with the reason in metadata plus a diagnostic. Non-zero Z coordinates are projected to XY and reported. Unsupported 3D/presentation entities are skipped with aggregate diagnostics. Block base points are also not exposed; recovered block bodies use `[0, 0]` and state that limitation in metadata.
 

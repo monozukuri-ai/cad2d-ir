@@ -99,7 +99,7 @@ Each `entity_map` entry contains:
 - `handle`: deterministic R2010 handle, or `null` for R12/skipped output
 - `dxf_type`: emitted entity type, or `null` when skipped
 - `index`: zero-based emitted-entity order
-- `scope`: `modelspace` or `block:<name>`
+- `scope`: `modelspace`, `block:<name>` or `layout:<name>`
 - optional `reason_code`: diagnostic code explaining a skipped entity
 
 One IR entity produces multiple entries when it is exploded. In AC1024 output,
