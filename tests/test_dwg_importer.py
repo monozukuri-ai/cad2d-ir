@@ -755,7 +755,12 @@ def test_dwg_stored_placement_decides_the_owner_block() -> None:
 
 
 def _attribute_entity(
-    kind: str, handle: int, flags: int, owner_handle: int | None
+    kind: str,
+    handle: int,
+    flags: int,
+    owner_handle: int | None,
+    tag: str = "TAG",
+    **dxf: Any,
 ) -> _Entity:
     return _Entity(
         kind,
@@ -764,9 +769,10 @@ def _attribute_entity(
             "insert": (0.0, float(handle), 0.0),
             "height": 2.5,
             "text": f"{kind}{handle}",
-            "tag": "TAG",
+            "tag": tag,
             "attribute_flags": flags,
             **_style(owner_handle=owner_handle),
+            **dxf,
         },
     )
 
@@ -774,15 +780,16 @@ def _attribute_entity(
 def test_dwg_attribute_templates_and_invisible_attributes_are_not_drawn() -> None:
     document = _Document(
         [
-            # The value a block reference shows, and an invisible one.
+            # Attributes whose block reference is unknown: a visible one stays a
+            # text, an invisible one is not shown.
             _attribute_entity("ATTRIB", 1, 0, None),
             _attribute_entity("ATTRIB", 2, 1, None),
             # Inside a block: the template is skipped, a constant definition is block content.
             _attribute_entity("ATTDEF", 3, 0, 100),
             _attribute_entity("ATTDEF", 4, 2, 100),
             _attribute_entity("ATTDEF", 5, 3, 100),
-            # In model space a definition is shown.
-            _attribute_entity("ATTDEF", 6, 0, None),
+            # Outside of a block a definition is shown, by its tag.
+            _attribute_entity("ATTDEF", 6, 0, None, "PART_NO"),
         ]
     )
     result = dwg_document_to_ir(
@@ -790,7 +797,7 @@ def test_dwg_attribute_templates_and_invisible_attributes_are_not_drawn() -> Non
     )
     ir = result.document
 
-    assert [entity["text"] for entity in ir["entities"]] == ["ATTRIB1", "ATTDEF6"]
+    assert [entity["text"] for entity in ir["entities"]] == ["PART_NO", "ATTRIB1"]
     block = ir["tables"]["blocks"]["TITLE"]["entities"]
     assert [entity["text"] for entity in block] == ["ATTDEF4"]
     skipped = [
@@ -798,3 +805,277 @@ def test_dwg_attribute_templates_and_invisible_attributes_are_not_drawn() -> Non
     ]
     assert len(skipped) == 1 and "Skipped 3 DWG attribute" in skipped[0].message
     validate_ir(ir, strict_jsonschema=True)
+
+
+def test_dwg_attributes_belong_to_their_block_reference() -> None:
+    line = {"start": (0.0, 0.0, 0.0), "end": (1.0, 0.0, 0.0)}
+    insert = {"insert": (5.0, 5.0, 0.0)}
+    document = _PlacementDocument(
+        [
+            # Attributes can come before their block reference.
+            _attribute_entity("ATTRIB", 1, 0, None, "NAME"),
+            _attribute_entity(
+                "ATTRIB",
+                2,
+                1,
+                None,
+                "SECRET",
+                halign=1,
+                valign=2,
+                align_point=(3.0, 4.0, 0.0),
+            ),
+            _Entity("INSERT", 10, {**insert, "name": "TITLE", **_style()}),
+            # A block reference inside a block has attributes of its own.
+            _Entity("LINE", 11, {**line, **_style()}),
+            _Entity("INSERT", 12, {**insert, "name": "INNER", **_style()}),
+            _attribute_entity("ATTRIB", 3, 0, None, "PART"),
+            _Entity("LINE", 14, {**line, **_style()}),
+            # Paper space: the reference goes, and its attribute with it.
+            _Entity("INSERT", 13, {**insert, "name": "TITLE", **_style()}),
+            _attribute_entity("ATTRIB", 4, 0, None, "NAME"),
+        ],
+        placements={
+            1: (0, 10),
+            2: (0, 10),
+            10: (2, None),
+            11: (0, 100),
+            12: (0, 100),
+            3: (0, 12),
+            14: (0, 101),
+            13: (1, None),
+            4: (0, 13),
+        },
+    )
+    result = dwg_document_to_ir(
+        document,
+        layer_names_by_handle={16: "0"},
+        block_names_by_handle={100: "TITLE", 101: "INNER"},
+    )
+    ir = result.document
+
+    (title,) = ir["entities"]
+    assert title["kind"] == "INSERT"
+    assert title["attributes"] == {"NAME": "ATTRIB1", "SECRET": "ATTRIB2"}
+    assert title["attribute_texts"] == [
+        {
+            "tag": "NAME",
+            "insert": [0.0, 1.0],
+            "height": 2.5,
+            "rotation": 0.0,
+            "text": "ATTRIB1",
+            "style": "STANDARD",
+            "halign": "left",
+            "valign": "baseline",
+            "width_factor": 1.0,
+            "layer": "0",
+            "color": 7,
+        },
+        {
+            "tag": "SECRET",
+            # Justified: anchored at the alignment point.
+            "insert": [3.0, 4.0],
+            "height": 2.5,
+            "rotation": 0.0,
+            "text": "ATTRIB2",
+            "style": "STANDARD",
+            "halign": "center",
+            "valign": "middle",
+            "width_factor": 1.0,
+            "layer": "0",
+            "color": 7,
+            "visible": False,
+        },
+    ]
+
+    blocks = ir["tables"]["blocks"]
+    line_entity, inner = blocks["TITLE"]["entities"]
+    assert (line_entity["kind"], inner["kind"]) == ("LINE", "INSERT")
+    assert inner["attributes"] == {"PART": "ATTRIB3"}
+    assert [text["text"] for text in inner["attribute_texts"]] == ["ATTRIB3"]
+
+    assert result.statistics["attached_attributes"] == 3
+    assert result.statistics["converted_entity_counts"] == {"INSERT": 2, "LINE": 2}
+    skipped = [
+        d for d in result.diagnostics if d.code == "DWG_PAPERSPACE_ENTITY_SKIPPED"
+    ]
+    assert len(skipped) == 1 and "Skipped 2 paper-space" in skipped[0].message
+    assert not [d for d in result.diagnostics if d.severity == "error"]
+    validate_ir(ir, strict_jsonschema=True)
+
+
+def test_dwg_attribute_without_usable_geometry_is_reported() -> None:
+    document = _PlacementDocument(
+        [
+            _Entity("INSERT", 10, {"insert": (5.0, 5.0, 0.0), "name": "T", **_style()}),
+            _attribute_entity("ATTRIB", 1, 0, None, "NAME", height=0.0),
+        ],
+        placements={10: (2, None), 1: (0, 10)},
+    )
+    with pytest.raises(Exception, match="ATTRIB"):
+        dwg_document_to_ir(document, layer_names_by_handle={16: "0"})
+
+    result = dwg_document_to_ir(
+        document,
+        layer_names_by_handle={16: "0"},
+        options=ImportOptions(strict=False),
+    )
+
+    (insert,) = result.document["entities"]
+    assert "attribute_texts" not in insert and "attributes" not in insert
+    failed = [d for d in result.diagnostics if d.code == "DWG_ENTITY_CONVERSION_FAILED"]
+    assert len(failed) == 1 and failed[0].source_kind == "ATTRIB"
+    assert result.statistics["skipped_entity_counts"] == {"ATTRIB": 1}
+
+
+def _text_entity(handle: int, **dxf: Any) -> _Entity:
+    return _Entity(
+        "TEXT",
+        handle,
+        {
+            "insert": (10.0, 20.0, 0.0),
+            "height": 2.5,
+            "text": f"TEXT{handle}",
+            **_style(),
+            **dxf,
+        },
+    )
+
+
+def test_dwg_justified_text_is_anchored_at_its_alignment_point() -> None:
+    document = _Document(
+        [
+            _text_entity(1),
+            # Middle center: the alignment point is where the text is centered.
+            _text_entity(2, halign=1, valign=2, align_point=(15.0, 21.0, 0.0)),
+            # "Middle" (4) centers the text on the alignment point as well.
+            _text_entity(3, halign=4, valign=0, align_point=(15.0, 21.0, 0.0)),
+            # "Aligned" and "fit" run from the insertion point to the other one.
+            _text_entity(4, halign=3, valign=0, align_point=(30.0, 20.0, 0.0)),
+            _text_entity(5, halign=5, valign=0, align_point=(30.0, 20.0, 0.0)),
+            # No alignment point stored: the insertion point is all there is.
+            _text_entity(6, halign=2, valign=3, align_point=None),
+        ]
+    )
+    ir = dwg_document_to_ir(document, layer_names_by_handle={16: "0"}).document
+
+    placed = [
+        (entity["insert"], entity["halign"], entity["valign"])
+        for entity in ir["entities"]
+    ]
+    assert placed == [
+        ([10.0, 20.0], "left", "baseline"),
+        ([15.0, 21.0], "center", "middle"),
+        ([15.0, 21.0], "center", "middle"),
+        ([10.0, 20.0], "left", "baseline"),
+        ([10.0, 20.0], "left", "baseline"),
+        ([10.0, 20.0], "right", "top"),
+    ]
+    # The stored points stay available.
+    assert ir["entities"][1]["metadata"]["dwg"]["align_point"] == [15.0, 21.0, 0.0]
+    validate_ir(ir, strict_jsonschema=True)
+
+
+def test_dwg_layer_states_and_entity_visibility_reach_the_ir() -> None:
+    def state(**overrides: Any) -> dict[str, Any]:
+        return {
+            "frozen": False,
+            "off": False,
+            "locked": False,
+            "plot": True,
+            "lineweight": -3,
+            **overrides,
+        }
+
+    document = _Document(
+        [
+            _line_entity(1, **_style(layer_handle=16)),
+            _line_entity(2, lineweight=50, invisible=True, **_style(layer_handle=32)),
+            _line_entity(3, lineweight=-1, invisible=False, **_style(layer_handle=48)),
+        ]
+    )
+    result = dwg_document_to_ir(
+        document,
+        layer_names_by_handle={16: "0", 32: "Hidden", 48: "Frozen", 64: "Defpoints"},
+        layer_states_by_handle={
+            16: state(),
+            32: state(off=True, locked=True, lineweight=35),
+            48: state(frozen=True, lineweight=0),
+            64: state(plot=False),
+        },
+    )
+    ir = result.document
+
+    layers = ir["tables"]["layers"]
+    assert not {"visible", "plot", "lineweight_mm"} & set(layers["0"])
+    assert layers["Hidden"]["visible"] is False
+    assert layers["Hidden"]["lineweight_mm"] == 0.35
+    assert layers["Hidden"]["metadata"]["dwg"]["off"] is True
+    assert layers["Hidden"]["metadata"]["dwg"]["locked"] is True
+    assert layers["Frozen"]["visible"] is False
+    assert layers["Frozen"]["lineweight_mm"] == 0.0
+    assert layers["Frozen"]["metadata"]["dwg"]["frozen"] is True
+    assert layers["Defpoints"]["plot"] is False
+    assert "visible" not in layers["Defpoints"]
+
+    first, second, third = ir["entities"]
+    assert not {"visible", "lineweight_mm"} & set(first)
+    assert second["visible"] is False
+    assert second["lineweight_mm"] == 0.5
+    assert not {"visible", "lineweight_mm"} & set(third)
+    validate_ir(ir, strict_jsonschema=True)
+
+
+def test_convert_dwg_file_reads_the_layer_states(monkeypatch, tmp_path) -> None:
+    import sys
+    from types import SimpleNamespace
+
+    raw = SimpleNamespace(
+        decode_layer_names=lambda _path: [(16, "0"), (32, "Off")],
+        decode_layer_colors=lambda _path: [(16, 7, None), (32, 1, None)],
+        decode_block_header_names=lambda _path: [],
+        # (handle, frozen, off, frozen in new viewports, locked, plot, lineweight)
+        decode_layer_states=lambda _path: [
+            (16, False, False, False, False, True, -3),
+            (32, False, True, False, False, False, 25),
+        ],
+    )
+    fake_ezdwg = SimpleNamespace(
+        read=lambda _path: _Document(_line_entities()), raw=raw
+    )
+    monkeypatch.setitem(sys.modules, "ezdwg", fake_ezdwg)
+    source = tmp_path / "fixture.dwg"
+    source.write_bytes(b"fixture")
+
+    layers = convert_dwg_file_to_ir(source).document["tables"]["layers"]
+
+    assert "visible" not in layers["0"]
+    assert layers["Off"]["visible"] is False
+    assert layers["Off"]["plot"] is False
+    assert layers["Off"]["lineweight_mm"] == 0.25
+
+
+def test_dwg_tolerance_without_a_stored_height_is_skipped() -> None:
+    def tolerance(handle: int, height: float) -> _Entity:
+        return _Entity(
+            "TOLERANCE",
+            handle,
+            {
+                "insert": (1.0, 2.0, 0.0),
+                "height": height,
+                "text": "{\\Fgdt;j}%%v0.1",
+                "rotation": 0.0,
+                **_style(),
+            },
+        )
+
+    # Without a stored height and without a readable dimension style.
+    result = dwg_document_to_ir(
+        _Document([tolerance(1, 0.0), tolerance(2, 2.5)]),
+        layer_names_by_handle={16: "0"},
+    )
+
+    (entity,) = result.document["entities"]
+    assert (entity["kind"], entity["height"]) == ("MTEXT", 2.5)
+    assert result.statistics["skipped_entity_counts"] == {"TOLERANCE": 1}
+    skipped = [d for d in result.diagnostics if d.code == "DWG_UNSUPPORTED_ENTITY"]
+    assert len(skipped) == 1 and skipped[0].source_kind == "TOLERANCE"

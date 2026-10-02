@@ -174,6 +174,17 @@ def _validate_tables(tables: Any) -> None:
     if not isinstance(tables, dict):
         raise IRValidationError("tables must be an object")
 
+    layers = tables.get("layers")
+    if isinstance(layers, dict):
+        for name, definition in layers.items():
+            if not isinstance(definition, dict):
+                continue
+            for key in ("plot", "visible"):
+                if key in definition and not isinstance(definition[key], bool):
+                    raise IRValidationError(
+                        f"tables.layers.{name}.{key} must be boolean"
+                    )
+
     linetypes = tables.get("linetypes")
     if isinstance(linetypes, dict):
         for name, definition in linetypes.items():
@@ -360,6 +371,8 @@ def _validate_entity(entity: Any, path: str) -> None:
                     raise IRValidationError(
                         f"{path}.attributes must map string to string"
                     )
+        if "attribute_texts" in entity:
+            _require_insert_attributes(entity["attribute_texts"], path)
     elif kind == "HATCH":
         loops = entity.get("loops")
         if not isinstance(loops, list) or len(loops) < 1:
@@ -561,6 +574,58 @@ def _require_hatch_pattern_lines(lines: Any, path: str) -> None:
                 isinstance(value, (int, float)) for value in dashes
             ):
                 raise IRValidationError(f"{line_path}.dashes must be a number array")
+
+
+_TEXT_HALIGNS = {"left", "center", "right"}
+_TEXT_VALIGNS = {"baseline", "bottom", "middle", "top"}
+_INSERT_ATTRIBUTE_KEYS = {
+    "tag",
+    "text",
+    "insert",
+    "height",
+    "rotation",
+    "style",
+    "halign",
+    "valign",
+    "width_factor",
+    "oblique_deg",
+    "layer",
+    "color",
+    "visible",
+}
+
+
+def _require_insert_attributes(attributes: Any, path: str) -> None:
+    if not isinstance(attributes, list):
+        raise IRValidationError(f"{path}.attribute_texts must be an array")
+    for index, attribute in enumerate(attributes):
+        attribute_path = f"{path}.attribute_texts[{index}]"
+        if not isinstance(attribute, dict):
+            raise IRValidationError(f"{attribute_path} must be an object")
+        unknown = set(attribute) - _INSERT_ATTRIBUTE_KEYS
+        if unknown:
+            raise IRValidationError(
+                f"{attribute_path} has unknown properties: {sorted(unknown)}"
+            )
+        for key in ("tag", "text"):
+            if not isinstance(attribute.get(key), str):
+                raise IRValidationError(f"{attribute_path}.{key} must be a string")
+        _require_point2(attribute, "insert", attribute_path)
+        _require_positive_number(attribute, "height", attribute_path)
+        for key in ("rotation", "oblique_deg"):
+            if key in attribute:
+                _require_number(attribute, key, attribute_path)
+        if "width_factor" in attribute:
+            _require_positive_number(attribute, "width_factor", attribute_path)
+        for key in ("style", "layer"):
+            if key in attribute and not isinstance(attribute[key], str):
+                raise IRValidationError(f"{attribute_path}.{key} must be a string")
+        if "halign" in attribute and attribute["halign"] not in _TEXT_HALIGNS:
+            raise IRValidationError(f"{attribute_path}.halign is invalid")
+        if "valign" in attribute and attribute["valign"] not in _TEXT_VALIGNS:
+            raise IRValidationError(f"{attribute_path}.valign is invalid")
+        if "visible" in attribute and not isinstance(attribute["visible"], bool):
+            raise IRValidationError(f"{attribute_path}.visible must be boolean")
 
 
 def _require_point2(entity: dict[str, Any], key: str, path: str) -> None:

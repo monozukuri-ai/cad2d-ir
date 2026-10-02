@@ -70,7 +70,7 @@ The table lists the Jw_cad defaults. A file records its own line type settings, 
 
 The DWG adapter consumes `ezdwg.read()` and enumerates every entity through `Document.entities().query()` (falling back to `modelspace().query()` on `ezdwg` releases before the placement-aware layouts), then partitions them itself: entities owned by a named block record become block-definition bodies, paper-space entities (layout frames, viewports, title blocks; `entmode == 1` or owned by a `*Paper_Space*` record) are skipped with `DWG_PAPERSPACE_ENTITY_SKIPPED`, and the rest form the IR modelspace. Low-level public table decoders are used only to recover layer names/colors, linetypes and block-header names.
 
-The owner of an entity is the placement stored in its common entity data (`Document.entity_placement()`: owner handle, paper space or model space). The `owner_handle` of the type-specific decoders is only the fallback when no placement is available (R13/R14): it is absent for several entity types (`HATCH`, `SPLINE`, `SOLID`, `ELLIPSE`, ...), which used to move block contents into model space, and it can name another object for a model-space `INSERT`.
+The owner of an entity is the placement stored in its common entity data (`Document.entity_placement()`: owner handle, paper space or model space). The `owner_handle` of the type-specific decoders is only the fallback when no placement is available (R13/R14 files with `ezdwg` before 0.12.11): it is absent for several entity types (`HATCH`, `SPLINE`, `SOLID`, `ELLIPSE`, ...), which used to move block contents into model space, and it can name another object for a model-space `INSERT`.
 
 Block names are unique in the IR. When two block headers carry the same name (anonymous blocks are stored without their number), the last one keeps the name, as a name reference resolved before, and the others are renamed: the next free number for anonymous names (`*D12`), `<name>_<HANDLE>` otherwise. The original name stays in `metadata.dwg.source_name` and `DWG_DUPLICATE_BLOCK_NAME_RENAMED` reports the count.
 
@@ -79,8 +79,10 @@ Block names are unique in the IR. When two block headers carry the same name (an
 | `LINE`, `CIRCLE`, `ARC`, `ELLIPSE`, `POINT` | matching IR entity | direct XY mapping |
 | `LWPOLYLINE`, `POLYLINE_2D` | `LWPOLYLINE` | bulges and widths metadata retained; fitted interpolation is diagnosed |
 | `SPLINE` | `SPLINE` | degree, controls, knots, weights, closure retained |
-| `TEXT`, `MTEXT`, `TOLERANCE` | `TEXT` / `MTEXT` | placement and exposed formatting retained |
-| `ATTRIB`, `ATTDEF` | `TEXT` | attribute values are text at their own position; definitions inside a block definition (templates) and invisible attributes are skipped with `DWG_HIDDEN_ATTRIBUTE_SKIPPED`, constant definitions stay in the block |
+| `TEXT`, `MTEXT` | `TEXT` / `MTEXT` | placement and exposed formatting retained; a justified `TEXT` is anchored at its alignment point |
+| `TOLERANCE` | `MTEXT` | the content of the feature control frame with its formatting codes, at the text height `ezdwg` reports (stored with the entity in R13/R14, otherwise the one of the dimension style); skipped with `DWG_UNSUPPORTED_ENTITY` when no height is known |
+| `ATTRIB` | `attribute_texts` and `attributes` of its `INSERT` | attached by owner handle, with its own position, size, justification, layer and color; invisible ones carry `visible: false`; one whose `INSERT` is unknown stays a `TEXT` (and is skipped when invisible) |
+| `ATTDEF` | `TEXT` | definitions inside a block definition (templates) are skipped with `DWG_HIDDEN_ATTRIBUTE_SKIPPED`, constant definitions stay in the block with their value; a definition outside of a block is shown by its tag |
 | `HATCH`, `SOLID`, `TRACE`, planar `3DFACE` | `HATCH` | polygon loops retained; pattern fills carry `pattern_lines` |
 | `INSERT`, `MINSERT` | `INSERT` | signed scale retained; MINSERT array parameters remain metadata |
 | `DIMENSION` | semantic `DIMENSION` | subtype and complete native geometry payload retained; `definition.block` names the block with the saved graphics |
@@ -88,9 +90,17 @@ Block names are unique in the IR. When two block headers carry the same name (an
 
 Linetypes need `ezdwg` 0.12.10 or later. `tables.linetypes` holds the linetype table of the drawing with its dash patterns (`pattern_mm` in drawing units, as in DXF), layers carry their linetype, and entities carry `linetype` (`BYLAYER`, `BYBLOCK`, `CONTINUOUS` or a table entry) and `linetype_scale` when it is not 1. `$LTSCALE` fills `header.linetype_scale` when it is not 1. With an older `ezdwg` every entity is `BYLAYER` on `CONTINUOUS` layers and the table holds no patterns.
 
-A `DIMENSION` refers to the anonymous block that holds its saved graphics by handle. When that block is in the IR, `definition.block` names it, the same reference the DXF codec keeps (group 2), so renderers and the DXF export use the saved graphics instead of rebuilding them from the definition points. Dimensions of R13/R14 files have no such reference yet.
+A `DIMENSION` refers to the anonymous block that holds its saved graphics by handle. When that block is in the IR, `definition.block` names it, the same reference the DXF codec keeps (group 2), so renderers and the DXF export use the saved graphics instead of rebuilding them from the definition points.
+
+R13/R14 files need `ezdwg` 0.12.11 or later for block references, multi-line text, hatches, solids, splines, attributes and dimensions, and for block membership. With an older `ezdwg` these files only yield lines, arcs, circles, ellipses, points, lightweight polylines and single-line text, all in model space. R13/R14 have neither lineweights nor a layer plot flag, and their symbol names (layers, blocks, linetypes) are upper case.
 
 Pattern fills carry the definition lines of their pattern (`pattern_lines`, with `pattern_angle` and `pattern_scale`; see docs/SCHEMA_NOTES.md), again with `ezdwg` 0.12.10 or later.
+
+Layer state and lineweights need `ezdwg` 0.12.11 or later. A layer that is off or frozen gets `visible: false` (which of the two, and whether it is locked, is in `metadata.dwg`), a layer that is not plotted `plot: false`, and a layer with a lineweight of its own `lineweight_mm`. Entities carry `lineweight_mm` when they have one of their own and `visible: false` when their invisibility flag is set. With an older `ezdwg` every layer is visible and plotted and no lineweight is known.
+
+A justified `TEXT` is anchored at its alignment point (see "Text anchor" in docs/SCHEMA_NOTES.md); both stored points stay in `metadata.dwg`.
+
+Each `ATTRIB` is attached to the `INSERT` that owns it, wherever that reference lives: in model space or inside a block definition. The attributes of a paper-space reference are dropped with it. `statistics["attached_attributes"]` counts them.
 
 DWG units come from the `$INSUNITS` header variable (`ezdwg` >= 0.11 `Document.header_variables()`); mapped codes fill `header.units` (and therefore `$INSUNITS` on DXF export), the raw code is recorded in header metadata, and unmapped codes or R14 files (no `$INSUNITS`) fall back to `unknown` with the reason in metadata plus a diagnostic. Non-zero Z coordinates are projected to XY and reported. Unsupported 3D/presentation entities are skipped with aggregate diagnostics. Block base points are also not exposed; recovered block bodies use `[0, 0]` and state that limitation in metadata.
 

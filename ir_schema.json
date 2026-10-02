@@ -256,6 +256,11 @@
         "linetype": { "type": "string" },
         "lineweight_mm": { "type": "number", "minimum": 0 },
         "plot": { "type": "boolean", "default": true },
+        "visible": {
+          "description": "false: the layer is off or frozen in the source, so its entities are neither displayed nor plotted.",
+          "type": "boolean",
+          "default": true
+        },
         "metadata": { "type": "object" }
       }
     },
@@ -577,12 +582,44 @@
               "$ref": "#/$defs/Affine2D"
             },
             "attributes": {
+              "description": "Attribute values by tag.",
               "type": "object",
               "additionalProperties": { "type": "string" }
+            },
+            "attribute_texts": {
+              "description": "The attributes of the block reference as the drawing shows them: one text per attribute, in the coordinate system of the INSERT itself (not of the block).",
+              "type": "array",
+              "items": { "$ref": "#/$defs/InsertAttribute" }
             }
           }
         }
       ]
+    },
+
+    "InsertAttribute": {
+      "description": "Text of one block attribute. The fields are the ones of a TEXT entity; insert is the point halign and valign refer to.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag", "text", "insert", "height"],
+      "properties": {
+        "tag": { "type": "string" },
+        "text": { "type": "string" },
+        "insert": { "$ref": "#/$defs/Point2" },
+        "height": { "type": "number", "exclusiveMinimum": 0 },
+        "rotation": { "type": "number", "default": 0 },
+        "style": { "type": "string" },
+        "halign": { "$ref": "#/$defs/TextAlignH", "default": "left" },
+        "valign": { "$ref": "#/$defs/TextAlignV", "default": "baseline" },
+        "width_factor": { "type": "number", "exclusiveMinimum": 0 },
+        "oblique_deg": { "type": "number" },
+        "layer": { "type": "string" },
+        "color": { "$ref": "#/$defs/Color" },
+        "visible": {
+          "description": "false for an invisible attribute: it carries a value but is not drawn.",
+          "type": "boolean",
+          "default": true
+        }
+      }
     },
 
     "HatchPatternLine": {

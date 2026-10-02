@@ -10,7 +10,7 @@ from pathlib import Path
 import re
 from typing import Any, Iterable, Mapping, Sequence
 
-from cad2d_ir.codecs.dxf import INSUNITS_TO_IR_UNITS
+from cad2d_ir.codecs.dxf import INSUNITS_TO_IR_UNITS, text_alignment_from_dxf
 from cad2d_ir.importers.base import (
     ImportDiagnostic,
     ImporterError,
@@ -54,6 +54,8 @@ class _ConversionContext:
     paperspace_skipped: int = 0
     renamed_blocks: int = 0
     hidden_attributes: int = 0
+    attached_attributes: int = 0
+    inserts_by_handle: dict[int, dict[str, Any]] = field(default_factory=dict)
     next_entity_number: int = 1
 
     def allocate_id(self) -> str:
@@ -92,6 +94,7 @@ def convert_dwg_file_to_ir(
             block_names_by_handle=block_names,
             linetypes_by_handle=linetypes,
             layer_linetypes_by_handle=layer_linetypes,
+            layer_states_by_handle=_read_dwg_layer_states(raw, decode_path),
             options=options,
         )
     finally:
@@ -188,6 +191,38 @@ def _read_dwg_linetypes(
     return linetypes, layer_linetypes
 
 
+def _read_dwg_layer_states(raw: Any, decode_path: str) -> dict[int, dict[str, Any]]:
+    """State of every layer by handle (``ezdwg`` >= 0.12.11); empty with an older one.
+
+    Each state holds ``frozen``, ``off``, ``locked``, ``plot`` and ``lineweight``
+    (hundredths of a millimetre, negative for the default weight).
+    """
+    decode_layer_states = getattr(raw, "decode_layer_states", None)
+    if not callable(decode_layer_states):
+        return {}
+    states: dict[int, dict[str, Any]] = {}
+    try:
+        for (
+            handle,
+            frozen,
+            off,
+            _frozen_in_new,
+            locked,
+            plot,
+            lineweight,
+        ) in decode_layer_states(decode_path):
+            states[int(handle)] = {
+                "frozen": bool(frozen),
+                "off": bool(off),
+                "locked": bool(locked),
+                "plot": bool(plot),
+                "lineweight": int(lineweight),
+            }
+    except Exception:
+        return {}
+    return states
+
+
 def _resolve_linetype_scale(dwg_document: Any) -> float | None:
     """``$LTSCALE`` from the DWG header when it is a usable value other than 1.
 
@@ -220,6 +255,7 @@ def dwg_document_to_ir(
     block_names_by_handle: Mapping[int, str] | None = None,
     linetypes_by_handle: Mapping[int, tuple[str, str, Sequence[float]]] | None = None,
     layer_linetypes_by_handle: Mapping[int, int] | None = None,
+    layer_states_by_handle: Mapping[int, Mapping[str, Any]] | None = None,
     options: ImportOptions | None = None,
 ) -> ImportResult:
     """Convert an ``ezdwg.Document``-compatible object directly to IR.
@@ -228,10 +264,15 @@ def dwg_document_to_ir(
     entry point obtains them from ``ezdwg.raw`` so layer and block names are retained.
     ``linetypes_by_handle`` maps a linetype handle to ``(name, description,
     dashes)`` and ``layer_linetypes_by_handle`` a layer handle to its linetype handle.
+    ``layer_states_by_handle`` maps a layer handle to its state: ``frozen``,
+    ``off``, ``locked``, ``plot`` (booleans) and ``lineweight`` (hundredths of a
+    millimetre, negative for the default weight).
     """
     import_options = options or ImportOptions()
     layer_names, layers = _build_layers(
-        layer_names_by_handle or {}, layer_colors_by_handle or {}
+        layer_names_by_handle or {},
+        layer_colors_by_handle or {},
+        layer_states_by_handle or {},
     )
     linetype_names, linetypes = _build_linetypes(linetypes_by_handle or {})
     for layer_handle, linetype_handle in (layer_linetypes_by_handle or {}).items():
@@ -261,6 +302,9 @@ def dwg_document_to_ir(
     block_entities_by_owner: dict[int, list[dict[str, Any]]] = {
         handle: [] for handle in block_names
     }
+    # An ATTRIB belongs to a block reference, which can come later in the file.
+    attributes: list[tuple[Any, int | None]] = []
+    paperspace_inserts: set[int] = set()
     source_entity_count = 0
     source_entity_counts: Counter[str] = Counter()
     try:
@@ -276,20 +320,36 @@ def dwg_document_to_ir(
             raise ImporterError(f"Failed to enumerate DWG entities: {exc}") from exc
 
         source_entity_count += 1
-        source_entity_counts[_source_kind(source_entity)] += 1
+        source_kind = _source_kind(source_entity)
+        source_entity_counts[source_kind] += 1
         owner_handle, in_paperspace = _entity_owner(
             source_entity, paperspace_handles, placement_of
         )
         if in_paperspace:
             context.paperspace_skipped += 1
+            if source_kind in {"INSERT", "MINSERT"}:
+                paperspace_inserts.add(_entity_handle(source_entity))
+            continue
+        if source_kind == "ATTRIB":
+            attributes.append((source_entity, owner_handle))
             continue
         in_block = owner_handle is not None and owner_handle in block_names
         if _is_hidden_attribute(source_entity, in_block):
             context.hidden_attributes += 1
             continue
         destination = block_entities_by_owner[owner_handle] if in_block else entities
-        destination.extend(_convert_entity_sequence((source_entity,), context))
+        converted = _convert_entity_sequence((source_entity,), context)
+        if source_kind == "ATTDEF" and not in_block:
+            # Outside of a block the definition itself is displayed, by its tag.
+            for entity in converted:
+                tag = entity["metadata"]["dwg"].get("tag")
+                if tag:
+                    entity["text"] = str(tag)
+        destination.extend(converted)
 
+    _attach_attributes(
+        attributes, paperspace_inserts, block_entities_by_owner, entities, context
+    )
     blocks, block_name_by_handle = _build_blocks(
         block_names, block_entities_by_owner, context
     )
@@ -360,6 +420,7 @@ def dwg_document_to_ir(
         "converted_entity_counts": dict(sorted(context.converted_counts.items())),
         "skipped_entities": sum(context.skipped_counts.values()),
         "skipped_entity_counts": dict(sorted(context.skipped_counts.items())),
+        "attached_attributes": context.attached_attributes,
         "approximated_entities": sum(context.approximation_counts.values()),
         "projected_entities": len(context.projected_handles),
         "preserved_dimensions": context.preserved_dimensions,
@@ -445,9 +506,30 @@ def _build_linetypes(
     return names, table
 
 
+def _apply_layer_state(layer: dict[str, Any], state: Mapping[str, Any] | None) -> None:
+    """Plot flag, lineweight and visibility of a layer.
+
+    A layer that is off or frozen shows none of its entities; the IR does not
+    tell the two apart, the DWG metadata does.
+    """
+    if not state:
+        return
+    if state.get("plot") is False:
+        layer["plot"] = False
+    lineweight = _optional_int(state.get("lineweight"))
+    if lineweight is not None and lineweight >= 0:
+        layer["lineweight_mm"] = round(lineweight / 100.0, 6)
+    if state.get("off") or state.get("frozen"):
+        layer["visible"] = False
+    for key in ("off", "frozen", "locked"):
+        if state.get(key):
+            layer["metadata"]["dwg"][key] = True
+
+
 def _build_layers(
     names: Mapping[int, str],
     colors: Mapping[int, tuple[int | None, int | None]],
+    states: Mapping[int, Mapping[str, Any]],
 ) -> tuple[dict[int, str], dict[str, dict[str, Any]]]:
     layer_names: dict[int, str] = {0: _DEFAULT_LAYER}
     layers: dict[str, dict[str, Any]] = {
@@ -467,6 +549,7 @@ def _build_layers(
             color = _dwg_color(*(colors.get(int(handle), (None, None))))
             if color is not None:
                 layers[_DEFAULT_LAYER]["color"] = color
+            _apply_layer_state(layers[_DEFAULT_LAYER], states.get(int(handle)))
             continue
         name = _unique_name(candidate, int(handle), used)
         used.add(name)
@@ -483,6 +566,7 @@ def _build_layers(
         color = _dwg_color(*(colors.get(int(handle), (None, None))))
         if color is not None:
             layer["color"] = color
+        _apply_layer_state(layer, states.get(int(handle)))
         layers[name] = layer
     return layer_names, layers
 
@@ -615,6 +699,12 @@ def _convert_entity(
     if kind == "MTEXT":
         return [_convert_mtext(dxf, common, handle, kind, context)]
     if kind == "TOLERANCE":
+        # Only R13/R14 store the text height of a feature control frame; ezdwg
+        # resolves it through the dimension style otherwise. Without a height
+        # there is nothing to size the text with.
+        height = _finite_number(dxf.get("height"))
+        if height is None or height <= 0.0:
+            return []
         return [_convert_tolerance(dxf, common, handle, kind, context)]
     if kind == "SPLINE":
         return [_convert_spline(dxf, common, handle, kind, context)]
@@ -677,6 +767,17 @@ def _entity_common(source_entity: Any, context: _ConversionContext) -> dict[str,
         )
     if color is not None:
         result["color"] = color
+    # ezdwg >= 0.12.11: lineweight in hundredths of a millimetre (negative for
+    # BYLAYER, BYBLOCK and the default weight) and the invisibility flag.
+    lineweight = dxf.get("lineweight")
+    if (
+        isinstance(lineweight, int)
+        and not isinstance(lineweight, bool)
+        and lineweight >= 0
+    ):
+        result["lineweight_mm"] = round(lineweight / 100.0, 6)
+    if dxf.get("invisible") is True:
+        result["visible"] = False
     owner = _optional_int(dxf.get("owner_handle"))
     if owner is not None:
         result["metadata"]["dwg"]["owner_handle"] = _handle_text(owner)
@@ -751,24 +852,11 @@ def _convert_text(
     kind: str,
     context: _ConversionContext,
 ) -> dict[str, Any]:
-    height = _positive(dxf.get("height", 0.0), "text height")
     result: dict[str, Any] = {
         **common,
         "kind": "TEXT",
-        "insert": _point(dxf["insert"], handle, kind, context),
-        "height": height,
-        "rotation": float(dxf.get("rotation", 0.0)),
-        "text": str(dxf.get("text", "")),
-        "style": "STANDARD",
-        "halign": _text_halign(int(dxf.get("halign", 0))),
-        "valign": _text_valign(int(dxf.get("valign", 0))),
+        **_text_fields(dxf, handle, kind, context),
     }
-    width_factor = float(dxf.get("width", 1.0))
-    if width_factor > 0.0:
-        result["width_factor"] = width_factor
-    oblique = float(dxf.get("oblique", 0.0))
-    if oblique:
-        result["oblique_deg"] = oblique
     result["metadata"]["dwg"].update(
         {
             key: _json_safe(dxf[key])
@@ -777,6 +865,118 @@ def _convert_text(
         }
     )
     return result
+
+
+def _text_fields(
+    dxf: Mapping[str, Any],
+    handle: int,
+    kind: str,
+    context: _ConversionContext,
+) -> dict[str, Any]:
+    """The fields TEXT and attribute texts share.
+
+    ``insert`` is the point the justification refers to: the alignment point of
+    a justified text, the insertion point (left end of the baseline) otherwise.
+    """
+    halign, valign, anchored = text_alignment_from_dxf(
+        _optional_int(dxf.get("halign")), _optional_int(dxf.get("valign"))
+    )
+    insert = _point(dxf["insert"], handle, kind, context)
+    if anchored:
+        anchor = _finite_pair(dxf.get("align_point"))
+        if anchor is not None:
+            insert = anchor
+    fields: dict[str, Any] = {
+        "insert": insert,
+        "height": _positive(dxf.get("height", 0.0), "text height"),
+        "rotation": float(dxf.get("rotation", 0.0)),
+        "text": str(dxf.get("text", "")),
+        "style": "STANDARD",
+        "halign": halign,
+        "valign": valign,
+    }
+    width_factor = float(dxf.get("width", 1.0))
+    if width_factor > 0.0:
+        fields["width_factor"] = width_factor
+    oblique = float(dxf.get("oblique", 0.0))
+    if oblique:
+        fields["oblique_deg"] = oblique
+    return fields
+
+
+def _convert_attribute(
+    source_entity: Any, context: _ConversionContext
+) -> dict[str, Any]:
+    """The text of one ATTRIB, for ``attribute_texts`` of its block reference."""
+    dxf = _dxf(source_entity)
+    handle = _entity_handle(source_entity)
+    common = _entity_common(source_entity, context)
+    attribute: dict[str, Any] = {
+        "tag": str(dxf.get("tag") or ""),
+        **_text_fields(dxf, handle, "ATTRIB", context),
+        "layer": common["layer"],
+    }
+    if "color" in common:
+        attribute["color"] = common["color"]
+    flags = _optional_int(dxf.get("attribute_flags")) or 0
+    if flags & 1 or common.get("visible") is False:
+        attribute["visible"] = False
+    return attribute
+
+
+def _attach_attributes(
+    attributes: Sequence[tuple[Any, int | None]],
+    paperspace_inserts: set[int],
+    block_entities_by_owner: Mapping[int, list[dict[str, Any]]],
+    entities: list[dict[str, Any]],
+    context: _ConversionContext,
+) -> None:
+    """Give every block reference the texts of its attributes.
+
+    ``attributes`` pairs each ATTRIB with the handle of its owner. An attribute
+    whose block reference was not converted stays a TEXT where the file has it,
+    as long as it is visible; the ones of paper-space references are dropped
+    with them.
+    """
+    for source_entity, owner_handle in attributes:
+        insert = (
+            context.inserts_by_handle.get(owner_handle)
+            if owner_handle is not None
+            else None
+        )
+        if insert is None:
+            if owner_handle in paperspace_inserts:
+                context.paperspace_skipped += 1
+            elif _is_hidden_attribute(source_entity, False):
+                context.hidden_attributes += 1
+            else:
+                destination = block_entities_by_owner.get(owner_handle, entities)
+                destination.extend(_convert_entity_sequence((source_entity,), context))
+            continue
+        try:
+            attribute = _convert_attribute(source_entity, context)
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            handle = _entity_handle(source_entity)
+            if context.options.strict:
+                raise ImporterError(
+                    f"Failed to convert DWG ATTRIB at {_handle_text(handle)}: {exc}"
+                ) from exc
+            context.skipped_counts["ATTRIB"] += 1
+            context.diagnostics.append(
+                ImportDiagnostic(
+                    code="DWG_ENTITY_CONVERSION_FAILED",
+                    severity="error",
+                    message=f"Failed to convert DWG ATTRIB: {exc}",
+                    source_id=_handle_text(handle),
+                    source_kind="ATTRIB",
+                    action="skipped",
+                )
+            )
+            continue
+        insert.setdefault("attribute_texts", []).append(attribute)
+        if attribute["tag"]:
+            insert.setdefault("attributes", {})[attribute["tag"]] = attribute["text"]
+        context.attached_attributes += 1
 
 
 def _convert_mtext(
@@ -1048,6 +1248,7 @@ def _convert_insert(
         "insert": _point(dxf["insert"], handle, kind, context),
         "rotation": float(dxf.get("rotation", 0.0)),
     }
+    context.inserts_by_handle[handle] = result
     if not (math.isclose(scale_x, 1.0) and math.isclose(scale_y, 1.0)):
         result["scale"] = (
             scale_x if math.isclose(scale_x, scale_y) else [scale_x, scale_y]
@@ -1312,7 +1513,8 @@ def _append_summary_diagnostics(context: _ConversionContext) -> None:
                 severity="info",
                 message=(
                     f"Skipped {context.hidden_attributes} DWG attribute definitions "
-                    "inside blocks and invisible attributes (not shown in the drawing)."
+                    "inside blocks and invisible attributes without a block reference "
+                    "(not shown in the drawing)."
                 ),
                 action="skipped",
             )
@@ -1456,21 +1658,6 @@ def _dwg_color(index: int | None, true_color: int | None) -> int | str | None:
     if index is not None and 0 <= index <= 256:
         return index
     return None
-
-
-def _text_halign(value: int) -> str:
-    return {
-        0: "left",
-        1: "center",
-        2: "right",
-        3: "right",
-        4: "center",
-        5: "right",
-    }.get(value, "left")
-
-
-def _text_valign(value: int) -> str:
-    return {0: "baseline", 1: "bottom", 2: "middle", 3: "top"}.get(value, "baseline")
 
 
 def _mtext_attachment(value: int) -> str:

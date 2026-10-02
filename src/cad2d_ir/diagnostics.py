@@ -168,7 +168,7 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "info",
         "skipped",
         "DWG import",
-        "Attribute definitions inside blocks and invisible attributes were skipped.",
+        "Attribute definitions inside blocks and invisible attributes without a block reference were skipped.",
     ),
     "DWG_DUPLICATE_BLOCK_NAME_RENAMED": DiagnosticCode(
         "info",

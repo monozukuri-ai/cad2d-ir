@@ -1326,6 +1326,11 @@ def _layer_from_table_pairs(pairs: list[DXFPair]) -> dict[str, Any]:
     plot = _first_int(pairs, 290, default=None)
     if plot is not None:
         result["plot"] = bool(plot)
+
+    # A negative color number turns the layer off; flag bit 1 freezes it.
+    flags = _first_int(pairs, 70, default=0) or 0
+    if (color is not None and color < 0) or flags & 1:
+        result["visible"] = False
     return result
 
 
@@ -1537,6 +1542,7 @@ _CONVERTIBLE_DXF_KINDS = frozenset(
         "POLYLINE",
         "TEXT",
         "MTEXT",
+        "ATTDEF",
         "INSERT",
         "HATCH",
         "SPLINE",
@@ -1580,6 +1586,7 @@ def _records_to_entities(
         # their trailing records even when the head record turns out malformed.
         vertex_pairs: list[list[DXFPair]] = []
         attributes: dict[str, str] = {}
+        attribute_texts: list[dict[str, Any]] = []
         if kind == "POLYLINE":
             lookahead = record_index + 1
             while lookahead < len(records) and records[lookahead][0] == "VERTEX":
@@ -1591,10 +1598,12 @@ def _records_to_entities(
         elif kind == "INSERT":
             lookahead = record_index + 1
             while lookahead < len(records) and records[lookahead][0] == "ATTRIB":
-                attrib_pairs = records[lookahead][1]
-                tag = _first_string(attrib_pairs, 2)
-                if tag:
-                    attributes[tag] = _first_string(attrib_pairs, 1) or ""
+                attribute = _attribute_from_pairs(records[lookahead][1])
+                if attribute is not None:
+                    tag, value, attribute_text = attribute
+                    attributes[tag] = value
+                    if attribute_text is not None:
+                        attribute_texts.append(attribute_text)
                 lookahead += 1
             if lookahead < len(records) and records[lookahead][0] == "SEQEND":
                 lookahead += 1
@@ -1624,10 +1633,16 @@ def _records_to_entities(
                 entity = _text_from_pairs(pairs, serial)
             elif kind == "MTEXT":
                 entity = _mtext_from_pairs(pairs, serial)
+            elif kind == "ATTDEF":
+                entity = _attdef_from_pairs(
+                    pairs, serial, in_block=context != "ENTITIES"
+                )
             elif kind == "INSERT":
                 entity = _insert_from_pairs(
                     pairs, serial, attributes if attributes else None
                 )
+                if attribute_texts:
+                    entity["attribute_texts"] = attribute_texts
             elif kind == "HATCH":
                 entity = _hatch_from_pairs(
                     pairs, serial, warnings=warnings, diagnostics=diagnostics
@@ -1659,7 +1674,7 @@ def _records_to_entities(
                     entity.setdefault("metadata", {}).setdefault("dxf", {})[
                         "projected_from_plane"
                     ] = projection.source_plane
-                if kind in {"TEXT", "MTEXT"}:
+                if kind in {"TEXT", "MTEXT", "ATTDEF"}:
                     height = entity.get("height")
                     if not isinstance(height, (int, float)) or not height > 0:
                         entity["height"] = default_text_height
@@ -2000,36 +2015,187 @@ def _polyline_from_pairs(
     return entity
 
 
-def _text_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
-    entity = _common_from_pairs(pairs, idx)
-    entity["kind"] = "TEXT"
-    entity["insert"] = [_required_float(pairs, 10), _required_float(pairs, 20)]
-    entity["height"] = _required_float(pairs, 40)
-    entity["text"] = _first_string(pairs, 1) or ""
+def text_alignment_from_dxf(
+    halign_code: int | None, valign_code: int | None
+) -> tuple[str, str, bool]:
+    """IR alignment of a DXF/DWG text, and whether its second point anchors it.
+
+    A text keeps two points. The first one (group 10) is always the left end of
+    the baseline. For every justification other than left/baseline, the point
+    the text is justified at is the second one (group 11), and the first is
+    derived from it. "Aligned" and "fit" (horizontal code 3 and 5) stretch the
+    text between both points, so it starts at the first; "middle" (4) centers
+    it on the second.
+    """
+    horizontal = halign_code or 0
+    vertical = valign_code or 0
+    if vertical == 0 and horizontal in (3, 5):
+        return "left", "baseline", False
+    if vertical == 0 and horizontal == 4:
+        return "center", "middle", True
+    halign = _TEXT_HALIGN_FROM_DXF.get(horizontal, "left")
+    valign = _TEXT_VALIGN_FROM_DXF.get(vertical, "baseline")
+    return halign, valign, (halign, valign) != ("left", "baseline")
+
+
+def _text_fields_from_pairs(
+    pairs: list[DXFPair], *, valign_code: int | None
+) -> dict[str, Any]:
+    """The fields TEXT and ATTRIB share: anchor point, size and justification.
+
+    ``valign_code`` is the group holding the vertical justification (73 for
+    TEXT, 74 for ATTRIB); None reads it as baseline.
+    """
+    fields: dict[str, Any] = {
+        "insert": [_required_float(pairs, 10), _required_float(pairs, 20)],
+        "height": _required_float(pairs, 40),
+        "text": _first_string(pairs, 1) or "",
+    }
 
     rotation = _first_float(pairs, 50, default=0.0)
     if rotation != 0.0:
-        entity["rotation"] = rotation
+        fields["rotation"] = rotation
 
     style = _first_string(pairs, 7)
     if style:
-        entity["style"] = style
+        fields["style"] = style
 
-    halign = _TEXT_HALIGN_FROM_DXF.get(_first_int(pairs, 72, default=0), "left")
-    valign = _TEXT_VALIGN_FROM_DXF.get(_first_int(pairs, 73, default=0), "baseline")
+    halign, valign, anchored = text_alignment_from_dxf(
+        _first_int(pairs, 72, default=0),
+        None if valign_code is None else _first_int(pairs, valign_code, default=0),
+    )
+    if anchored:
+        anchor_x = _first_float(pairs, 11, default=None)
+        anchor_y = _first_float(pairs, 21, default=None)
+        # Without a second point the first is all there is to anchor the text.
+        if anchor_x is not None and anchor_y is not None:
+            fields["insert"] = [anchor_x, anchor_y]
     if halign != "left":
-        entity["halign"] = halign
+        fields["halign"] = halign
     if valign != "baseline":
-        entity["valign"] = valign
+        fields["valign"] = valign
 
     width_factor = _first_float(pairs, 41, default=None)
     if width_factor is not None:
-        entity["width_factor"] = width_factor
+        fields["width_factor"] = width_factor
 
     oblique = _first_float(pairs, 51, default=None)
     if oblique is not None:
-        entity["oblique_deg"] = oblique
+        fields["oblique_deg"] = oblique
+    return fields
+
+
+def _text_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
+    entity = _common_from_pairs(pairs, idx)
+    entity["kind"] = "TEXT"
+    entity.update(_text_fields_from_pairs(pairs, valign_code=73))
     return entity
+
+
+def _attribute_record_parts(
+    pairs: list[DXFPair],
+) -> tuple[list[DXFPair], list[DXFPair], list[DXFPair]]:
+    """Text part, attribute part and embedded MTEXT of an ATTRIB or ATTDEF.
+
+    Groups 72 and 73 mean something else in the attribute part of the record
+    than in its text part, so each part is read on its own when the record
+    marks them. A record without subclass markers is both parts at once. A
+    multi-line attribute carries its text in an MTEXT embedded at the end.
+    """
+    embedded_start = next(
+        (index for index, (code, _) in enumerate(pairs) if code == 101), len(pairs)
+    )
+    embedded = pairs[embedded_start + 1 :]
+    own = pairs[:embedded_start]
+    attribute_start = next(
+        (
+            index
+            for index, (code, value) in enumerate(own)
+            if code == 100
+            and value.strip() in ("AcDbAttribute", "AcDbAttributeDefinition")
+        ),
+        None,
+    )
+    if attribute_start is None:
+        return own, own, embedded
+    return own[:attribute_start], own[attribute_start:], embedded
+
+
+def _attdef_from_pairs(
+    pairs: list[DXFPair], idx: int, *, in_block: bool
+) -> dict[str, Any] | None:
+    """The text an attribute definition shows, or None when it shows none.
+
+    Inside a block definition an ATTDEF is a template: a block reference shows
+    the values of its own ATTRIB records instead. Only a constant definition
+    (flag 2) has no ATTRIB and is part of the block, with its value. Outside of
+    a block the definition itself is displayed, by its tag. Invisible
+    definitions (flag 1) are never shown.
+    """
+    text_part, attribute_part, _embedded = _attribute_record_parts(pairs)
+    flags = _first_int(attribute_part, 70, default=0) or 0
+    if flags & 1 or (in_block and not flags & 2):
+        return None
+    entity = _common_from_pairs(text_part, idx)
+    entity["kind"] = "TEXT"
+    entity.update(
+        _text_fields_from_pairs(
+            [
+                *text_part,
+                *((code, text) for code, text in attribute_part if code == 74),
+            ],
+            valign_code=74,
+        )
+    )
+    if not in_block:
+        entity["text"] = _first_string(attribute_part, 2) or entity["text"]
+    return entity
+
+
+def _attribute_from_pairs(
+    pairs: list[DXFPair],
+) -> tuple[str, str, dict[str, Any] | None] | None:
+    """Tag, value and text of one ATTRIB record; None when it has no tag.
+
+    The text is None when the record has no usable geometry (the value is still
+    kept in the INSERT's ``attributes``).
+    """
+    text_part, attribute_part, embedded = _attribute_record_parts(pairs)
+
+    tag = _first_string(attribute_part, 2)
+    if not tag:
+        return None
+    value = _first_string(text_part, 1) or ""
+    if embedded:
+        multiline = "".join(text for code, text in embedded if code in (3, 1))
+        if multiline:
+            value = _plain_mtext(multiline)[0]
+
+    try:
+        fields = _text_fields_from_pairs(
+            [
+                *text_part,
+                *((code, text) for code, text in attribute_part if code == 74),
+            ],
+            valign_code=74,
+        )
+    except ValueError:
+        return tag, value, None
+    height = fields["height"]
+    if not all(math.isfinite(number) for number in (*fields["insert"], height)):
+        return tag, value, None
+    if not height > 0:
+        return tag, value, None
+
+    attribute_text: dict[str, Any] = {"tag": tag, **fields, "text": value}
+    common = _common_from_pairs(text_part, 0)
+    for key in ("layer", "color"):
+        if key in common:
+            attribute_text[key] = common[key]
+    flags = _first_int(attribute_part, 70, default=0) or 0
+    if flags & 1 or common.get("visible") is False:
+        attribute_text["visible"] = False
+    return tag, value, attribute_text
 
 
 def _mtext_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
@@ -3005,14 +3171,29 @@ def _insert_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
         pairs.append((41, _num(scale[0])))
         pairs.append((42, _num(scale[1])))
 
+    attribute_texts = [
+        attribute
+        for attribute in entity.get("attribute_texts") or []
+        if isinstance(attribute, dict)
+    ]
+    placed_tags = {str(attribute.get("tag")) for attribute in attribute_texts}
     attributes = entity.get("attributes")
-    if isinstance(attributes, dict) and attributes:
+    unplaced = (
+        {tag: value for tag, value in attributes.items() if str(tag) not in placed_tags}
+        if isinstance(attributes, dict)
+        else {}
+    )
+    if attribute_texts or unplaced:
+        layer = str(entity.get("layer", "0"))
         pairs.append((66, "1"))
-        for tag, value in attributes.items():
+        for attribute in attribute_texts:
+            pairs.extend(_attribute_to_pairs(attribute, default_layer=layer))
+        # A value without geometry is written at the insertion point.
+        for tag, value in unplaced.items():
             pairs.extend(
                 [
                     (0, "ATTRIB"),
-                    (8, str(entity.get("layer", "0"))),
+                    (8, layer),
                     (10, _num(insert[0])),
                     (20, _num(insert[1])),
                     (40, "1"),
@@ -3021,7 +3202,59 @@ def _insert_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
                     (70, "0"),
                 ]
             )
-        pairs.extend([(0, "SEQEND"), (8, str(entity.get("layer", "0")))])
+        pairs.extend([(0, "SEQEND"), (8, layer)])
+    return pairs
+
+
+def _attribute_to_pairs(
+    attribute: dict[str, Any], *, default_layer: str
+) -> list[DXFPair]:
+    insert = attribute["insert"]
+    pairs: list[DXFPair] = [
+        (0, "ATTRIB"),
+        (8, str(attribute.get("layer", default_layer))),
+    ]
+    color = attribute.get("color")
+    if isinstance(color, int):
+        pairs.append((62, str(color)))
+    elif isinstance(color, str) and re.fullmatch(
+        r"#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})", color
+    ):
+        pairs.append((420, str(int(color[1:7], 16))))
+    pairs.extend(
+        [
+            (10, _num(insert[0])),
+            (20, _num(insert[1])),
+            (40, _num(attribute["height"])),
+            (1, str(attribute.get("text", ""))),
+        ]
+    )
+
+    rotation = float(attribute.get("rotation", 0.0))
+    if rotation != 0.0:
+        pairs.append((50, _num(rotation)))
+    width_factor = attribute.get("width_factor")
+    if width_factor is not None:
+        pairs.append((41, _num(width_factor)))
+    oblique = attribute.get("oblique_deg")
+    if oblique is not None:
+        pairs.append((51, _num(oblique)))
+    style = attribute.get("style")
+    if style:
+        pairs.append((7, str(style)))
+
+    halign_code = _TEXT_HALIGN_TO_DXF.get(str(attribute.get("halign", "left")), 0)
+    valign_code = _TEXT_VALIGN_TO_DXF.get(str(attribute.get("valign", "baseline")), 0)
+    if halign_code != 0:
+        pairs.append((72, str(halign_code)))
+    if halign_code != 0 or valign_code != 0:
+        pairs.append((11, _num(insert[0])))
+        pairs.append((21, _num(insert[1])))
+
+    pairs.append((2, str(attribute["tag"])))
+    pairs.append((70, "1" if attribute.get("visible") is False else "0"))
+    if valign_code != 0:
+        pairs.append((74, str(valign_code)))
     return pairs
 
 
@@ -3601,6 +3834,7 @@ def _tables_to_pairs(
     for name in sorted(layers, key=str.casefold):
         definition = layers[name]
         pairs.extend([(0, "LAYER"), (2, name), (70, "0")])
+        color_start = len(pairs)
         color = definition.get("color", 7)
         if isinstance(color, int):
             pairs.append((62, str(max(0, min(256, color)))))
@@ -3625,6 +3859,12 @@ def _tables_to_pairs(
                 pairs.extend([(62, "7"), (420, str(int(color[1:7], 16)))])
         else:
             pairs.append((62, "7"))
+        if definition.get("visible") is False:
+            # A layer that is off has a negative color number.
+            for index in range(color_start, len(pairs)):
+                code, value = pairs[index]
+                if code == 62:
+                    pairs[index] = (62, str(-(int(value) or 7)))
 
         pairs.append((6, str(definition.get("linetype", "CONTINUOUS"))))
         lineweight = definition.get("lineweight_mm")

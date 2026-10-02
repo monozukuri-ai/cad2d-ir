@@ -41,10 +41,77 @@ Package `0.10.3` adds, in the same way:
 - `HATCH.pattern_lines`, `HATCH.pattern_angle` and `HATCH.pattern_scale` (see
   "Hatch patterns")
 
+Package `0.10.4` adds:
+
+- `tables.layers.*.visible` (see "Visibility")
+- `INSERT.attribute_texts` (see "Block attributes")
+
 Documents without them are unchanged. Documents that use them still pass the
 default validator of earlier packages, but not their `strict_jsonschema=True`
-mode, because `header`, linetype definitions and entities reject unknown keys
-there.
+mode, because `header`, layer and linetype definitions and entities reject
+unknown keys there.
+
+## Text anchor
+
+`TEXT.insert` is the point that `halign` and `valign` refer to: the left end of
+the baseline for the default `left` / `baseline`, the center of the text for
+`center` / `middle`, and so on. A renderer places the text with that point and
+needs no other.
+
+DXF and DWG store two points for a text. The first (DXF group 10) is always the
+left end of the baseline, and for a justified text the second (group 11) is the
+point of the justification. The importers put the second point into `insert`
+for a justified text and the first one otherwise. "Aligned" and "fit" texts
+(group 72 = 3, 5) run from the first point to the second, so they are `left` /
+`baseline` at the first point; "middle" (72 = 4) is `center` / `middle` at the
+second. The DXF export writes `insert` as the second point of a justified text.
+
+## Visibility
+
+There are three independent reasons for an entity not to appear:
+
+- `visible: false` on the entity: it is hidden on its own.
+- `visible: false` on its layer: the layer is off or frozen in the source. The
+  entities keep their own `visible`; a renderer has to look at the layer.
+- `plot: false` on its layer or linetype: it is displayed on screen but not
+  printed (see below for linetypes).
+
+For a block reference the source applications differ by the reason: AutoCAD
+hides the whole reference when the layer of the `INSERT` is frozen, while block
+contents on other layers stay visible when that layer is only off. The IR does
+not tell off from frozen (the DWG importer keeps both flags in `metadata.dwg`
+of the layer), so a renderer has to pick one behaviour for an `INSERT` on an
+invisible layer.
+
+## Block attributes
+
+An `INSERT` can carry attributes: texts that belong to that one reference, such
+as the values of a title block. `attributes` maps each tag to its value.
+`attribute_texts` holds what the drawing shows:
+
+    {"tag": "DWG_NO", "text": "A-100", "insert": [412.0, 18.5], "height": 3.5,
+     "halign": "center", "valign": "middle", "layer": "TITLE"}
+
+Each item has the fields of a `TEXT` (`insert`, `height`, `rotation`, `style`,
+`halign`, `valign`, `width_factor`, `oblique_deg`) plus its own `layer` and
+`color`. The coordinates are those of the `INSERT` itself, not of the block: the
+source stores every attribute at its final position, so the position, rotation
+and scale of the `INSERT` must not be applied again. An `INSERT` inside a block
+definition has its attributes in the coordinates of that block.
+
+`visible: false` marks an invisible attribute: it carries a value but is not
+drawn. A multi-line attribute keeps its line breaks as `\n` in `text`, and its
+`insert` is the point of its first line.
+
+`attribute_texts` is omitted when the source gives no geometry (the `attributes`
+map alone says nothing about where a value is drawn). The DXF codec reads and
+writes it (`ATTRIB` records), and the DWG importer fills it.
+
+Attribute definitions (`ATTDEF`) are not kept as such. Inside a block they are
+templates for new references and are left out, except for constant definitions,
+which every reference shows: those are a `TEXT` of the block with their value.
+A definition outside of a block is displayed by its tag and becomes a `TEXT`
+with the tag as its text.
 
 ## Linetype patterns
 

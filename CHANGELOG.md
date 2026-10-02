@@ -1,5 +1,70 @@
 # Changelog
 
+## 0.10.4
+
+- Justified text sits where the drawing has it. DXF and DWG store two points
+  for a text: the left end of its baseline and, for any justification other
+  than left / baseline, the point it is justified at. Both importers put the
+  first point into `insert` and kept `halign` / `valign`, so every renderer
+  (and the DXF export, which writes `insert` as the justification point) moved
+  the text: half a text height down for `middle`, a full height for `top`, the
+  whole text width to the left for `right`. `insert` is now the point the
+  justification refers to. "Aligned" and "fit" texts (DXF group 72 = 3, 5)
+  become `left` / `baseline` at the first point and "middle" (4) `center` /
+  `middle` at the second; the DWG importer used to report `right` for the first
+  two. In real-world drawings, 5,452 of 9,191 DWG texts and 1,272 of 6,327 DXF
+  texts are justified. With the fix, the anchor and justification of all 742
+  texts compared between a DWG and the DXF export of the same drawing agree.
+  See "Text anchor" in docs/SCHEMA_NOTES.md.
+- Block attributes keep their place. `INSERT.attribute_texts` holds one text
+  per attribute with its position, height, rotation, justification, layer and
+  color, and `visible: false` for an invisible attribute. `attributes` alone
+  (tag to value) said nothing about where a value is drawn, so the DXF importer
+  dropped the geometry and the DXF export wrote every attribute at the
+  insertion point with height 1. The DXF codec reads and writes the `ATTRIB`
+  records in full, including multi-line attributes (the text of their embedded
+  `MTEXT`). In DXF drawings with attributes, they are a fifth of all text.
+- DWG attributes belong to their block reference. Each `ATTRIB` is attached to
+  the `INSERT` that owns it (`attribute_texts` and `attributes`), wherever that
+  reference lives. It used to become a `TEXT` in model space even when its
+  reference sits inside a block definition, at block-local coordinates, or in
+  paper space. `statistics["attached_attributes"]` counts them. R2007 and later
+  files need `ezdwg` 0.12.11 to decode their attributes at all. The attributes
+  of a DWG and of the DXF export of the same drawing agree in tag, value,
+  position, height, justification, layer and visibility (77 of 77 compared).
+- Attribute definitions (`ATTDEF`) appear where the drawing shows them, in DXF
+  and DWG alike. A constant definition inside a block is a `TEXT` of that block
+  with its value. A definition outside of a block is a `TEXT` with its tag,
+  which is what the source application displays there (the DWG importer used
+  the default value). Templates inside blocks and invisible definitions are not
+  drawn. The DXF importer used to skip every `ATTDEF`.
+- Layers that are off or frozen carry `visible: false` (DXF: a negative color
+  number or flag bit 1; DWG with `ezdwg` 0.12.11 or later). The DXF export
+  writes such a layer as off.
+- DWG layers carry `plot` and `lineweight_mm`, and DWG entities `lineweight_mm`
+  and `visible: false` for the invisibility flag (`ezdwg` 0.12.11 or later).
+  Every DWG layer used to be plotted and visible, and no lineweight was known.
+  Compared against DXF exports of the same drawings, the visibility, plot flag
+  and lineweight of 1,673 layers and the visibility and lineweight of 32,824
+  entities agree.
+- The text of DWG `TEXT` and `MTEXT` entities of R2007 and later is right with
+  `ezdwg` 0.12.11: earlier releases returned another string for about 6% of
+  the `TEXT` and 11% of the `MTEXT` entities of such drawings. Dimension text
+  overrides of these versions are filled as well (`definition.text`).
+- A DWG `TOLERANCE` without a text height is skipped with
+  `DWG_UNSUPPORTED_ENTITY` instead of failing the conversion. `ezdwg` 0.12.11
+  decodes these entities for the first time (earlier releases never did) and
+  takes the height from the dimension style; the height is 0 when that style
+  cannot be read. With an earlier cad2d-ir, such an entity stops a strict
+  conversion.
+- R13/R14 DWG files (`ezdwg` 0.12.11 or later) yield their block references,
+  multi-line text, hatches, solids, splines, attributes and dimensions, with
+  block contents in their block. See docs/IMPORTERS.md.
+- The default (non-strict) validator checks `attribute_texts` and the layer
+  flags.
+
+Older `ezdwg` releases keep working; they only lack the new data.
+
 ## 0.10.3
 
 - Hatch pattern definitions reach the IR. A pattern fill (`solid: false`) carries
