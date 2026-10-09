@@ -20,7 +20,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.10.6"
+version = "0.10.7"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
@@ -77,8 +77,8 @@ requires-dist = [
     { name = "ezjww", marker = "extra == 'jww'", specifier = ">=0.2.6,<0.6" },
     { name = "ezmi2d", marker = "extra == 'all'", specifier = ">=0.2,<0.3" },
     { name = "ezmi2d", marker = "extra == 'mi'", specifier = ">=0.2,<0.3" },
-    { name = "ezsxf", marker = "extra == 'all'", specifier = ">=0.1,<0.2" },
-    { name = "ezsxf", marker = "extra == 'sxf'", specifier = ">=0.1,<0.2" },
+    { name = "ezsxf", marker = "extra == 'all'", specifier = ">=0.2,<0.4" },
+    { name = "ezsxf", marker = "extra == 'sxf'", specifier = ">=0.2,<0.4" },
     { name = "inventor-kit", marker = "python_full_version >= '3.11' and extra == 'idw'", specifier = ">=0.6,<0.7" },
     { name = "jsonschema", specifier = ">=4.23.0" },
 ]
@@ -291,13 +291,13 @@ wheels = [
 
 [[package]]
 name = "ezsxf"
-version = "0.1.2"
+version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/58/9a/b9066fb267b351fe140bfeb2eeeb041762035cb7a9bac610d2c6e94abc85/ezsxf-0.1.2.tar.gz", hash = "sha256:5f5c23c3cd5628745b991f2aef3d6a1dbff343883385704bea24045b83de119b", size = 79298, upload-time = "2026-09-21T06:32:04.328Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1b/aa/c9cab547a07ffd956a45717a13549e3f5ef1432876c1b28d583b22e82600/ezsxf-0.3.1.tar.gz", hash = "sha256:631f29c8f3a2868af31f97d9231617623e079c08d4bfff41d4156b8775cf0679", size = 232339, upload-time = "2026-10-08T14:04:02.867Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/bf/51/90167429f2ffd4d816fcda637bb4155e93e0d1455b4a98429aaec9e6dc24/ezsxf-0.1.2-cp39-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:0a4f62ce5016478344f8a67e19175489a4806c5e71fcfb742ec4849261eb7a69", size = 1054029, upload-time = "2026-09-21T06:31:58.678Z" },
-    { url = "https://files.pythonhosted.org/packages/84/7e/0ff41850dae0dff859983fd6d689012972240cb80d13a0709af7e6f93fc5/ezsxf-0.1.2-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f6563822c6ccf742b244eaa487770d3936df3f790f10a0a8540f5805914cc9a0", size = 593560, upload-time = "2026-09-21T06:32:00.636Z" },
-    { url = "https://files.pythonhosted.org/packages/f6/11/07de614346eb85b2aeb52ff7bdef433cca7c873b2028d2667f5998ca8409/ezsxf-0.1.2-cp39-abi3-win_amd64.whl", hash = "sha256:5680778e771b7defd7b51bd7f982287356fc15a316b7e916b8f8961fe4b0392c", size = 462556, upload-time = "2026-09-21T06:32:02.649Z" },
+    { url = "https://files.pythonhosted.org/packages/67/f7/3d8df89afbfbcde2de1fc50cb8102e9ec112620393e24c6357ad3204fa08/ezsxf-0.3.1-cp39-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:c8c27812d8f1511cd9ab9b5ef2cf8eec2a43fc5986cff8a6a7320336983ab927", size = 2361612, upload-time = "2026-10-08T14:03:56.759Z" },
+    { url = "https://files.pythonhosted.org/packages/ea/4a/ff388891810e43df6270bc3b88dd82ebdcf4a5d9217db318262983475add/ezsxf-0.3.1-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5c4c8e9999758f9693c9cf01bc7d59a6febb3252c5bddd794f995881d52df921", size = 1297559, upload-time = "2026-10-08T14:03:58.953Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/77/9fb42ea98be796646fd95f8e9c79562f008627c3c84c82d66d57d3f9a641/ezsxf-0.3.1-cp39-abi3-win_amd64.whl", hash = "sha256:4ff2a119006c6007843b958a5eab0c4eeabe3d3e989f5b33570f2b3473065674", size = 1137189, upload-time = "2026-10-08T14:04:01.153Z" },
 ]
 
 [[package]]
