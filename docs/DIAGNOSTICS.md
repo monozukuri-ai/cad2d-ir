@@ -84,6 +84,7 @@ entity/source identifiers and structured details.
 | `DXF_TOLERANCE_EXPLODED` | warning | exploded | DXF import | A feature control frame (`TOLERANCE`) was drawn as the lines of its frame and one `TEXT` per compartment; compartment widths are estimated. |
 | `DXF_TRAILING_DATA_IGNORED` | info | skipped | DXF import | Lines after the `0`/`EOF` marker were ignored. |
 | `DXF_TRAILING_LINE_IGNORED` | warning | skipped | DXF import | The text ended with an unpaired line (truncated file or stray data) that was ignored. |
+| `DXF_IMAGE_SKIPPED` | warning | skipped | DXF export | An `IMAGE` entity was not written; the codec does not emit the IMAGEDEF objects DXF images need yet. |
 | `DXF_UNKNOWN_ENTITY_SKIPPED` | warning | skipped | DXF export | An unknown IR entity kind was skipped. |
 | `IDW_CURVE_APPROXIMATED` | warning | approximated | IDW import | A curve whose ellipse parameters could not be recovered was sampled as a polyline. |
 | `IDW_CURVE_EDGE_ON_LINE` | warning | approximated | IDW import | An edge-on projected circle (minor axis ~0 after XY projection) was represented as a line segment. |
@@ -106,6 +107,9 @@ entity/source identifiers and structured details.
 | `JWW_DECODE_REPLACED` | warning | normalized | JWW import | `ezjww` replaced undecodable CP932 byte sequences in a JWW string with U+FFFD (details carry field and byte offset). |
 | `JWW_ENTITY_CONVERSION_FAILED` | error | skipped | JWW import | A malformed JWW entity was skipped. |
 | `JWW_ENTITY_LIST_TRUNCATED` | error | skipped | JWW import | `ezjww` could not read the main entity list to its end (truncated upload, unknown record layout, corrupt tag); entities parsed before the error were kept, the rest and all block definitions were skipped. |
+| `JWW_IMAGE_DECODE_FAILED` | warning | skipped | JWW import | An embedded image could not be decompressed; the `IMAGE` keeps the path in `href` and has no pixels. |
+| `JWW_IMAGE_EMBEDDED` | info | converted | JWW import | A `^@BM` image placement became an `IMAGE` entity with the file bytes decoded from the drawing's image archive into `data`. |
+| `JWW_IMAGE_LINKED` | warning | - | JWW import | A `^@BM` image placement refers to a file that is not embedded in the drawing (external link, or a `%temp%` name missing from the archive); the `IMAGE` keeps the path in `href` and has no pixels. |
 | `JWW_METADATA_SETTING_EXTRACTED` | info | preserved_metadata | JWW import | A sentinel-positioned Jw_cad internal setting record was retained under `header.metadata.jww.settings` instead of becoming drawing TEXT. |
 | `JWW_TEXT_HEIGHT_DEFAULTED` | warning | normalized | JWW import | A non-positive text height was replaced. |
 | `JWW_UNRESOLVED_BLOCK_REFERENCE` | warning | - | JWW import | A referenced JWW block was not resolved. |

@@ -1,3 +1,3 @@
 """Package-wide format constants."""
 
-CURRENT_IR_VERSION = "0.2.0"
+CURRENT_IR_VERSION = "0.3.0"

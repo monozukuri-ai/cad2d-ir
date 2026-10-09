@@ -35,7 +35,7 @@ def test_generic_file_import_and_cli_support_dxf(tmp_path: Path) -> None:
     )
 
     result = convert_file_to_ir(source)
-    assert result.document["version"] == "0.2.0"
+    assert result.document["version"] == "0.3.0"
     assert result.document["source"]["format"] == "dxf"
     assert result.document["source"]["name"] == "line.dxf"
     assert result.document["source"]["metadata"]["encoding"] == "utf-8"

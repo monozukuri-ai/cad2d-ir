@@ -828,6 +828,29 @@
       ]
     },
 
+    "EntityImage": {
+      "description": "A raster image placed in the drawing (Jw_cad ^@BM placements; DXF IMAGE later). 'insert' is the lower-left corner, 'width'/'height' the drawn size in drawing units, 'rotation' the angle around 'insert'. 'data' holds the file bytes as base64 with 'mime_type' when the source embedded them; otherwise 'href' keeps the external path and the entity has no pixels.",
+      "unevaluatedProperties": false,
+      "allOf": [
+        { "$ref": "#/$defs/EntityCommon" },
+        {
+          "type": "object",
+          "required": ["kind", "insert", "width", "height"],
+          "properties": {
+            "kind": { "const": "IMAGE" },
+            "insert": { "$ref": "#/$defs/Point2" },
+            "width": { "type": "number", "exclusiveMinimum": 0 },
+            "height": { "type": "number", "exclusiveMinimum": 0 },
+            "rotation": { "type": "number", "default": 0 },
+            "name": { "type": "string" },
+            "mime_type": { "type": "string" },
+            "data": { "type": "string", "contentEncoding": "base64" },
+            "href": { "type": "string" }
+          }
+        }
+      ]
+    },
+
     "Entity": {
       "oneOf": [
         { "$ref": "#/$defs/EntityLine" },
@@ -841,7 +864,8 @@
         { "$ref": "#/$defs/EntityMText" },
         { "$ref": "#/$defs/EntityInsert" },
         { "$ref": "#/$defs/EntityHatch" },
-        { "$ref": "#/$defs/EntityDimension" }
+        { "$ref": "#/$defs/EntityDimension" },
+        { "$ref": "#/$defs/EntityImage" }
       ]
     },
 

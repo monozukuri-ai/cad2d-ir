@@ -49,7 +49,7 @@ uv run python -m pytest
 
 IR entities include `LINE`, `CIRCLE`, `ARC`, `POINT`,
 `ELLIPSE`, `LWPOLYLINE`, `SPLINE`, `TEXT`,
-`MTEXT`, `INSERT`, `HATCH`, and `DIMENSION`.
+`MTEXT`, `INSERT`, `HATCH`, `DIMENSION`, and `IMAGE`.
 Layer, linetype, text-style, dimension-style, and block tables are represented
 by the schema. `entities` is model space; the paper-space sheets of a DXF or
 DWG drawing, with their viewports onto model space, are kept apart in `layouts`.

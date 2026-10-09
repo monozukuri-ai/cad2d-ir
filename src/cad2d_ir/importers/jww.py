@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
+import base64
+import gzip
 import hashlib
 import math
+import zlib
 from pathlib import Path
 from typing import Any, Mapping, Sequence, cast
 
@@ -41,6 +44,10 @@ _METADATA_SETTING_KEYS = {
 # older than 0.3.3 does not report them, and files older than JWW 3.00 do not
 # store them where it reads.
 _PATTERN_UNIT_MM = 1.0 / 32.0
+# Jw_cad は画像を「^@BM<パス>,<幅>,<高さ>,...」の文字で配置する。バージョン 700 は
+# 画像ファイル本体をファイル末尾の同梱領域に持ち、そのパスは %temp%<名前> になる
+_IMAGE_TEXT_PREFIX = "^@BM"
+_IMAGE_TEMP_PREFIX = "%temp%"
 
 
 def _bit_pattern(runs: tuple[int, ...], printer_pitch: int) -> list[float]:
@@ -226,6 +233,10 @@ class _ConversionContext:
     skipped_counts: Counter[str] = field(default_factory=Counter)
     approximation_counts: Counter[str] = field(default_factory=Counter)
     preserved_dimensions: int = 0
+    # 同梱画像: 参照名(小文字、.gz 無し) -> {name, data, compressed}
+    images: dict[str, dict[str, Any]] = field(default_factory=dict)
+    embedded_images: int = 0
+    linked_images: int = 0
     next_entity_number: int = 1
 
     def allocate_id(self) -> str:
@@ -293,6 +304,8 @@ def jww_document_to_ir(
         block_names=block_names,
         linetype_names=linetype_names,
     )
+
+    context.images = _embedded_images(jww_document)
 
     raw_entities = jww_document.get("entities", [])
     if consume_source and isinstance(raw_entities, list):
@@ -401,6 +414,8 @@ def jww_document_to_ir(
         "skipped_entity_counts": dict(sorted(context.skipped_counts.items())),
         "approximated_entities": sum(context.approximation_counts.values()),
         "preserved_dimensions": context.preserved_dimensions,
+        "embedded_images": context.embedded_images,
+        "linked_images": context.linked_images,
     }
     return ImportResult(
         document=document, diagnostics=context.diagnostics, statistics=statistics
@@ -583,6 +598,10 @@ def _convert_entity(
             result["rotation"] = angle
         return result
     if source_kind == "TEXT":
+        if str(source_entity.get("content", "")).startswith(_IMAGE_TEXT_PREFIX):
+            image = _convert_image(source_entity, common, context, source_id=source_id)
+            if image is not None:
+                return image
         return _convert_text(source_entity, common, context, source_id=source_id)
     if source_kind == "SOLID":
         return _convert_solid(source_entity, common)
@@ -772,6 +791,168 @@ def _convert_text(
                 "end": [_number(source, "end_x"), _number(source, "end_y")],
                 "text_type": int(source.get("text_type", 0)),
                 "size_x": size_x,
+                "size_y": float(source.get("size_y", 0.0)),
+                "spacing": float(source.get("spacing", 0.0)),
+                "font_name": str(source.get("font_name", "")),
+            }
+        )
+    return result
+
+
+def _embedded_images(jww_document: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """``read_document()["images"]`` keyed by the name a placement refers to (``.gz`` removed)."""
+    result: dict[str, dict[str, Any]] = {}
+    for image in jww_document.get("images", []) or []:
+        if not isinstance(image, Mapping) or not image.get("name"):
+            continue
+        name = str(image["name"])
+        compressed = image.get("compressed")
+        if compressed is None:
+            compressed = name.lower().endswith(".gz")
+        reference = name[:-3] if name.lower().endswith(".gz") else name
+        result[reference.lower()] = {
+            "name": name,
+            "data": image.get("data", b""),
+            "compressed": bool(compressed),
+        }
+    return result
+
+
+def _parse_image_reference(content: str) -> dict[str, Any] | None:
+    """Split ``^@BM<path>,<width>,<height>,...`` like ``ezjww.image_reference``."""
+    if not content.startswith(_IMAGE_TEXT_PREFIX):
+        return None
+    parts = content[len(_IMAGE_TEXT_PREFIX) :].split(",")
+    if len(parts) < 3 or not parts[0]:
+        return None
+    try:
+        width = float(parts[1])
+        height = float(parts[2])
+    except ValueError:
+        return None
+    if not (math.isfinite(width) and math.isfinite(height)):
+        return None
+    path = parts[0]
+    rest = (
+        path[len(_IMAGE_TEMP_PREFIX) :]
+        if path.lower().startswith(_IMAGE_TEMP_PREFIX)
+        else path
+    )
+    file_name = rest.replace("\\", "/").rsplit("/", 1)[-1]
+    return {
+        "path": path,
+        "file_name": file_name,
+        "width": width,
+        "height": height,
+        "extra": [part.strip() for part in parts[3:]],
+    }
+
+
+def _sniff_mime(data: bytes) -> str:
+    if data.startswith(b"BM"):
+        return "image/bmp"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8"):
+        return "image/jpeg"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if data.startswith((b"II*\x00", b"MM\x00*")):
+        return "image/tiff"
+    return "application/octet-stream"
+
+
+def _convert_image(
+    source: Mapping[str, Any],
+    common: dict[str, Any],
+    context: _ConversionContext,
+    *,
+    source_id: str,
+) -> dict[str, Any] | None:
+    """A ``^@BM`` placement text becomes an ``IMAGE``; ``None`` keeps it as plain text."""
+    content = str(source.get("content", ""))
+    parsed = source.get("image")
+    if not isinstance(parsed, Mapping):
+        parsed = _parse_image_reference(content)
+    if parsed is None:
+        return None
+    width = float(parsed.get("width", 0.0))
+    height = float(parsed.get("height", 0.0))
+    if not (width > 0.0 and height > 0.0):
+        return None
+    path = str(parsed.get("path", ""))
+    file_name = str(parsed.get("file_name", "")) or path
+    result: dict[str, Any] = {
+        **common,
+        "kind": "IMAGE",
+        "insert": [_number(source, "start_x"), _number(source, "start_y")],
+        "width": width,
+        "height": height,
+        "name": file_name,
+    }
+    rotation = float(source.get("angle", 0.0))
+    if rotation != 0.0:
+        result["rotation"] = rotation
+    embedded = path.lower().startswith(_IMAGE_TEMP_PREFIX)
+    archive = context.images.get(file_name.lower()) if embedded else None
+    data: bytes | None = None
+    if archive is not None:
+        raw = bytes(archive.get("data") or b"")
+        try:
+            data = gzip.decompress(raw) if archive["compressed"] else raw
+        except (OSError, EOFError, zlib.error) as exc:
+            context.diagnostics.append(
+                ImportDiagnostic(
+                    code="JWW_IMAGE_DECODE_FAILED",
+                    severity="warning",
+                    message=f"Embedded image {archive['name']} could not be decompressed: {exc}",
+                    source_id=source_id,
+                    source_kind="TEXT",
+                    action="skipped",
+                )
+            )
+            data = None
+    if data:
+        result["data"] = base64.b64encode(data).decode("ascii")
+        result["mime_type"] = _sniff_mime(data)
+        context.embedded_images += 1
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="JWW_IMAGE_EMBEDDED",
+                severity="info",
+                message=f"Image {file_name} ({len(data)} bytes) was decoded from the drawing's archive.",
+                source_id=source_id,
+                source_kind="TEXT",
+                action="converted",
+            )
+        )
+    else:
+        result["href"] = path
+        context.linked_images += 1
+        reason = (
+            "is not in the drawing's image archive"
+            if embedded
+            else "is an external file that is not embedded in the drawing"
+        )
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="JWW_IMAGE_LINKED",
+                severity="warning",
+                message=f"Image {file_name} {reason}; the placement keeps only the path.",
+                source_id=source_id,
+                source_kind="TEXT",
+            )
+        )
+    jww_metadata = _jww_metadata(result)
+    if jww_metadata is not None:
+        jww_metadata.update(
+            {
+                "image_content": content,
+                "image_params": [str(value) for value in parsed.get("extra", [])],
+                "archive_name": archive["name"] if archive is not None else None,
+                "end": [_number(source, "end_x"), _number(source, "end_y")],
+                "text_type": int(source.get("text_type", 0)),
+                "size_x": float(source.get("size_x", 0.0)),
                 "size_y": float(source.get("size_y", 0.0)),
                 "spacing": float(source.get("spacing", 0.0)),
                 "font_name": str(source.get("font_name", "")),

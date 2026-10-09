@@ -204,7 +204,7 @@ def test_jww_document_to_ir_preserves_semantics_and_reports_approximation() -> N
     )
     document = result.document
 
-    assert document["version"] == "0.2.0"
+    assert document["version"] == "0.3.0"
     assert document["source"] == {
         "format": "jww",
         "version": "600",
@@ -715,3 +715,126 @@ def test_jww_unusable_line_type_settings_are_ignored() -> None:
     assert linetypes["JWW_DASHED1"]["pattern_mm"] == [0.625, -0.625]
     assert linetypes["JWW_DASHED2"]["pattern_mm"] == [1.25, -1.25]
     assert result.document["entities"][2]["linetype"] == "BYLAYER"
+
+
+# ---------------------------------------------------------------------------
+# Images: ^@BM placements and the version-700 archive
+
+
+def _image_jww(
+    *,
+    embedded: bool = True,
+    compressed: bool = True,
+    broken: bool = False,
+    archive: bool = True,
+) -> tuple[dict, bytes]:
+    import gzip
+
+    document = _document()
+    bitmap = b"BM" + bytes(range(40))
+    if embedded:
+        content = "^@BM%temp%logo.bmp,100,64.5161,0,0,1,0,255,255,255"
+    else:
+        content = "^@BMC:\\pictures\\logo.bmp,50,25,0,0,1,0,255,255,255"
+    document["entities"] = [{"type": "TEXT", "base": _base(), **_text_payload(content)}]
+    document["entity_counts"] = {"TEXT": 1}
+    if embedded and archive:
+        payload = gzip.compress(bitmap, mtime=0) if compressed else bitmap
+        if broken:
+            payload = b"\x1f\x8b\x08\x00broken"
+        document["images"] = [
+            {
+                "name": "logo.bmp.gz" if compressed else "logo.bmp",
+                "data": payload,
+                "compressed": compressed,
+            }
+        ]
+    return document, bitmap
+
+
+def test_jww_image_placement_becomes_image_entity_with_embedded_bytes() -> None:
+    import base64
+
+    document, bitmap = _image_jww()
+    result = jww_document_to_ir(document, source_name="image.jww")
+    (entity,) = result.document["entities"]
+    assert entity["kind"] == "IMAGE"
+    assert entity["insert"] == [2.0, 3.0]
+    assert (entity["width"], entity["height"]) == (100.0, 64.5161)
+    assert entity["name"] == "logo.bmp"
+    assert entity["mime_type"] == "image/bmp"
+    assert base64.b64decode(entity["data"]) == bitmap
+    assert "href" not in entity
+    assert "rotation" not in entity
+    assert entity["source"]["kind"] == "TEXT"
+    jww = entity["metadata"]["jww"]
+    assert jww["image_params"] == ["0", "0", "1", "0", "255", "255", "255"]
+    assert jww["archive_name"] == "logo.bmp.gz"
+    assert jww["image_content"].startswith("^@BM%temp%logo.bmp,")
+    assert jww["end"] == [7.0, 3.0]
+    assert [d.code for d in result.diagnostics if d.code.startswith("JWW_IMAGE")] == [
+        "JWW_IMAGE_EMBEDDED"
+    ]
+    assert result.statistics["embedded_images"] == 1
+    assert result.statistics["linked_images"] == 0
+    assert result.statistics["converted_entity_counts"]["IMAGE"] == 1
+    validate_ir(result.document, strict_jsonschema=True)
+    # The image never reaches DXF as text, and the codec reports the skip.
+    exported = convert_ir_to_dxf_text(result.document)
+    assert "^@BM" not in exported.dxf_text
+    assert {d.code for d in exported.diagnostics} >= {"DXF_IMAGE_SKIPPED"}
+
+
+def test_jww_uncompressed_archive_entry_and_rotation() -> None:
+    import base64
+
+    document, bitmap = _image_jww(compressed=False)
+    document["entities"][0]["angle"] = 90.0
+    result = jww_document_to_ir(document)
+    (entity,) = result.document["entities"]
+    assert base64.b64decode(entity["data"]) == bitmap
+    assert entity["rotation"] == 90.0
+    assert entity["metadata"]["jww"]["archive_name"] == "logo.bmp"
+
+
+def test_jww_external_and_missing_images_keep_the_path() -> None:
+    document, _ = _image_jww(embedded=False)
+    result = jww_document_to_ir(document)
+    (entity,) = result.document["entities"]
+    assert entity["kind"] == "IMAGE"
+    assert entity["href"] == "C:\\pictures\\logo.bmp"
+    assert entity["name"] == "logo.bmp"
+    assert (entity["width"], entity["height"]) == (50.0, 25.0)
+    assert "data" not in entity
+    assert [d.code for d in result.diagnostics if d.code.startswith("JWW_IMAGE")] == [
+        "JWW_IMAGE_LINKED"
+    ]
+    assert result.statistics["linked_images"] == 1
+
+    document, _ = _image_jww(archive=False)
+    result = jww_document_to_ir(document)
+    (entity,) = result.document["entities"]
+    assert entity["href"] == "%temp%logo.bmp"
+    linked = next(d for d in result.diagnostics if d.code == "JWW_IMAGE_LINKED")
+    assert "not in the drawing's image archive" in linked.message
+
+
+def test_jww_broken_archive_entry_reports_decode_failure() -> None:
+    document, _ = _image_jww(broken=True)
+    result = jww_document_to_ir(document)
+    (entity,) = result.document["entities"]
+    assert entity["href"] == "%temp%logo.bmp"
+    assert "data" not in entity
+    codes = [d.code for d in result.diagnostics if d.code.startswith("JWW_IMAGE")]
+    assert codes == ["JWW_IMAGE_DECODE_FAILED", "JWW_IMAGE_LINKED"]
+
+
+def test_jww_malformed_image_text_stays_text() -> None:
+    document, _ = _image_jww()
+    document["entities"][0]["content"] = "^@BMlogo.bmp"
+    document.pop("images")
+    result = jww_document_to_ir(document)
+    (entity,) = result.document["entities"]
+    assert entity["kind"] == "TEXT"
+    assert entity["text"] == "^@BMlogo.bmp"
+    assert not [d for d in result.diagnostics if d.code.startswith("JWW_IMAGE")]

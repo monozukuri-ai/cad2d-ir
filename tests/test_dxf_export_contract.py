@@ -421,3 +421,36 @@ def test_unknown_entity_and_constraints_have_structured_export_diagnostics() -> 
     assert unknown.entity_id == "U1"
     assert unknown.action == "skipped"
     assert result.entity_map[-1]["reason_code"] == "DXF_UNKNOWN_ENTITY_SKIPPED"
+
+
+def test_image_entities_are_skipped_with_a_dedicated_diagnostic() -> None:
+    document = {
+        "format": "cad2d-ir",
+        "version": "0.3.0",
+        "header": {"units": "mm", "angle_unit": "deg", "coord_space": "world"},
+        "entities": [
+            {
+                "id": "I1",
+                "kind": "IMAGE",
+                "insert": [0.0, 0.0],
+                "width": 10.0,
+                "height": 5.0,
+                "name": "logo.bmp",
+                "data": "Qk0=",
+                "mime_type": "image/bmp",
+            },
+            {"id": "L1", "kind": "LINE", "p1": [0.0, 0.0], "p2": [1.0, 0.0]},
+        ],
+    }
+
+    result = convert_ir_to_dxf_text(document)
+
+    skipped = [d for d in result.diagnostics if d.code == "DXF_IMAGE_SKIPPED"]
+    assert len(skipped) == 1
+    assert skipped[0].entity_id == "I1"
+    assert skipped[0].action == "skipped"
+    assert "DXF_UNKNOWN_ENTITY_SKIPPED" not in {d.code for d in result.diagnostics}
+    assert "\nIMAGE\n" not in result.dxf_text
+    assert "\nLINE\n" in result.dxf_text
+    image_entry = next(entry for entry in result.entity_map if entry["ir_id"] == "I1")
+    assert image_entry["reason_code"] == "DXF_IMAGE_SKIPPED"

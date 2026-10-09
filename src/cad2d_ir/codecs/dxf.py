@@ -5242,6 +5242,21 @@ def _render_entity(
         "SPLINE",
         "DIMENSION",
     }
+    if kind == "IMAGE":
+        _diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_IMAGE_SKIPPED",
+            severity="warning",
+            message=(
+                f"[IMAGE:{entity_id or '?'}] raster image placements are not written "
+                "to DXF yet (IMAGE needs IMAGEDEF objects); the placement was skipped."
+            ),
+            entity_id=entity_id or None,
+            action="skipped",
+        )
+        return [], "DXF_IMAGE_SKIPPED"
+
     if kind not in supported:
         _diagnose(
             diagnostics,

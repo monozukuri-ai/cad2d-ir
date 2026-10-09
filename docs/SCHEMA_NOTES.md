@@ -29,7 +29,11 @@ Schema `0.2.0` adds:
 - entity `approximation` metadata
 - `unitless` and `unknown` unit states
 
-Existing `0.1.x` documents remain valid. New conversions default to `0.2.0`.
+Schema `0.3.0` adds:
+
+- `IMAGE` entities (see "Images")
+
+Existing `0.1.x` and `0.2.x` documents remain valid. New conversions default to `0.3.0`.
 
 Package `0.10.2` adds optional fields without changing the IR version:
 
@@ -233,11 +237,31 @@ When changing schema behavior:
 - Document compatibility impact in PR and changelog
 - Keep unsupported mappings explicit via structured conversion diagnostics
 
+## Images
+
+An `IMAGE` is a raster image placed in the drawing. `insert` is its lower-left
+corner, `width` and `height` the drawn size in drawing units (paper
+millimetres for JWW), `rotation` the angle in `header.angle_unit` around
+`insert` (counterclockwise, default 0). `name` is the file name; `data` holds
+the file bytes as base64 with `mime_type` (`image/bmp`, `image/png`, ...)
+when the source embedded the file; otherwise `href` keeps the path the source
+wrote and the entity has no pixels. Renderers without `data` should draw a
+frame or skip the entity.
+
+Jw_cad stores an image as a text `^@BM<path>,<width>,<height>,<trimming and
+transparency parameters>` and, in version-700 files, the file itself in an
+archive at the end of the drawing (`%temp%<name>` paths). The JWW importer
+decodes the archive entry (gzip) into `data` and keeps the trailing
+parameters verbatim in `metadata.jww.image_params`, so a JWW writer can
+rebuild the placement. The DXF codec does not write images yet
+(`DXF_IMAGE_SKIPPED`).
+
 ## Current conversion limitations
 
 - `constraints` are IR-only metadata today and are omitted on DXF export.
 - `GENERIC` dimensions are exported as visual LINE/TEXT/POINT/polyline primitives by default; they are not mislabeled as native DXF `DIMENSION` entities.
 - `HATCH` mapping currently focuses on polyline-like loops.
+- `IMAGE` entities are not written to DXF (no IMAGEDEF support yet).
 - Feature control frames (`TOLERANCE`) have no entity of their own: the importers draw them as the lines of their frame and one `TEXT` per compartment, with the geometric characteristic symbols as Unicode characters. Compartment widths are estimated.
 - Polygon meshes and polyface meshes are 3D surfaces and are skipped. 3D polylines are projected to XY.
 - Ellipse start/end parameters are always radians, independent of `header.angle_unit`, matching the DXF ellipse parameter convention.

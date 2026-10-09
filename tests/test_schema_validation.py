@@ -107,3 +107,48 @@ def test_validate_ir_0_2_entities_and_provenance_with_strict_schema() -> None:
     }
 
     validate_ir(document, strict_jsonschema=True)
+
+
+def _image_document(**overrides) -> dict:
+    entity = {
+        "id": "I1",
+        "kind": "IMAGE",
+        "insert": [10.0, 20.0],
+        "width": 100.0,
+        "height": 64.5161,
+        "rotation": 0.0,
+        "name": "logo.bmp",
+        "mime_type": "image/bmp",
+        "data": "Qk0=",
+    }
+    entity.update(overrides)
+    return {
+        "format": "cad2d-ir",
+        "version": "0.3.0",
+        "header": {"units": "mm", "angle_unit": "deg", "coord_space": "world"},
+        "entities": [entity],
+    }
+
+
+def test_validate_ir_accepts_image_entities_in_both_validators() -> None:
+    validate_ir(_image_document())
+    validate_ir(_image_document(), strict_jsonschema=True)
+    linked = _image_document(href="C:\\pictures\\logo.bmp")
+    del linked["entities"][0]["data"]
+    del linked["entities"][0]["mime_type"]
+    validate_ir(linked, strict_jsonschema=True)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"width": 0.0},
+        {"height": -1.0},
+        {"insert": [1.0]},
+        {"data": 123},
+        {"rotation": "ninety"},
+    ],
+)
+def test_validate_ir_rejects_malformed_image_entities(overrides: dict) -> None:
+    with pytest.raises(IRValidationError):
+        validate_ir(_image_document(**overrides))

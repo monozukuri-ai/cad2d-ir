@@ -29,6 +29,7 @@ _SUPPORTED_KINDS = {
     "INSERT",
     "HATCH",
     "DIMENSION",
+    "IMAGE",
 }
 
 
@@ -574,6 +575,15 @@ def _validate_entity(entity: Any, path: str) -> None:
 
         if "closed" in entity and not isinstance(entity["closed"], bool):
             raise IRValidationError(f"{path}.closed must be boolean")
+    elif kind == "IMAGE":
+        _require_point2(entity, "insert", path)
+        _require_positive_number(entity, "width", path)
+        _require_positive_number(entity, "height", path)
+        if "rotation" in entity:
+            _require_number(entity, "rotation", path)
+        for key in ("name", "mime_type", "data", "href"):
+            if key in entity and not isinstance(entity[key], str):
+                raise IRValidationError(f"{path}.{key} must be a string")
     elif kind == "DIMENSION":
         if entity.get("dim_kind") not in {
             "GENERIC",

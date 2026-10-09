@@ -152,6 +152,34 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
     "JWW_ZERO_BLOCK_SCALE_NORMALIZED": DiagnosticCode(
         "warning", "normalized", "JWW import", "A zero block scale was replaced."
     ),
+    "DXF_IMAGE_SKIPPED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "DXF export",
+        "An IMAGE entity was not written; DXF IMAGE needs IMAGEDEF objects, which "
+        "the codec does not emit yet.",
+    ),
+    "JWW_IMAGE_EMBEDDED": DiagnosticCode(
+        "info",
+        "converted",
+        "JWW import",
+        "A ^@BM image placement became an IMAGE entity with the file bytes decoded "
+        "from the drawing's image archive.",
+    ),
+    "JWW_IMAGE_LINKED": DiagnosticCode(
+        "warning",
+        None,
+        "JWW import",
+        "A ^@BM image placement refers to a file that is not embedded in the "
+        "drawing; the IMAGE entity keeps the path in href and has no pixels.",
+    ),
+    "JWW_IMAGE_DECODE_FAILED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "JWW import",
+        "An embedded image could not be decompressed; the IMAGE entity keeps the "
+        "path in href and has no pixels.",
+    ),
     "JWW_UNSUPPORTED_ENTITY": DiagnosticCode(
         "warning", "skipped", "JWW import", "An unsupported JWW entity was skipped."
     ),

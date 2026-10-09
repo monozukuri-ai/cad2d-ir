@@ -34,6 +34,7 @@ The JWW adapter consumes `ezjww.read_document()` rather than `read_dxf_document(
 | `ARC` / `CIRCLE` | `ARC`, `CIRCLE`, or `ELLIPSE` | flatness and tilt preserved |
 | `POINT` | `POINT` | temporary marker state preserved |
 | `TEXT` | `TEXT` | font, size, endpoint, and spacing metadata preserved |
+| image placement `TEXT` (`^@BM`) | `IMAGE` | lower-left corner, drawn size and rotation; a file embedded in the version-700 archive is decoded into `data` (base64) with `mime_type` (`JWW_IMAGE_EMBEDDED`), an external or missing file keeps its path in `href` (`JWW_IMAGE_LINKED`); Jw_cad's trailing parameters stay in `metadata.jww.image_params` |
 | internal setting `TEXT` at `(0, -1000)` | `header.metadata.jww.settings` | known printer/view keys remain metadata and do not affect drawing geometry |
 | `SOLID` | solid `HATCH` | quadrilateral vertex order normalized |
 | `CIRCLE_SOLID` | solid `HATCH` | polyline approximation recorded and diagnosed |

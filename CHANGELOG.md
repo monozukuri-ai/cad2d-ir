@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.11.0
+
+- `IMAGE` entity (schema `0.3.0`): a raster image placed by its lower-left
+  corner, `width`, `height` and optional `rotation`; `data` carries the file
+  bytes as base64 with `mime_type` when the source embedded them, otherwise
+  `href` keeps the external path. See "Images" in docs/SCHEMA_NOTES.md.
+- JWW: `^@BM` image placement texts become `IMAGE` entities. Files from the
+  version-700 image archive (`ezjww` 0.6 `images`) are decompressed and
+  attached (`JWW_IMAGE_EMBEDDED`); external or missing files keep the path
+  (`JWW_IMAGE_LINKED`), undecodable archive entries are reported
+  (`JWW_IMAGE_DECODE_FAILED`). Jw_cad's trailing placement parameters stay in
+  `metadata.jww.image_params`. Earlier versions kept the raw `^@BM%temp%...`
+  string as drawing TEXT.
+- DXF export skips `IMAGE` entities with `DXF_IMAGE_SKIPPED` (no IMAGEDEF
+  support yet) instead of the generic unknown-kind diagnostic.
+- New conversions default to IR version `0.3.0`; `0.2.x` documents stay valid.
+- The `jww` extra accepts `ezjww` 0.6.
+
 ## 0.10.8
 
 - SXF: the sheet and the partial drawings are kept. `header.metadata.sxf.sheet`
