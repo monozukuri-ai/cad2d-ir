@@ -494,3 +494,232 @@ def test_sxf_linetypes_carry_dash_patterns() -> None:
     assert linetypes["user-1"]["pattern_mm"] == [40.0, -10.0, 10.0, -10.0]
     assert "pattern_mm" not in linetypes["mystery"]
     validate_ir(result.document, strict_jsonschema=True)
+
+
+def _member_key(member: tuple[str, str | None]) -> tuple[str, str]:
+    return (member[0], member[1] or "")
+
+
+def test_real_ezsxf_sheet_and_partial_drawings_are_exposed(tmp_path: Path) -> None:
+    pytest.importorskip("ezsxf")
+    source = tmp_path / "arcs.sfc"
+    source.write_text(_ARC_SFC, encoding="utf-8")
+
+    result = convert_sxf_file_to_ir(source)
+    sxf = result.document["header"]["metadata"]["sxf"]
+    assert sxf["sheet"] == {
+        "name": "sheet",
+        "sheet_type": 9,
+        "paper": "FREE",
+        "orientation": "landscape",
+        "width_mm": 100.0,
+        "height_mm": 300.0,
+    }
+    partials = {partial["name"]: partial for partial in sxf["partial_drawings"]}
+    assert set(partials) == {"stretched", "scaled"}
+    stretched = partials["stretched"]
+    assert stretched["coordinate_system"] == "mathematical"
+    assert stretched["position"] == [10.0, 20.0]
+    assert stretched["angle_deg"] == pytest.approx(90.0)
+    assert (stretched["ratio_x"], stretched["ratio_y"]) == (2.0, 1.0)
+    assert "scale_denominator" not in stretched  # 等倍率でない配置に縮尺は無い
+    assert stretched["entity_count"] == 1
+    scaled = partials["scaled"]
+    assert scaled["scale_denominator"] == pytest.approx(1.0 / 3.0)
+    assert scaled["entity_count"] == 1
+
+    # 各要素は所属する部分図を名指す。用紙に直接置かれた要素には無い
+    members = sorted(
+        (
+            (entity["kind"], entity["metadata"]["sxf"].get("partial_drawing"))
+            for entity in result.document["entities"]
+        ),
+        key=_member_key,
+    )
+    assert members == [
+        ("ARC", None),
+        ("CIRCLE", None),
+        ("CIRCLE", "scaled"),
+        ("ELLIPSE", "stretched"),
+    ]
+    codes = {diagnostic.code for diagnostic in result.diagnostics}
+    assert "SXF_PARTIAL_DRAWING_FLATTENED" in codes
+    assert "SXF_PARTIAL_DRAWING_AMBIGUOUS" not in codes
+    assert result.statistics["partial_drawings"] == 2
+    validate_ir(result.document, strict_jsonschema=True)
+
+
+_SHARED_PART_SFC = """ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('SCADEC level2 feature_mode'),'2;1');
+FILE_NAME('shared.sfc','2007-06-29T07:56:58',('author'),('organization'),'translator$$3.1','system','');
+FILE_SCHEMA(('ASSOCIATIVE_DRAUGHTING'));
+ENDSEC;
+DATA;
+/*SXF
+#1 = pre_defined_colour_feature('red')
+SXF*/
+/*SXF
+#2 = pre_defined_font_feature('continuous')
+SXF*/
+/*SXF
+#3 = width_feature('0.25')
+SXF*/
+/*SXF
+#20 = circle_feature('1','2','1','3','0','0','1')
+SXF*/
+/*SXF
+#30 = sfig_org_feature('sym','4')
+SXF*/
+/*SXF
+#40 = sfig_locate_feature('1','sym','0','0','0','1','1')
+SXF*/
+/*SXF
+#41 = line_feature('1','2','1','3','0','0','10','0')
+SXF*/
+/*SXF
+#50 = sfig_org_feature('pdA','1')
+SXF*/
+/*SXF
+#42 = sfig_locate_feature('1','sym','5','5','0','1','1')
+SXF*/
+/*SXF
+#51 = sfig_org_feature('pdB','2')
+SXF*/
+/*SXF
+#60 = sfig_locate_feature('1','pdA','0','0','0','0.01','0.01')
+SXF*/
+/*SXF
+#61 = sfig_locate_feature('1','pdB','100','0','0','0.02','0.02')
+SXF*/
+/*SXF
+#99 = drawing_sheet_feature('sheet','3','1','420','297')
+SXF*/
+/*SXF
+#100 = layer_feature('VISIBLE','1')
+SXF*/
+ENDSEC;
+END-ISO-10303-21;
+"""
+
+
+def test_real_ezsxf_part_shared_by_partial_drawings_is_ambiguous(
+    tmp_path: Path,
+) -> None:
+    """同じ作図部品が 2 つの部分図に置かれると、その要素はどちらの部分図とも言えない。"""
+    pytest.importorskip("ezsxf")
+    source = tmp_path / "shared.sfc"
+    source.write_text(_SHARED_PART_SFC, encoding="utf-8")
+
+    result = convert_sxf_file_to_ir(source)
+    sxf = result.document["header"]["metadata"]["sxf"]
+    assert sxf["sheet"]["paper"] == "A3"
+    assert (sxf["sheet"]["width_mm"], sxf["sheet"]["height_mm"]) == (420.0, 297.0)
+    partials = {partial["name"]: partial for partial in sxf["partial_drawings"]}
+    assert partials["pdA"]["coordinate_system"] == "mathematical"
+    assert partials["pdA"]["scale_denominator"] == pytest.approx(100.0)
+    assert partials["pdA"]["entity_count"] == 1
+    assert partials["pdB"]["coordinate_system"] == "geodetic"
+    assert partials["pdB"]["position"] == [100.0, 0.0]
+    assert partials["pdB"]["scale_denominator"] == pytest.approx(50.0)
+    assert partials["pdB"]["entity_count"] == 0
+    members = sorted(
+        (
+            (entity["kind"], entity["metadata"]["sxf"].get("partial_drawing"))
+            for entity in result.document["entities"]
+        ),
+        key=_member_key,
+    )
+    assert members == [("CIRCLE", None), ("CIRCLE", None), ("LINE", "pdA")]
+    ambiguous = next(
+        diagnostic
+        for diagnostic in result.diagnostics
+        if diagnostic.code == "SXF_PARTIAL_DRAWING_AMBIGUOUS"
+    )
+    assert ambiguous.message.startswith("2 entities")
+    validate_ir(result.document, strict_jsonschema=True)
+
+
+def test_real_ezsxf_p21_sheet_and_partial_drawings_are_exposed(tmp_path: Path) -> None:
+    ezsxf = pytest.importorskip("ezsxf")
+    if not hasattr(ezsxf, "new_sfc"):
+        pytest.skip("ezsxf < 0.3 has no writer")
+    style = {"layer": 1, "color": 1, "line_type": 1, "line_width": 1}
+    doc = ezsxf.new_sfc(
+        "t.sfc", name="図面", paper="A4", orientation="portrait", target="p21"
+    )
+    doc.extend([{"kind": "line", "start": (1.0, 2.0), "end": (3.0, 4.0), **style}])
+    doc.extend(
+        [
+            {
+                "kind": "partial_drawing",
+                "name": "部分図 NO.1",
+                "elements": [
+                    {
+                        "kind": "line",
+                        "start": (0.0, 0.0),
+                        "end": (5000.0, 0.0),
+                        **style,
+                    },
+                    {
+                        "kind": "circle",
+                        "center": (100.0, 100.0),
+                        "radius": 50.0,
+                        **style,
+                    },
+                ],
+                "position": (10.0, 20.0),
+                "angle": 30.0,
+                "scale": (0.01, 0.01),
+                "layer": 1,
+            }
+        ]
+    )
+    source = tmp_path / "t.p21"
+    source.write_bytes(doc.to_p21_bytes())
+
+    result = convert_sxf_file_to_ir(source)
+    sxf = result.document["header"]["metadata"]["sxf"]
+    assert sxf["sheet"] == {
+        "name": "図面",  # DRAUGHTING_TITLE
+        "sheet_type": 4,
+        "paper": "A4",
+        "orientation": "portrait",
+        "width_mm": 210.0,
+        "height_mm": 297.0,
+    }
+    (partial,) = sxf["partial_drawings"]
+    assert partial["name"] == "部分図 NO.1"  # \\X2\\ エスケープを戻す
+    assert partial["coordinate_system"] == "mathematical"
+    assert partial["position"] == pytest.approx([10.0, 20.0])
+    assert partial["angle_deg"] == pytest.approx(30.0)
+    assert partial["ratio_x"] == pytest.approx(0.01)
+    assert partial["scale_denominator"] == pytest.approx(100.0)
+    assert partial["entity_count"] == 2
+    entities = result.document["entities"]
+    members = sorted(
+        (
+            (entity["kind"], entity["metadata"]["sxf"].get("partial_drawing"))
+            for entity in entities
+        ),
+        key=_member_key,
+    )
+    assert members == [
+        ("CIRCLE", "部分図 NO.1"),
+        ("LINE", None),
+        ("LINE", "部分図 NO.1"),
+    ]
+    # 展開された座標は配置どおり: 5000 mm の線は用紙上で 50 mm、30° 回転
+    placed = next(
+        entity
+        for entity in entities
+        if entity["kind"] == "LINE" and entity["metadata"]["sxf"].get("partial_drawing")
+    )
+    assert placed["p1"] == pytest.approx([10.0, 20.0])
+    assert placed["p2"] == pytest.approx(
+        [
+            10.0 + 50.0 * math.cos(math.radians(30.0)),
+            20.0 + 50.0 * math.sin(math.radians(30.0)),
+        ]
+    )
+    validate_ir(result.document, strict_jsonschema=True)

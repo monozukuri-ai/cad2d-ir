@@ -22,7 +22,7 @@ The registry in `cad2d_ir.importers.registry` currently dispatches:
 | DGN | `.dgn` | implemented (V7 2D, V8) | `ezdgn>=0.2.1,<0.3` |
 | DWF | `.dwf`, `.dwfx` | implemented (2D) | `ezdwf>=0.0.1,<0.1` |
 | MI | `.mi`, `.bi` | implemented (verified typed subset) | `ezmi2d>=0.2,<0.3` |
-| SXF | `.sxf`, `.sfc`, `.p21` | implemented | `ezsxf>=0.1,<0.2` |
+| SXF | `.sxf`, `.sfc`, `.p21` | implemented | `ezsxf>=0.2,<0.4` |
 
 ## JWW vertical slice
 
@@ -287,7 +287,7 @@ for render-only imports of large drawings.
 
 ## SXF adapter
 
-The SXF adapter parses either SFC or AP202/P21 and consumes `ezsxf._drawing.build_drawing()`. No DXF text is produced or reparsed.
+The SXF adapter parses either SFC or AP202/P21 and consumes `ezsxf.build_drawing()` (the private `ezsxf._drawing` entry point on ezsxf before 0.3.1). No DXF text is produced or reparsed.
 
 | SXF drawing primitive | IR mapping | Fidelity handling |
 | --- | --- | --- |
@@ -301,6 +301,37 @@ The SXF adapter parses either SFC or AP202/P21 and consumes `ezsxf._drawing.buil
 Line types keep their SXF name (`dashed`, `chain`, a user-defined name, ...). Predefined ones get the SXF Ver.3.1 reference pitches as `pattern_mm`; user-defined ones get the pitch list of their `user_defined_font` feature, which only SFC exposes. Lengths are millimetres on the sheet.
 
 SFC `typed_features` allow dimension kinds and source curve kinds to be recovered. P21 currently exposes generic STEP entities but no equivalent typed feature model, so the adapter preserves rendered primitives and emits `SXF_P21_SEMANTICS_FLATTENED`. Externally defined hatch/symbol limitations reported by `ezsxf` are forwarded as diagnostics.
+
+### Sheet and partial drawings
+
+`ezsxf` flattens every compound-figure placement into sheet coordinates, so
+`entities` is the drawing as it appears on the paper (millimetres, origin at
+the lower-left corner of the sheet). The sheet and the partial drawings are
+kept so that a writer can put the entities back at their original scale:
+
+- `header.metadata.sxf.sheet` is the drawing sheet: `name`, `sheet_type` (0-4 =
+  A0-A4, 9 = FREE), `paper` (`"A3"`, ..., `"FREE"`), `orientation`
+  (`"landscape"` / `"portrait"`) and `width_mm` / `height_mm`. SFC reads it
+  from `drawing_sheet_feature`; P21 from `DRAWING_SHEET_REVISION` (its name,
+  `A3_horizontal` for example), the `PLANAR_BOX` of the sheet and the
+  `DRAUGHTING_TITLE` of the drawing. It is absent when the file has no sheet.
+- `header.metadata.sxf.partial_drawings` lists the partial drawings placed on
+  the sheet (compound figures of kind 1, the mathematical system, and kind 2,
+  the geodetic system; drawing groups and parts are not listed): `name`,
+  `coordinate_system` (`"mathematical"` / `"geodetic"`), the placement
+  `position` (sheet mm), `angle_deg`, `ratio_x` / `ratio_y`, and
+  `scale_denominator` (100 for 1:100) when both ratios are equal;
+  `entity_count` says how many entities were rendered through it. A local
+  point `p` of the partial drawing appears on the sheet at
+  `position + R(angle) * (ratio_x * p.x, ratio_y * p.y)`.
+- `metadata.sxf.partial_drawing` on an entity names the partial drawing it was
+  rendered through (also through nested groups and parts inside it); entities
+  drawn directly on the sheet have no such key. A part that is placed in more
+  than one partial drawing cannot be attributed, so its entities carry no name
+  and `SXF_PARTIAL_DRAWING_AMBIGUOUS` is reported.
+
+`SXF_PARTIAL_DRAWING_FLATTENED` (info) states how many partial drawings and
+entities were flattened this way.
 
 ## Validation gates
 

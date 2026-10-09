@@ -125,6 +125,8 @@ entity/source identifiers and structured details.
 | `SXF_DIMENSION_CONVERSION_FAILED` | error | skipped | SXF import | A malformed SXF dimension was skipped. |
 | `SXF_DRAWING_WARNING` | warning | - | SXF import | The SXF drawing backend reported a warning. |
 | `SXF_P21_SEMANTICS_FLATTENED` | warning | flattened | SXF import | P21 semantics were flattened to drawing primitives. |
+| `SXF_PARTIAL_DRAWING_AMBIGUOUS` | warning | flattened | SXF import | Entities of a compound figure placed in several partial drawings were left without a partial drawing. |
+| `SXF_PARTIAL_DRAWING_FLATTENED` | info | flattened | SXF import | Partial drawings were flattened to sheet coordinates; their placements are kept in `header.metadata.sxf.partial_drawings` and each entity names its partial drawing in `metadata.sxf.partial_drawing`. |
 | `SXF_PRIMITIVE_CONVERSION_FAILED` | error | skipped | SXF import | A malformed SXF primitive was skipped. |
 | `SXF_PRIMITIVE_SKIPPED` | warning | skipped | SXF import | An unsupported SXF primitive was skipped. |
 

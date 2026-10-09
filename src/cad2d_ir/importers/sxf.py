@@ -30,6 +30,58 @@ _DIMENSION_KINDS = {
     "radius_dim": "RADIAL",
     "diameter_dim": "DIAMETER",
 }
+# Compound figure kinds (``sfig_org`` kind flag): 1 = partial drawing in the
+# mathematical coordinate system, 2 = partial drawing in the geodetic system,
+# 3 = drawing group, 4 = drawing part. Only the first two are partial drawings.
+_PARTIAL_DRAWING_SYSTEMS = {1: "mathematical", 2: "geodetic"}
+# AP202 subfigure names carry the kind as a prefix.
+_P21_PARTIAL_PREFIXES = {"$$SXF_FM_": "mathematical", "$$SXF_FG_": "geodetic"}
+# Standard sheets (sheet type 0-4 = A0-A4) in landscape millimetres; 9 = FREE.
+_STANDARD_SHEETS_MM = {
+    0: (1189.0, 841.0),
+    1: (841.0, 594.0),
+    2: (594.0, 420.0),
+    3: (420.0, 297.0),
+    4: (297.0, 210.0),
+}
+_FREE_SHEET_TYPE = 9
+_SHEET_SIZE_TOLERANCE_MM = 0.5
+_STEP_ESCAPE_RE = re.compile(r"\\X([24])\\([0-9A-Fa-f]+)\\X0\\")
+_P21_SHEET_NAME_RE = re.compile(r"^A([0-4])_(horizontal|vertical)$", re.IGNORECASE)
+
+_Affine = tuple[float, float, float, float, float, float]
+_IDENTITY: _Affine = (1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+
+@dataclass(slots=True)
+class _PartialDrawing:
+    """A partial drawing placed on the sheet: its placement and its entities."""
+
+    name: str
+    coordinate_system: str
+    position: tuple[float, float]
+    angle_deg: float
+    ratio_x: float
+    ratio_y: float
+    definition_id: int
+    placement_id: int
+    entity_count: int = 0
+
+    def as_metadata(self) -> dict[str, Any]:
+        result: dict[str, Any] = {
+            "name": self.name,
+            "coordinate_system": self.coordinate_system,
+            "position": [self.position[0], self.position[1]],
+            "angle_deg": self.angle_deg,
+            "ratio_x": self.ratio_x,
+            "ratio_y": self.ratio_y,
+            "entity_count": self.entity_count,
+            "definition_id": self.definition_id,
+            "placement_id": self.placement_id,
+        }
+        if math.isclose(self.ratio_x, self.ratio_y, rel_tol=1.0e-9):
+            result["scale_denominator"] = 1.0 / self.ratio_x
+        return result
 
 
 @dataclass(slots=True)
@@ -47,6 +99,12 @@ class _ConversionContext:
     text_styles: dict[str, dict[str, Any]] = field(default_factory=dict)
     preserved_dimensions: int = 0
     next_entity_number: int = 1
+    # partial drawings placed on the sheet, by name; which source feature each
+    # entity was rendered through; features reachable from several placements
+    partials: dict[str, _PartialDrawing] = field(default_factory=dict)
+    partial_of: dict[int, str] = field(default_factory=dict)
+    ambiguous_ids: set[int] = field(default_factory=set)
+    ambiguous_entities: int = 0
 
     def allocate_id(self) -> str:
         entity_id = f"SXF_E{self.next_entity_number:08d}"
@@ -61,13 +119,16 @@ def convert_sxf_file_to_ir(
 ) -> ImportResult:
     """Read an SFC/P21 file with ``ezsxf`` and convert its drawing model to IR."""
     try:
+        import ezsxf
         from ezsxf import parse_p21, parse_sfc
-        from ezsxf._drawing import build_drawing
     except ImportError as exc:
         raise MissingOptionalDependencyError(
             "SXF support requires the optional dependency ezsxf; "
             'install it with `pip install "cad2d-ir[sxf]"`.'
         ) from exc
+    build_drawing = getattr(ezsxf, "build_drawing", None)
+    if build_drawing is None:  # ezsxf < 0.3.1 has no public entry point
+        from ezsxf._drawing import build_drawing
 
     import_options = options or ImportOptions()
     source_path = Path(path)
@@ -120,11 +181,15 @@ def sxf_drawing_to_ir(
     feature_by_id = {
         int(feature["id"]): feature for feature in typed_features if "id" in feature
     }
+    partials, partial_of, ambiguous_ids = _partial_drawings(parsed_map, feature_by_id)
     context = _ConversionContext(
         options=import_options,
         container=container,
         feature_by_id=feature_by_id,
         user_linetype_patterns=_user_linetype_patterns(typed_features),
+        partials={partial.name: partial for partial in partials},
+        partial_of=partial_of,
+        ambiguous_ids=ambiguous_ids,
     )
 
     paths = list(_iter_attr(drawing, "paths"))
@@ -246,6 +311,13 @@ def sxf_drawing_to_ir(
             }
         },
     }
+    sheet = _sheet_metadata(parsed_map, feature_by_id)
+    if sheet is not None:
+        header["metadata"]["sxf"]["sheet"] = sheet
+    if partials:
+        header["metadata"]["sxf"]["partial_drawings"] = [
+            partial.as_metadata() for partial in partials
+        ]
     bounds = _drawing_bounds(drawing)
     if bounds is not None:
         header["bbox"] = {
@@ -290,6 +362,7 @@ def sxf_drawing_to_ir(
         "skipped_entity_counts": dict(sorted(context.skipped_counts.items())),
         "approximated_entities": sum(context.approximation_counts.values()),
         "preserved_dimensions": context.preserved_dimensions,
+        "partial_drawings": len(partials),
     }
     return ImportResult(
         document=document,
@@ -688,6 +761,14 @@ def _primitive_common_values(
     }
     if feature.get("keyword") is not None:
         metadata["keyword"] = str(feature["keyword"])
+    partial_name = context.partial_of.get(source_id)
+    if partial_name is not None:
+        metadata["partial_drawing"] = partial_name
+        partial = context.partials.get(partial_name)
+        if partial is not None:
+            partial.entity_count += 1
+    elif source_id in context.ambiguous_ids:
+        context.ambiguous_entities += 1
     return {
         "id": context.allocate_id(),
         "layer": layer,
@@ -812,6 +893,34 @@ def _append_summary_diagnostics(context: _ConversionContext) -> None:
                     action="skipped",
                 )
             )
+    if context.partials:
+        placed = sum(partial.entity_count for partial in context.partials.values())
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="SXF_PARTIAL_DRAWING_FLATTENED",
+                severity="info",
+                message=(
+                    f"Flattened {len(context.partials)} partial drawings "
+                    f"({placed} entities) to sheet coordinates; their placements are "
+                    "in header.metadata.sxf.partial_drawings and each entity names "
+                    "its partial drawing in metadata.sxf.partial_drawing."
+                ),
+                action="flattened",
+            )
+        )
+    if context.ambiguous_entities:
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="SXF_PARTIAL_DRAWING_AMBIGUOUS",
+                severity="warning",
+                message=(
+                    f"{context.ambiguous_entities} entities come from a compound "
+                    "figure that is placed in more than one partial drawing; no "
+                    "partial drawing was recorded for them."
+                ),
+                action="flattened",
+            )
+        )
     if context.container == "p21":
         context.diagnostics.append(
             ImportDiagnostic(
@@ -1000,6 +1109,610 @@ def _sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# Sheet and partial drawings
+#
+# ``ezsxf`` flattens every compound figure placement into sheet coordinates. The
+# sheet (paper) and the placements of the partial drawings are kept in
+# ``header.metadata.sxf`` so that a writer can put the entities back into
+# partial drawings at their original scale; each entity names its partial
+# drawing in ``metadata.sxf.partial_drawing``.
+
+
+def _sheet_metadata(
+    parsed: Mapping[str, Any], feature_by_id: Mapping[int, Mapping[str, Any]]
+) -> dict[str, Any] | None:
+    """The drawing sheet: name, standard size (A0-A4) or FREE, orientation, mm."""
+    if str(parsed.get("format", "sfc")).lower() == "p21":
+        return _p21_sheet_metadata(_p21_records(parsed))
+    for feature in feature_by_id.values():
+        if str(feature.get("kind")) != "drawing_sheet":
+            continue
+        return _sheet_dict(
+            name=str(feature.get("name") or ""),
+            sheet_type=_optional_int(feature.get("sheet_type")),
+            landscape=_optional_int(feature.get("orientation")) != 0,
+            width=_optional_float(feature.get("free_x_mm")),
+            height=_optional_float(feature.get("free_y_mm")),
+        )
+    return None
+
+
+def _sheet_dict(
+    *,
+    name: str,
+    sheet_type: int | None,
+    landscape: bool,
+    width: float | None,
+    height: float | None,
+) -> dict[str, Any] | None:
+    if sheet_type in _STANDARD_SHEETS_MM:
+        paper = f"A{sheet_type}"
+        long_side, short_side = _STANDARD_SHEETS_MM[sheet_type]
+        width, height = (
+            (long_side, short_side) if landscape else (short_side, long_side)
+        )
+    elif width is not None and height is not None and width > 0.0 and height > 0.0:
+        paper = "FREE"
+        sheet_type = _FREE_SHEET_TYPE
+    else:
+        return None
+    return {
+        "name": name,
+        "sheet_type": sheet_type,
+        "paper": paper,
+        "orientation": "landscape" if landscape else "portrait",
+        "width_mm": float(width),
+        "height_mm": float(height),
+    }
+
+
+def _partial_drawings(
+    parsed: Mapping[str, Any], feature_by_id: Mapping[int, Mapping[str, Any]]
+) -> tuple[list[_PartialDrawing], dict[int, str], set[int]]:
+    """Partial drawings placed on the sheet, the partial drawing of each source
+    feature, and the features reachable from more than one partial drawing."""
+    if str(parsed.get("format", "sfc")).lower() == "p21":
+        placements = _p21_partial_placements(_p21_records(parsed))
+    else:
+        placements = _sfc_partial_placements(parsed, feature_by_id)
+    partials: list[_PartialDrawing] = []
+    membership: dict[int, str] = {}
+    ambiguous: set[int] = set()
+    used_names: set[str] = set()
+    for partial, reachable in placements:
+        if (
+            not all(
+                math.isfinite(value)
+                for value in (
+                    *partial.position,
+                    partial.angle_deg,
+                    partial.ratio_x,
+                    partial.ratio_y,
+                )
+            )
+            or partial.ratio_x <= 0.0
+            or partial.ratio_y <= 0.0
+        ):
+            continue
+        partial.name = _unique_partial_name(
+            partial.name.strip() or f"#{partial.definition_id}", used_names
+        )
+        used_names.add(partial.name)
+        partials.append(partial)
+        for feature_id in reachable:
+            if feature_id in ambiguous:
+                continue
+            owner = membership.get(feature_id)
+            if owner is None:
+                membership[feature_id] = partial.name
+            elif owner != partial.name:
+                del membership[feature_id]
+                ambiguous.add(feature_id)
+    return partials, membership, ambiguous
+
+
+def _unique_partial_name(candidate: str, used: set[str]) -> str:
+    if candidate not in used:
+        return candidate
+    number = 2
+    while f"{candidate}~{number}" in used:
+        number += 1
+    return f"{candidate}~{number}"
+
+
+def _sfc_partial_placements(
+    parsed: Mapping[str, Any], feature_by_id: Mapping[int, Mapping[str, Any]]
+) -> list[tuple[_PartialDrawing, set[int]]]:
+    model = parsed.get("model")
+    if not isinstance(model, Mapping):
+        return []
+    sheet = model.get("sheet")
+    if not isinstance(sheet, Mapping):
+        return []
+    definitions: dict[int, Mapping[str, Any]] = {}
+    targets: dict[int, int] = {}
+    for item in _mapping_items(model.get("sfig_definitions")):
+        if item.get("entity_id") is not None:
+            definitions.setdefault(int(item["entity_id"]), item)
+    for item in _mapping_items(model.get("attribute_attachments")):
+        if item.get("definition_id") is None:
+            continue
+        definition_id = int(item["definition_id"])
+        definitions.setdefault(definition_id, item)
+        for placement_id in item.get("placement_ids") or []:
+            targets[int(placement_id)] = definition_id
+    for item in _mapping_items(model.get("sfig_references")):
+        if (
+            item.get("placement_id") is not None
+            and item.get("definition_id") is not None
+        ):
+            targets[int(item["placement_id"])] = int(item["definition_id"])
+
+    result: list[tuple[_PartialDrawing, set[int]]] = []
+    for component_id in sheet.get("component_ids") or []:
+        placement_id = int(component_id)
+        feature = feature_by_id.get(placement_id)
+        if feature is None or str(feature.get("kind")) != "sfig_locate":
+            continue
+        definition_id = targets.get(placement_id)
+        definition = (
+            definitions.get(definition_id) if definition_id is not None else None
+        )
+        if definition is None or definition_id is None:
+            continue
+        system = _PARTIAL_DRAWING_SYSTEMS.get(
+            _optional_int(definition.get("kind_flag")) or 0
+        )
+        if system is None:
+            continue
+        position = feature.get("position")
+        if not isinstance(position, Mapping):
+            position = {}
+        try:
+            partial = _PartialDrawing(
+                name=str(definition.get("name") or feature.get("name") or ""),
+                coordinate_system=system,
+                position=(float(position.get("x", 0.0)), float(position.get("y", 0.0))),
+                angle_deg=float(feature.get("angle_deg", 0.0)),
+                ratio_x=float(feature.get("ratio_x", 1.0)),
+                ratio_y=float(feature.get("ratio_y", 1.0)),
+                definition_id=definition_id,
+                placement_id=placement_id,
+            )
+        except (TypeError, ValueError):
+            continue
+        reachable: set[int] = set()
+        stack = [definition_id]
+        seen: set[int] = set()
+        while stack:
+            current = stack.pop()
+            if current in seen:
+                continue
+            seen.add(current)
+            current_definition = definitions.get(current)
+            if current_definition is None:
+                continue
+            for member in current_definition.get("component_ids") or []:
+                member_id = int(member)
+                reachable.add(member_id)
+                nested = targets.get(member_id)
+                if nested is not None:
+                    stack.append(nested)
+        result.append((partial, reachable))
+    return result
+
+
+def _mapping_items(value: Any) -> list[Mapping[str, Any]]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return []
+    return [item for item in value if isinstance(item, Mapping)]
+
+
+# -- P21 (AP202): the same structure, read from the STEP records -------------
+
+
+def _p21_records(parsed: Mapping[str, Any]) -> dict[int, dict[str, Mapping[str, Any]]]:
+    """``{entity id: {RECORD KEYWORD: record}}`` for every DATA entity."""
+    result: dict[int, dict[str, Mapping[str, Any]]] = {}
+    for entity in parsed.get("entities") or []:
+        if not isinstance(entity, Mapping) or entity.get("id") is None:
+            continue
+        records = entity.get("records")
+        if not isinstance(records, list):
+            record = entity.get("record")
+            records = [record] if isinstance(record, Mapping) else []
+        result[int(entity["id"])] = {
+            str(record.get("keyword", "")).upper(): record
+            for record in records
+            if isinstance(record, Mapping)
+        }
+    return result
+
+
+def _p21_sheet_metadata(
+    records: Mapping[int, Mapping[str, Mapping[str, Any]]],
+) -> dict[str, Any] | None:
+    for sheet_id, entity_records in records.items():
+        sheet = entity_records.get("DRAWING_SHEET_REVISION")
+        if sheet is None:
+            continue
+        params = sheet.get("parameters", [])
+        name = (
+            _decode_step_string(params[0])
+            if params and isinstance(params[0], str)
+            else ""
+        )
+        box_ids = [
+            item
+            for item in (_p21_references(params[1]) if len(params) >= 2 else [])
+            if "PLANAR_BOX" in records.get(item, {})
+        ]
+        for other in records.values():
+            size = other.get("PRESENTATION_SIZE")
+            if size is None:
+                continue
+            size_params = size.get("parameters", [])
+            if len(size_params) >= 2 and _p21_reference(size_params[0]) == sheet_id:
+                box_id = _p21_reference(size_params[1])
+                if box_id is not None:
+                    box_ids.append(box_id)
+        width = height = None
+        for box_id in box_ids:
+            box = records.get(box_id, {}).get("PLANAR_BOX")
+            box_params = box.get("parameters", []) if box is not None else []
+            if len(box_params) >= 3:
+                width = _optional_float(box_params[1])
+                height = _optional_float(box_params[2])
+                if width is not None and height is not None:
+                    break
+        match = _P21_SHEET_NAME_RE.match(name)
+        if match:
+            sheet_type: int | None = int(match.group(1))
+            landscape = match.group(2).lower() == "horizontal"
+        elif width is not None and height is not None:
+            sheet_type = _standard_sheet_type(width, height)
+            landscape = width >= height
+        else:
+            continue
+        # The sheet revision is named after the paper; the drawing title is the
+        # DRAUGHTING_TITLE of the drawing revision.
+        return _sheet_dict(
+            name=_p21_drawing_title(records),
+            sheet_type=sheet_type,
+            landscape=landscape,
+            width=width,
+            height=height,
+        )
+    return None
+
+
+def _p21_drawing_title(records: Mapping[int, Mapping[str, Mapping[str, Any]]]) -> str:
+    for entity_records in records.values():
+        title = entity_records.get("DRAUGHTING_TITLE")
+        if title is None:
+            continue
+        params = title.get("parameters", [])
+        if len(params) >= 3 and isinstance(params[2], str):
+            return _decode_step_string(params[2])
+    return ""
+
+
+def _standard_sheet_type(width: float, height: float) -> int:
+    for sheet_type, (long_side, short_side) in _STANDARD_SHEETS_MM.items():
+        for first, second in ((long_side, short_side), (short_side, long_side)):
+            if (
+                abs(width - first) <= _SHEET_SIZE_TOLERANCE_MM
+                and abs(height - second) <= _SHEET_SIZE_TOLERANCE_MM
+            ):
+                return sheet_type
+    return _FREE_SHEET_TYPE
+
+
+def _p21_partial_placements(
+    records: Mapping[int, Mapping[str, Mapping[str, Any]]],
+) -> list[tuple[_PartialDrawing, set[int]]]:
+    sheet_items: list[int] = []
+    for entity_records in records.values():
+        sheet = entity_records.get("DRAWING_SHEET_REVISION")
+        if sheet is not None:
+            params = sheet.get("parameters", [])
+            if len(params) >= 2:
+                sheet_items = list(_p21_references(params[1]))
+            break
+    result: list[tuple[_PartialDrawing, set[int]]] = []
+    for item_id in sheet_items:
+        mapped_id = _p21_mapped_item(records, item_id)
+        if mapped_id is None:
+            continue
+        mapped_params = records[mapped_id]["MAPPED_ITEM"].get("parameters", [])
+        if len(mapped_params) < 2:
+            continue
+        map_id = _p21_reference(mapped_params[0])
+        target_id = _p21_reference(mapped_params[1])
+        map_record = records.get(map_id, {}).get("SYMBOL_REPRESENTATION_MAP")
+        if map_id is None or target_id is None or map_record is None:
+            continue
+        map_params = map_record.get("parameters", [])
+        if len(map_params) < 2:
+            continue
+        source_axis_id = _p21_reference(map_params[0])
+        representation_id = _p21_reference(map_params[1])
+        representation = records.get(representation_id, {}).get(
+            "DRAUGHTING_SUBFIGURE_REPRESENTATION"
+        )
+        if representation_id is None or representation is None:
+            continue
+        representation_params = representation.get("parameters", [])
+        raw_name = (
+            _decode_step_string(representation_params[0])
+            if representation_params and isinstance(representation_params[0], str)
+            else ""
+        )
+        system = None
+        name = raw_name
+        for prefix, value in _P21_PARTIAL_PREFIXES.items():
+            if raw_name.startswith(prefix):
+                system, name = value, raw_name[len(prefix) :]
+                break
+        if system is None:
+            continue
+        source = (
+            _p21_axis_transform(records, source_axis_id)
+            if source_axis_id is not None
+            else _IDENTITY
+        )
+        inverse = _inverse_affine(source)
+        if inverse is None:
+            continue
+        a, b, c, d, e, f = _compose_affine(
+            _p21_symbol_target_transform(records, target_id), inverse
+        )
+        partial = _PartialDrawing(
+            name=name,
+            coordinate_system=system,
+            position=(e, f),
+            angle_deg=math.degrees(math.atan2(b, a)),
+            ratio_x=math.hypot(a, b),
+            ratio_y=math.hypot(c, d),
+            definition_id=representation_id,
+            placement_id=item_id,
+        )
+        reachable: set[int] = set()
+        items = (
+            list(_p21_references(representation_params[1]))
+            if len(representation_params) >= 2
+            else []
+        )
+        _p21_collect_items(records, items, reachable, {representation_id})
+        result.append((partial, reachable))
+    return result
+
+
+def _p21_mapped_item(
+    records: Mapping[int, Mapping[str, Mapping[str, Any]]], item_id: int
+) -> int | None:
+    """The entity holding the ``MAPPED_ITEM`` of a sheet item (the item itself or
+    the target of its ``STYLED_ITEM``), or ``None``."""
+    entity_records = records.get(item_id, {})
+    if "MAPPED_ITEM" in entity_records:
+        return item_id
+    styled = entity_records.get("STYLED_ITEM")
+    if styled is not None:
+        _, target_id = _p21_styled_item_parts(styled)
+        if target_id is not None and "MAPPED_ITEM" in records.get(target_id, {}):
+            return target_id
+    return None
+
+
+def _p21_collect_items(
+    records: Mapping[int, Mapping[str, Mapping[str, Any]]],
+    item_ids: Sequence[int],
+    reachable: set[int],
+    active: set[int],
+) -> None:
+    """Collect every entity id rendered for *item_ids*, through styled items,
+    callouts and nested subfigure placements (the ids ``ezsxf`` reports as
+    ``source_id``)."""
+    for item_id in item_ids:
+        if item_id in reachable:
+            continue
+        reachable.add(item_id)
+        entity_records = records.get(item_id, {})
+        styled = entity_records.get("STYLED_ITEM")
+        if styled is not None:
+            _, target_id = _p21_styled_item_parts(styled)
+            if target_id is not None:
+                _p21_collect_items(records, [target_id], reachable, active)
+        callout = entity_records.get("DRAUGHTING_CALLOUT")
+        if callout is not None:
+            params = callout.get("parameters", [])
+            if params:
+                _p21_collect_items(
+                    records, list(_p21_references(params[0])), reachable, active
+                )
+        mapped = entity_records.get("MAPPED_ITEM")
+        if mapped is not None:
+            params = mapped.get("parameters", [])
+            map_record = (
+                records.get(_p21_reference(params[0]), {}).get(
+                    "SYMBOL_REPRESENTATION_MAP"
+                )
+                if params
+                else None
+            )
+            map_params = (
+                map_record.get("parameters", []) if map_record is not None else []
+            )
+            representation_id = (
+                _p21_reference(map_params[1]) if len(map_params) >= 2 else None
+            )
+            if representation_id is not None and representation_id not in active:
+                _p21_collect_items(
+                    records,
+                    [representation_id],
+                    reachable,
+                    active | {representation_id},
+                )
+        representation = entity_records.get("DRAUGHTING_SUBFIGURE_REPRESENTATION")
+        if representation is not None:
+            params = representation.get("parameters", [])
+            if len(params) >= 2:
+                _p21_collect_items(
+                    records, list(_p21_references(params[1])), reachable, active
+                )
+
+
+def _p21_styled_item_parts(
+    record: Mapping[str, Any],
+) -> tuple[tuple[int, ...], int | None]:
+    params = record.get("parameters", [])
+    offset = 1 if len(params) >= 3 and isinstance(params[0], str) else 0
+    if len(params) < offset + 2:
+        return (), None
+    return tuple(_p21_references(params[offset])), _p21_reference(params[offset + 1])
+
+
+def _p21_axis_transform(
+    records: Mapping[int, Mapping[str, Mapping[str, Any]]], axis_id: int
+) -> _Affine:
+    axis = records.get(axis_id, {}).get("AXIS2_PLACEMENT_2D")
+    if axis is None:
+        return _IDENTITY
+    params = axis.get("parameters", [])
+    origin = (0.0, 0.0)
+    direction = (1.0, 0.0)
+    origin_id = _p21_reference(params[1]) if len(params) >= 2 else None
+    if origin_id is not None:
+        origin = _p21_coordinates(records, origin_id, "CARTESIAN_POINT", origin)
+    direction_id = _p21_reference(params[2]) if len(params) >= 3 else None
+    if direction_id is not None:
+        dx, dy = _p21_coordinates(records, direction_id, "DIRECTION", direction)
+        length = math.hypot(dx, dy)
+        if length > 1.0e-15:
+            direction = (dx / length, dy / length)
+    return (
+        direction[0],
+        direction[1],
+        -direction[1],
+        direction[0],
+        origin[0],
+        origin[1],
+    )
+
+
+def _p21_coordinates(
+    records: Mapping[int, Mapping[str, Mapping[str, Any]]],
+    entity_id: int,
+    keyword: str,
+    default: tuple[float, float],
+) -> tuple[float, float]:
+    record = records.get(entity_id, {}).get(keyword)
+    if record is None:
+        return default
+    params = record.get("parameters", [])
+    values = params[1] if len(params) >= 2 else None
+    if (
+        not isinstance(values, Sequence)
+        or isinstance(values, (str, bytes))
+        or len(values) < 2
+    ):
+        return default
+    x, y = _optional_float(values[0]), _optional_float(values[1])
+    if x is None or y is None:
+        return default
+    return (x, y)
+
+
+def _p21_symbol_target_transform(
+    records: Mapping[int, Mapping[str, Mapping[str, Any]]], target_id: int
+) -> _Affine:
+    target = records.get(target_id, {}).get("SYMBOL_TARGET")
+    if target is None:
+        return _IDENTITY
+    params = target.get("parameters", [])
+    axis_id = _p21_reference(params[1]) if len(params) >= 2 else None
+    axis = _p21_axis_transform(records, axis_id) if axis_id is not None else _IDENTITY
+    ratio_x = (_optional_float(params[2]) if len(params) >= 3 else None) or 1.0
+    ratio_y = (_optional_float(params[3]) if len(params) >= 4 else None) or ratio_x
+    return _compose_affine(axis, (ratio_x, 0.0, 0.0, ratio_y, 0.0, 0.0))
+
+
+def _p21_reference(value: Any) -> int | None:
+    if isinstance(value, Mapping) and value.get("kind") == "reference":
+        try:
+            return int(value["value"])
+        except (KeyError, TypeError, ValueError):
+            return None
+    return None
+
+
+def _p21_references(value: Any) -> Iterable[int]:
+    reference = _p21_reference(value)
+    if reference is not None:
+        yield reference
+    elif isinstance(value, Mapping):
+        for child in value.values():
+            yield from _p21_references(child)
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            yield from _p21_references(child)
+
+
+def _decode_step_string(value: str) -> str:
+    """Decode Part 21 ``\\X2\\``/``\\X4\\`` Unicode escapes (names stay raw otherwise)."""
+
+    def replace(match: re.Match[str]) -> str:
+        encoding = "utf-16-be" if match.group(1) == "2" else "utf-32-be"
+        try:
+            return bytes.fromhex(match.group(2)).decode(encoding)
+        except (UnicodeDecodeError, ValueError):
+            return match.group(0)
+
+    return _STEP_ESCAPE_RE.sub(replace, value)
+
+
+def _compose_affine(outer: _Affine, inner: _Affine) -> _Affine:
+    """``outer`` applied after ``inner`` (x' = a*x + c*y + e, y' = b*x + d*y + f)."""
+    a1, b1, c1, d1, e1, f1 = outer
+    a2, b2, c2, d2, e2, f2 = inner
+    return (
+        a1 * a2 + c1 * b2,
+        b1 * a2 + d1 * b2,
+        a1 * c2 + c1 * d2,
+        b1 * c2 + d1 * d2,
+        a1 * e2 + c1 * f2 + e1,
+        b1 * e2 + d1 * f2 + f1,
+    )
+
+
+def _inverse_affine(transform: _Affine) -> _Affine | None:
+    a, b, c, d, e, f = transform
+    determinant = a * d - b * c
+    if abs(determinant) <= 1.0e-15:
+        return None
+    ia, ib, ic, id_ = (
+        d / determinant,
+        -b / determinant,
+        -c / determinant,
+        a / determinant,
+    )
+    return (ia, ib, ic, id_, -(ia * e + ic * f), -(ib * e + id_ * f))
+
+
+def _optional_int(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return int(value)
+
+
+def _optional_float(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) else None
 
 
 __all__ = ["convert_sxf_file_to_ir", "sxf_drawing_to_ir"]

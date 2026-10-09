@@ -102,6 +102,15 @@ writer produces no `OBJECTS` section): the active sheet with its viewports,
 or the first sheet with content. Other sheets are reported with
 `DXF_LAYOUT_OMITTED`.
 
+## SXF sheet and partial drawings
+
+An SXF drawing is a sheet in millimetres with partial drawings placed on it
+at a scale (1:100, 1:500, ...), possibly rotated. The importer flattens them,
+so `entities` holds sheet coordinates; the sheet and the placements stay in
+`header.metadata.sxf.sheet` and `header.metadata.sxf.partial_drawings`, and
+each entity names its partial drawing in `metadata.sxf.partial_drawing`. See
+"Sheet and partial drawings" in docs/IMPORTERS.md.
+
 ## Text anchor
 
 `TEXT.insert` is the point that `halign` and `valign` refer to: the left end of

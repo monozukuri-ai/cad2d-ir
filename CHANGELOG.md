@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.10.8
+
+- SXF: the sheet and the partial drawings are kept. `header.metadata.sxf.sheet`
+  holds the paper (A0-A4 or FREE, orientation, millimetres) and
+  `header.metadata.sxf.partial_drawings` the partial drawings placed on it,
+  with their coordinate system (mathematical or geodetic), placement, angle,
+  ratios and scale; each entity names its partial drawing in
+  `metadata.sxf.partial_drawing`. `ezsxf` flattens the placements, so
+  `entities` stays in sheet coordinates and a writer can now put the entities
+  back into partial drawings at the original scale. SFC reads the structure
+  from the resolved model, P21 from the STEP records (`DRAWING_SHEET_REVISION`,
+  `PLANAR_BOX`, `DRAUGHTING_SUBFIGURE_REPRESENTATION` with the `$$SXF_FM_` /
+  `$$SXF_FG_` prefixes, `SYMBOL_TARGET`). New diagnostics
+  `SXF_PARTIAL_DRAWING_FLATTENED` (info) and `SXF_PARTIAL_DRAWING_AMBIGUOUS`
+  (a part placed in several partial drawings). See "Sheet and partial
+  drawings" in docs/IMPORTERS.md.
+- SXF: `ezsxf.build_drawing` (public since ezsxf 0.3.1) is used when present.
+- `cad2d_ir.__version__` matches the package version again.
+
 ## 0.10.5
 
 - Paper space is kept apart from model space. `entities` is model space; the

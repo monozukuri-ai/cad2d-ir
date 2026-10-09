@@ -398,6 +398,20 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "SXF import",
         "P21 semantics were flattened to drawing primitives.",
     ),
+    "SXF_PARTIAL_DRAWING_AMBIGUOUS": DiagnosticCode(
+        "warning",
+        "flattened",
+        "SXF import",
+        "Entities of a compound figure placed in several partial drawings were "
+        "left without a partial drawing.",
+    ),
+    "SXF_PARTIAL_DRAWING_FLATTENED": DiagnosticCode(
+        "info",
+        "flattened",
+        "SXF import",
+        "Partial drawings were flattened to sheet coordinates; their placements "
+        "are kept in header.metadata.sxf.partial_drawings.",
+    ),
     "DXF_CONSTRAINTS_OMITTED": DiagnosticCode(
         "warning", "skipped", "DXF export", "IR-only constraints were omitted."
     ),
