@@ -43,6 +43,16 @@ The JWW adapter consumes `ezjww.read_document()` rather than `read_dxf_document(
 
 JWW pen color, pen style, pen width, layer/group state, source indices, file version, memo, paper size, and internal printer/view settings are retained through IR style fields, tables, provenance, or JWW metadata. `JWW_METADATA_SETTING_EXTRACTED` reports the source-entity-to-metadata separation.
 
+Line widths: an entity pen width above 0 becomes `lineweight_mm` (1/100 mm). The usual value 0 means "the width of the pen color", which Jw_cad keeps per file in the printer pen table of the header. With `ezjww` 0.7.1 or later (`header["pens"]`) the importer records that table under `header.metadata.jww.pens` (`JWW_PEN_TABLE_PRESERVED`) rather than on the entities, so that writing the drawing back keeps the colour-dependent widths and a renderer resolves the width as `lineweight_mm` → `pens.printer[pen color].width_mm` (`pens.extended[pen color]` for 101-356) → layer:
+
+```json
+{"unit": "hundredth_mm", "max_draw_width": -101, "printer_dpi": null, "screen_widths": [1, 1, ...],
+ "printer": {"0": {...}, "1": {"width": 1, "width_mm": 0.01, "color": "#000000", "point_radius_mm": 0.2}, ..., "9": {...}},
+ "extended": {"100": {...}, "101": {...}, ..., "356": {...}}}
+```
+
+`width_mm` is the printed width: the stored value when the file uses 1/100 mm (`unit: "hundredth_mm"`, `max_draw_width` below 0, the "線幅を1/100mm単位とする" setting), or dots over `printer_dpi` (`unit: "dot"`); it is `null` when the width is 0 or the dpi is not recorded. Every stored pen is listed, with its raw `width` and the screen widths, so that a JWW writer can restore the table unchanged: 0 is the background, 9 the construction line color and 100 a spare slot; entities use 1-9 and 101-356.
+
 The entity pen style is the Jw_cad line type number:
 
 | Pen style | Jw_cad line type | IR linetype | `pattern_mm` |

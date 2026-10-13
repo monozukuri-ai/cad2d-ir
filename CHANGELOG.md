@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.12.1
+
+- JWW import: the printer pen table of the file (the line width Jw_cad prints
+  each pen color with, read by `ezjww` 0.7.1 as `header["pens"]`) is kept under
+  `header.metadata.jww.pens` with the width in millimetres resolved from the
+  file's unit (1/100 mm, or dots over the recorded dpi), and reported by
+  `JWW_PEN_TABLE_PRESERVED`. Entities keep `lineweight_mm` only for an explicit
+  pen width, so colour-dependent widths survive a round trip and a renderer
+  resolves them through the table.
+
 ## 0.12.0
 
 - JWS import: Jw_cad registered symbols (図形登録, `.jws`, versions 351, 420,

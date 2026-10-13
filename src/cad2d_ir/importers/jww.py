@@ -217,6 +217,84 @@ def _optional_int(value: Any) -> int | None:
     return value
 
 
+def _colorref_hex(color: int) -> str:
+    """A Win32 COLORREF (``0x00BBGGRR``, as ``ezjww`` normalizes it) as ``#RRGGBB``."""
+    return f"#{color & 0xFF:02X}{(color >> 8) & 0xFF:02X}{(color >> 16) & 0xFF:02X}"
+
+
+def _pen_table(header: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The printer pens of the file (``header["pens"]``, ``ezjww`` >= 0.7.1) for
+    ``header.metadata.jww.pens``.
+
+    Jw_cad prints an entity whose own pen width is 0 (the usual case) with the
+    width set for its pen color, so this table carries the line widths of most
+    drawings. ``width_mm`` is the printed width in millimetres: the stored width
+    directly when the file keeps widths in 1/100 mm, dots over the recorded dpi
+    otherwise; ``None`` when the width is 0 or the dpi is not recorded.
+
+    Every stored pen is kept (0 is the background and 9 the construction line
+    color, 100 a spare slot), with the raw ``width`` and the screen widths, so a
+    JWW writer can restore the table unchanged.
+    """
+    pens = header.get("pens")
+    if not isinstance(pens, Mapping):
+        return None
+    unit = pens.get("width_unit")
+    if unit not in ("hundredth_mm", "dot"):
+        return None
+    dpi = _optional_int(pens.get("printer_dpi"))
+
+    def width_mm(width: int | None) -> float | None:
+        if width is None or width <= 0:
+            return None
+        if unit == "hundredth_mm":
+            return round(width / 100.0, 6)
+        if dpi:
+            return round(width * 25.4 / dpi, 6)
+        return None
+
+    def entry(pen: Any) -> dict[str, Any] | None:
+        if not isinstance(pen, Mapping):
+            return None
+        width = _optional_int(pen.get("width"))
+        item: dict[str, Any] = {"width": width, "width_mm": width_mm(width)}
+        color = _optional_int(pen.get("color"))
+        if color is not None:
+            item["color"] = _colorref_hex(color)
+        radius = pen.get("point_radius")
+        if (
+            isinstance(radius, (int, float))
+            and not isinstance(radius, bool)
+            and math.isfinite(radius)
+        ):
+            item["point_radius_mm"] = float(radius)
+        return item
+
+    printer: dict[str, dict[str, Any]] = {}
+    for number, pen in enumerate(pens.get("printer") or ()):
+        if number <= 9 and (item := entry(pen)) is not None:
+            printer[str(number)] = item
+    extended: dict[str, dict[str, Any]] = {}
+    for index, pen in enumerate(pens.get("extended_printer") or ()):
+        # 100 is a spare slot, 101-116 the SXF colors, 117-356 user colors
+        if index < 257 and (item := entry(pen)) is not None:
+            extended[str(100 + index)] = item
+    table: dict[str, Any] = {
+        "unit": unit,
+        "max_draw_width": _optional_int(pens.get("max_draw_width")),
+        "printer_dpi": dpi,
+        "printer": printer,
+    }
+    screen_widths = pens.get("screen_widths")
+    if isinstance(screen_widths, Sequence) and not isinstance(
+        screen_widths, (str, bytes)
+    ):
+        table["screen_widths"] = [_optional_int(width) for width in screen_widths]
+    if extended:
+        table["extended"] = extended
+    return table
+
+
 def _used_linetype_table(
     table: Mapping[str, dict[str, Any]], used: set[str]
 ) -> dict[str, dict[str, Any]]:
@@ -466,6 +544,9 @@ def _jw_document_to_ir(
             # "default": they are the Jw_cad defaults.
             "line_type_settings": "file" if linetypes_from_file else "default",
         }
+        pen_table = _pen_table(header)
+        if pen_table is not None:
+            format_metadata["pens"] = pen_table
     if metadata_settings:
         format_metadata["settings"] = metadata_settings
 
@@ -500,6 +581,31 @@ def _jw_document_to_ir(
                 details={
                     "count": len(metadata_settings),
                     "keys": sorted({str(item["key"]) for item in metadata_settings}),
+                },
+            )
+        )
+    pen_table = format_metadata.get("pens")
+    if isinstance(pen_table, dict):
+        resolved = sum(
+            1
+            for table in (pen_table["printer"], pen_table.get("extended", {}))
+            for pen in table.values()
+            if pen.get("width_mm") is not None
+        )
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="JWW_PEN_TABLE_PRESERVED",
+                severity="info",
+                message=(
+                    "Preserved the printer pen table (line width per pen color) as "
+                    "header.metadata.jww.pens; entities with pen width 0 print at "
+                    "their pen color's width."
+                ),
+                action="preserved_metadata",
+                details={
+                    "unit": pen_table["unit"],
+                    "printer_dpi": pen_table["printer_dpi"],
+                    "widths_in_mm": resolved,
                 },
             )
         )

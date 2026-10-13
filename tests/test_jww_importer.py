@@ -838,3 +838,142 @@ def test_jww_malformed_image_text_stays_text() -> None:
     assert entity["kind"] == "TEXT"
     assert entity["text"] == "^@BMlogo.bmp"
     assert not [d for d in result.diagnostics if d.code.startswith("JWW_IMAGE")]
+
+
+# ---------------------------------------------------------------------------
+# Printer pen table (line width per pen color, ezjww >= 0.7.1)
+
+
+def _pens_header(
+    *,
+    unit: str = "hundredth_mm",
+    dpi: int | None = None,
+    widths: list[int] | None = None,
+    extended_width: int = 1,
+) -> dict:
+    """``header["pens"]`` as ``ezjww`` 0.7.1 reports it."""
+    widths = widths or [1, 1, 20, 20, 20, 20, 20, 20, 1, 1]
+    return {
+        "screen_widths": [1] * 10,
+        "printer": [
+            {"color": 0x000000, "width": w, "point_radius": 0.3} for w in widths
+        ],
+        "extended_printer": [
+            {"color": 0x0000FF, "width": extended_width, "point_radius": 0.18}
+            for _ in range(257)
+        ],
+        "max_draw_width": -101 if unit == "hundredth_mm" else 100,
+        "width_unit": unit,
+        "printer_dpi": dpi,
+    }
+
+
+def _pens_of(document: dict) -> tuple[dict, list]:
+    result = jww_document_to_ir(document)
+    metadata = result.document["header"]["metadata"]["jww"]
+    diagnostics = [d for d in result.diagnostics if d.code == "JWW_PEN_TABLE_PRESERVED"]
+    return metadata, diagnostics
+
+
+def test_jww_pen_table_is_kept_as_metadata_with_widths_in_mm() -> None:
+    document = _document()
+    document["header"]["pens"] = _pens_header()
+    document["entities"][0]["base"]["pen_width"] = (
+        0  # the usual case: the pen color's width
+    )
+    result = jww_document_to_ir(document)
+    pens = result.document["header"]["metadata"]["jww"]["pens"]
+    assert (pens["unit"], pens["max_draw_width"], pens["printer_dpi"]) == (
+        "hundredth_mm",
+        -101,
+        None,
+    )
+    # every stored pen is kept (0 background, 9 construction lines, 100 spare) for writing back
+    assert set(pens["printer"]) == {str(n) for n in range(0, 10)}
+    assert set(pens["extended"]) == {str(n) for n in range(100, 357)}
+    assert pens["screen_widths"] == [1] * 10
+    assert pens["printer"]["2"] == {
+        "width": 20,
+        "width_mm": 0.2,
+        "color": "#000000",
+        "point_radius_mm": 0.3,
+    }
+    assert pens["printer"]["1"]["width_mm"] == 0.01
+    # COLORREF 0x0000FF is red
+    assert pens["extended"]["118"] == {
+        "width": 1,
+        "width_mm": 0.01,
+        "color": "#FF0000",
+        "point_radius_mm": 0.18,
+    }
+    # the table does not become a per-entity width: only an explicit pen width does
+    line = next(e for e in result.document["entities"] if e["kind"] == "LINE")
+    assert "lineweight_mm" not in line
+    circle = next(e for e in result.document["entities"] if e["kind"] == "CIRCLE")
+    assert circle["lineweight_mm"] == 0.2
+    diagnostics = [d for d in result.diagnostics if d.code == "JWW_PEN_TABLE_PRESERVED"]
+    assert len(diagnostics) == 1
+    assert diagnostics[0].severity == "info"
+    assert diagnostics[0].details == {
+        "unit": "hundredth_mm",
+        "printer_dpi": None,
+        "widths_in_mm": 10 + 257,
+    }
+    validate_ir(result.document)
+
+
+def test_jww_pen_widths_in_dots_use_the_recorded_dpi() -> None:
+    document = _document()
+    document["header"]["pens"] = _pens_header(
+        unit="dot", dpi=300, widths=[1, 1, 2, 3, 4, 5, 6, 7, 8, 1], extended_width=18
+    )
+    metadata, diagnostics = _pens_of(document)
+    pens = metadata["pens"]
+    assert (pens["unit"], pens["max_draw_width"], pens["printer_dpi"]) == (
+        "dot",
+        100,
+        300,
+    )
+    assert pens["printer"]["2"]["width_mm"] == pytest.approx(2 * 25.4 / 300, abs=1e-6)
+    assert pens["printer"]["8"]["width_mm"] == pytest.approx(8 * 25.4 / 300, abs=1e-6)
+    assert pens["extended"]["101"]["width_mm"] == pytest.approx(
+        18 * 25.4 / 300, abs=1e-6
+    )
+    assert diagnostics[0].details["widths_in_mm"] == 10 + 257
+
+    # Without a recorded dpi (before Jw_cad 6) the dot widths cannot be expressed in mm.
+    document["header"]["pens"] = _pens_header(
+        unit="dot", dpi=None, widths=[1, 0, 2, 3, 4, 5, 6, 7, 8, 1], extended_width=0
+    )
+    metadata, diagnostics = _pens_of(document)
+    pens = metadata["pens"]
+    assert pens["printer"]["1"] == {
+        "width": 0,
+        "width_mm": None,
+        "color": "#000000",
+        "point_radius_mm": 0.3,
+    }
+    assert all(pen["width_mm"] is None for pen in pens["printer"].values())
+    assert all(pen["width_mm"] is None for pen in pens["extended"].values())
+    assert diagnostics[0].details == {
+        "unit": "dot",
+        "printer_dpi": None,
+        "widths_in_mm": 0,
+    }
+
+
+def test_jww_without_a_pen_table_has_no_pens_metadata() -> None:
+    metadata, diagnostics = _pens_of(_document())
+    assert "pens" not in metadata
+    assert diagnostics == []
+    # a unit this importer does not know (a future ezjww) is left out as well
+    document = _document()
+    document["header"]["pens"] = {**_pens_header(), "width_unit": "inch"}
+    metadata, diagnostics = _pens_of(document)
+    assert "pens" not in metadata
+    assert diagnostics == []
+    # an old ezjww without the extended pens: only the 1..8 table
+    document = _document()
+    document["header"]["pens"] = {**_pens_header(), "extended_printer": None}
+    metadata, _ = _pens_of(document)
+    assert "extended" not in metadata["pens"] and len(metadata["pens"]["printer"]) == 10

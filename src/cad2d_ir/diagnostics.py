@@ -210,6 +210,12 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "JWW / JWS import",
         "An internal Jw_cad setting TEXT was moved to document metadata.",
     ),
+    "JWW_PEN_TABLE_PRESERVED": DiagnosticCode(
+        "info",
+        "preserved_metadata",
+        "JWW import",
+        "The printer pen table (line width per pen color) was kept in header.metadata.jww.pens.",
+    ),
     "JWW_DECODE_REPLACED": DiagnosticCode(
         "warning",
         "normalized",

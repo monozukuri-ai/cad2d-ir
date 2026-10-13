@@ -114,6 +114,7 @@ entity/source identifiers and structured details.
 | `JWW_IMAGE_EMBEDDED` | info | converted | JWW import | A `^@BM` image placement became an `IMAGE` entity with the file bytes decoded from the drawing's image archive into `data`. |
 | `JWW_IMAGE_LINKED` | warning | - | JWW import | A `^@BM` image placement refers to a file that is not embedded in the drawing (external link, or a `%temp%` name missing from the archive); the `IMAGE` keeps the path in `href` and has no pixels. |
 | `JWW_METADATA_SETTING_EXTRACTED` | info | preserved_metadata | JWW / JWS import | A sentinel-positioned Jw_cad internal setting record was retained under `header.metadata.jww.settings` instead of becoming drawing TEXT. |
+| `JWW_PEN_TABLE_PRESERVED` | info | preserved_metadata | JWW import | The printer pen table of the file (the line width Jw_cad prints each pen color with, `ezjww` >= 0.7.1) was kept under `header.metadata.jww.pens`; entities with pen width 0 take their width from it. `details.widths_in_mm` counts the pens whose width could be expressed in millimetres. |
 | `JWW_TEXT_HEIGHT_DEFAULTED` | warning | normalized | JWW / JWS import | A non-positive text height was replaced. |
 | `JWW_UNRESOLVED_BLOCK_REFERENCE` | warning | - | JWW / JWS import | A referenced JWW block was not resolved. |
 | `JWW_UNSUPPORTED_ENTITY` | warning | skipped | JWW / JWS import | An unsupported JWW entity was skipped. |
