@@ -9,6 +9,7 @@ import pytest
 
 from cad2d_ir.importers.base import ImporterError, ImportOptions
 from cad2d_ir.importers.dgn_v8 import dgn_v8_document_to_ir
+from cad2d_ir.schema import validate_ir
 
 _DATA_DEFAULTS: dict[str, Any] = {
     "vertices": (),
@@ -469,3 +470,87 @@ def test_v7_real_fixture_still_routes_through_open_document() -> None:
     text = next(e for e in document["entities"] if e["kind"] == "TEXT")
     assert text["text"] == "Demo Text"
     assert text["halign"] == "left"
+
+
+# ---------------------------------------------------------------------------
+# Level table (ezdgn >= 0.2.8): name, number and ByLevel symbology on the layers
+
+
+def _level(
+    level_id: int,
+    name: str,
+    *,
+    number: int = 0,
+    weight: int = 0,
+    style: int = 0,
+    color: int = 0,
+):
+    return SimpleNamespace(
+        level_id=level_id,
+        number=number,
+        name=name,
+        line_style=style,
+        line_weight=weight,
+        color_index=color,
+    )
+
+
+def test_v8_level_table_is_applied_to_the_layers() -> None:
+    walls = _element(
+        "LINE", 1, 3, index=0, level=66, vertices=(_point(0.0, 0.0), _point(1.0, 0.0))
+    )
+    other = _element(
+        "LINE", 2, 3, index=1, level=70, vertices=(_point(0.0, 1.0), _point(1.0, 1.0))
+    )
+    document = _document(_Model((walls, other)))
+    document.levels = (
+        _level(66, "Walls", number=11, weight=2, style=4, color=7),
+        _level(64, "Default"),
+        _level(66, "Duplicate (ignored)", weight=9),
+    )
+    result = dgn_v8_document_to_ir(document)
+    layers = result.document["tables"]["layers"]
+    assert layers["DGN_LEVEL_66"]["metadata"]["dgn"] == {
+        "level": 66,
+        "name": "Walls",
+        "number": 11,
+        "line_style": 4,
+        "line_weight": 2,
+        "color_index": 7,
+    }
+    # a level used by elements but missing from the table keeps the bare metadata
+    assert layers["DGN_LEVEL_70"]["metadata"]["dgn"] == {"level": 70}
+    diagnostic = next(
+        d for d in result.diagnostics if d.code == "DGN_V8_LEVEL_TABLE_APPLIED"
+    )
+    assert diagnostic.severity == "info"
+    assert diagnostic.details == {"levels": 2, "layers": 1, "undefined_levels": [70]}
+    # the element keeps its own header weight (ByLevel stays the sentinel)
+    assert result.document["entities"][0]["metadata"]["dgn"]["line_weight"] == 2
+    validate_ir(result.document)
+
+
+def test_v8_document_without_a_level_table_is_unchanged() -> None:
+    line = _element(
+        "LINE", 1, 3, index=0, vertices=(_point(0.0, 0.0), _point(1.0, 0.0))
+    )
+    result = dgn_v8_document_to_ir(_document(_Model((line,))))
+    assert result.document["tables"]["layers"]["DGN_LEVEL_2"]["metadata"]["dgn"] == {
+        "level": 2
+    }
+    assert all(d.code != "DGN_V8_LEVEL_TABLE_APPLIED" for d in result.diagnostics)
+
+
+def test_v8_fixture_level_table_names_the_default_level() -> None:
+    ezdgn = pytest.importorskip("ezdgn")
+    if not hasattr(ezdgn, "V8Level"):
+        pytest.skip("ezdgn without the level table (< 0.2.8)")
+    from cad2d_ir import convert_dgn_file_to_ir
+
+    fixture = Path(__file__).parent / "data" / "dgn" / "test_dgnv8.dgn"
+    if not fixture.exists():
+        pytest.skip("V8 fixture not available")
+    result = convert_dgn_file_to_ir(fixture)
+    layer = result.document["tables"]["layers"]["DGN_LEVEL_64"]
+    assert layer["metadata"]["dgn"]["name"] == "Default"
+    assert layer["metadata"]["dgn"]["line_weight"] == 0

@@ -138,6 +138,7 @@ def dgn_v8_document_to_ir(
 
     entities = _convert_sequence(model.entities, context)
     _collect_unknown_elements(context)
+    _apply_level_table(document, context)
     _append_summary_diagnostics(context)
 
     unit_name = getattr(metadata_obj, "master_unit", None)
@@ -578,6 +579,61 @@ def _element_common(element: Any, context: _V8ConversionContext) -> dict[str, An
         },
         "metadata": {"dgn": metadata},
     }
+
+
+def _apply_level_table(document: Any, context: _V8ConversionContext) -> None:
+    """Put the level table (``ezdgn`` >= 0.2.8, ``document.levels``) on the layers.
+
+    A V8 element whose header stores the ByLevel sentinel (``0xffffffff``) for its
+    line weight, color or style takes the value of its level, so the layer carries
+    the level's name, number and ByLevel symbology under ``metadata.dgn``.
+    """
+    try:
+        levels = tuple(getattr(document, "levels", ()) or ())
+    except Exception:  # noqa: BLE001 - an older or partial reader keeps the layers as they are
+        return
+    if not levels:
+        return
+    by_id: dict[int, Any] = {}
+    for level in levels:
+        level_id = getattr(level, "level_id", None)
+        if isinstance(level_id, int) and not isinstance(level_id, bool):
+            by_id.setdefault(level_id, level)
+    applied = 0
+    undefined: list[int] = []
+    for layer in context.layers.values():
+        meta = layer["metadata"]["dgn"]
+        level = by_id.get(meta["level"])
+        if level is None:
+            undefined.append(int(meta["level"]))
+            continue
+        meta.update(
+            {
+                "name": str(getattr(level, "name", "")),
+                "number": int(getattr(level, "number", 0)),
+                "line_style": int(getattr(level, "line_style", 0)),
+                "line_weight": int(getattr(level, "line_weight", 0)),
+                "color_index": int(getattr(level, "color_index", 0)),
+            }
+        )
+        applied += 1
+    context.diagnostics.append(
+        ImportDiagnostic(
+            code="DGN_V8_LEVEL_TABLE_APPLIED",
+            severity="info",
+            message=(
+                f"Applied the V8 level table ({len(by_id)} level(s)) to {applied} layer(s): "
+                "name, number and ByLevel line weight, style and color index are in "
+                "tables.layers[*].metadata.dgn."
+            ),
+            action="preserved_metadata",
+            details={
+                "levels": len(by_id),
+                "layers": applied,
+                "undefined_levels": sorted(undefined),
+            },
+        )
+    )
 
 
 def _collect_unknown_elements(context: _V8ConversionContext) -> None:

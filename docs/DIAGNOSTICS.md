@@ -22,6 +22,7 @@ entity/source identifiers and structured details.
 | `DGN_TEXT_DECODE_REPLACED` | warning | normalized | DGN import | DGN text bytes could not be decoded with the selected encoding. |
 | `DGN_UNKNOWN_UNITS` | warning | - | DGN import | The DGN master-unit label had no IR unit mapping. |
 | `DGN_UNSUPPORTED_ENTITY` | warning | skipped | DGN import | An unsupported DGN graphic entity was skipped. |
+| `DGN_V8_LEVEL_TABLE_APPLIED` | info | preserved_metadata | DGN import | The V8 level table (`ezdgn` >= 0.2.8) was applied to the layers: `tables.layers[*].metadata.dgn` carries the level name, number and ByLevel line weight, style and color index; `details.undefined_levels` lists level IDs used by elements but missing from the table. |
 | `DGN_V8_EXTRA_MODELS_SKIPPED` | warning | skipped | DGN import | A multi-model V8 file was reduced to the first model containing drawable entities. |
 | `DWG_CURVE_APPROXIMATED` | warning | approximated | DWG import | Source geometry was approximated. |
 | `DWG_DUPLICATE_BLOCK_NAME_RENAMED` | info | renamed | DWG import | Blocks that share their name with another block were renamed; the last one keeps the name, and dimensions reach their block through `definition.block`. |

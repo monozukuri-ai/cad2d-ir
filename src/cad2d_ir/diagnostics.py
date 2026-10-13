@@ -347,6 +347,12 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
     "DGN_UNKNOWN_UNITS": DiagnosticCode(
         "warning", None, "DGN import", "The DGN master unit was not mapped to IR units."
     ),
+    "DGN_V8_LEVEL_TABLE_APPLIED": DiagnosticCode(
+        "info",
+        "preserved_metadata",
+        "DGN import",
+        "The V8 level table (name, number and ByLevel symbology) was put on the layers.",
+    ),
     "DGN_V8_EXTRA_MODELS_SKIPPED": DiagnosticCode(
         "warning",
         "skipped",

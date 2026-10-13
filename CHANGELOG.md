@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.12.2
+
+- DGN V8 import: the level table read by `ezdgn` 0.2.8 (`document.levels`) is
+  applied to the layers. `tables.layers[*].metadata.dgn` gains the level
+  `name`, `number` and the ByLevel `line_weight`, `line_style` and
+  `color_index`, reported by `DGN_V8_LEVEL_TABLE_APPLIED`; an element whose
+  header holds the ByLevel sentinel `0xffffffff` resolves through its layer.
+
 ## 0.12.1
 
 - JWW import: the printer pen table of the file (the line width Jw_cad prints

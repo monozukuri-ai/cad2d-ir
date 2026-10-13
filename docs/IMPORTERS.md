@@ -207,9 +207,15 @@ and 3D models are projected to XY with `DGN_3D_FLATTENED`.
 | complex chain/shape | child IR entities | parent element indexes retained and flattening diagnosed |
 | dimension | skipped | only a bounded anchor is decoded upstream |
 
-V8 level IDs become `DGN_LEVEL_<n>` layer names; level name tables and the
-active color table live in control objects that are not decoded yet, so
-entities carry their color index as metadata without a resolved RGB. V8 text
+V8 level IDs become `DGN_LEVEL_<n>` layer names. With `ezdgn` 0.2.8 or later
+the level table is applied to the layers (`DGN_V8_LEVEL_TABLE_APPLIED`):
+`tables.layers[*].metadata.dgn` gains the level `name`, user-visible `number`
+and the level's own (ByLevel) `line_weight`, `line_style` and `color_index`.
+An element header stores `0xffffffff` (ByLevel) or `0xfffffffe` (ByCell) in
+its `line_weight` / `color_index` / `line_style` metadata when the value comes
+from the level or the enclosing cell, so a consumer resolves such an element
+through its layer. The active color table still lives in control objects that
+are not decoded, so colors stay indices without a resolved RGB. V8 text
 arrives already decoded by `ezdgn` (UTF-8, Windows-1252, or the escaped
 Windows-1252 marker), so the `encoding=` option does not apply to V8 input.
 
