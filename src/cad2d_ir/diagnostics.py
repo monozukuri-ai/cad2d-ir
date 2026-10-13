@@ -138,19 +138,22 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "A feature control frame was drawn as lines and texts.",
     ),
     "JWW_ENTITY_CONVERSION_FAILED": DiagnosticCode(
-        "error", "skipped", "JWW import", "A malformed JWW entity was skipped."
+        "error", "skipped", "JWW / JWS import", "A malformed JWW entity was skipped."
     ),
     "JWW_ZERO_FLATNESS_NORMALIZED": DiagnosticCode(
-        "warning", "normalized", "JWW import", "A zero ellipse flatness was replaced."
+        "warning",
+        "normalized",
+        "JWW / JWS import",
+        "A zero ellipse flatness was replaced.",
     ),
     "JWW_TEXT_HEIGHT_DEFAULTED": DiagnosticCode(
         "warning",
         "normalized",
-        "JWW import",
+        "JWW / JWS import",
         "A non-positive text height was replaced.",
     ),
     "JWW_ZERO_BLOCK_SCALE_NORMALIZED": DiagnosticCode(
-        "warning", "normalized", "JWW import", "A zero block scale was replaced."
+        "warning", "normalized", "JWW / JWS import", "A zero block scale was replaced."
     ),
     "DXF_IMAGE_SKIPPED": DiagnosticCode(
         "warning",
@@ -181,13 +184,19 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "path in href and has no pixels.",
     ),
     "JWW_UNSUPPORTED_ENTITY": DiagnosticCode(
-        "warning", "skipped", "JWW import", "An unsupported JWW entity was skipped."
+        "warning",
+        "skipped",
+        "JWW / JWS import",
+        "An unsupported JWW entity was skipped.",
     ),
     "JWW_CURVE_APPROXIMATED": DiagnosticCode(
-        "warning", "approximated", "JWW import", "Source geometry was approximated."
+        "warning",
+        "approximated",
+        "JWW / JWS import",
+        "Source geometry was approximated.",
     ),
     "JWW_UNRESOLVED_BLOCK_REFERENCE": DiagnosticCode(
-        "warning", None, "JWW import", "A referenced JWW block was not resolved."
+        "warning", None, "JWW / JWS import", "A referenced JWW block was not resolved."
     ),
     "JWW_ENTITY_LIST_TRUNCATED": DiagnosticCode(
         "error",
@@ -198,14 +207,37 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
     "JWW_METADATA_SETTING_EXTRACTED": DiagnosticCode(
         "info",
         "preserved_metadata",
-        "JWW import",
+        "JWW / JWS import",
         "An internal Jw_cad setting TEXT was moved to document metadata.",
     ),
     "JWW_DECODE_REPLACED": DiagnosticCode(
         "warning",
         "normalized",
-        "JWW import",
+        "JWW / JWS import",
         "Undecodable CP932 bytes in a JWW string were replaced.",
+    ),
+    "JWS_SYMBOL_COORDINATES": DiagnosticCode(
+        "info",
+        None,
+        "JWS import",
+        "The symbol's coordinates were kept in the paper millimetres of the drawing "
+        "it was registered from; the insertion origin and the layer group scales "
+        "are recorded in header.metadata.jws and were not applied.",
+    ),
+    "JWS_DRAWING_SETTINGS_DEFAULTED": DiagnosticCode(
+        "info",
+        "normalized",
+        "JWS import",
+        "A JWS symbol stores no layer names, pen palette, line type patterns, paper "
+        "size or memo; layers are named by group and layer number and line types "
+        "use the Jw_cad defaults.",
+    ),
+    "JWS_IMAGE_REFERENCE_ONLY": DiagnosticCode(
+        "warning",
+        None,
+        "JWS import",
+        "A ^@BM image placement in a symbol refers to a file that a JWS cannot "
+        "carry; the IMAGE entity keeps the path in href and has no pixels.",
     ),
     "DWG_ENTITY_CONVERSION_FAILED": DiagnosticCode(
         "error", "skipped", "DWG import", "A malformed DWG entity was skipped."

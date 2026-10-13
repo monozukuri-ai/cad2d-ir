@@ -21,6 +21,7 @@ _SUFFIX_TO_FORMAT = {
     ".dwfx": "dwf",
     ".idw": "idw",
     ".jww": "jww",
+    ".jws": "jws",
     ".mi": "mi",
     ".bi": "mi",
     ".p21": "sxf",
@@ -105,6 +106,11 @@ def import_file(
         from cad2d_ir.importers.jww import convert_jww_file_to_ir
 
         return convert_jww_file_to_ir(source_path, options=import_options)
+
+    if normalized_format == "jws":
+        from cad2d_ir.importers.jww import convert_jws_file_to_ir
+
+        return convert_jws_file_to_ir(source_path, options=import_options)
 
     if normalized_format == "dwg":
         from cad2d_ir.importers.dwg import convert_dwg_file_to_ir

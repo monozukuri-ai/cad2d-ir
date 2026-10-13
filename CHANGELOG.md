@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.12.0
+
+- JWS import: Jw_cad registered symbols (図形登録, `.jws`, versions 351, 420,
+  600 and 700) are read through `ezjww` 0.7's `read_jws_document`
+  (`convert_jws_file_to_ir`, `jws_document_to_ir`, `--format jws`, suffix
+  detection). The entities are JWW records and convert like a JWW drawing's,
+  in the paper millimetres of the drawing the symbol was registered from;
+  the insertion origin, the scale denominator of each layer group and the
+  recorded bounds go to `header.metadata.jws` and are not applied
+  (`JWS_SYMBOL_COORDINATES`). Layers are created for the group/layer pairs in
+  use, named `<group>-<layer>`, each with its group scale in
+  `metadata.jww.group_scale`; the drawing settings a symbol does not store
+  fall back to the Jw_cad defaults (`JWS_DRAWING_SETTINGS_DEFAULTED`). A
+  `^@BM` placement becomes an `IMAGE` with `href` only, since a symbol has no
+  image archive (`JWS_IMAGE_REFERENCE_ONLY`). See "JWS registered symbols" in
+  docs/IMPORTERS.md and "JWS symbols" in docs/SCHEMA_NOTES.md.
+- `source.format` accepts `jws`. The shared `JWW_*` diagnostics name the
+  format (JWW or JWS) in their messages; their codes are unchanged.
+- The `jww` / `all` extras accept `ezjww` 0.7. JWS import needs 0.7
+  (`MissingOptionalDependencyError` otherwise); JWW import is unchanged.
+
 ## 0.11.0
 
 - `IMAGE` entity (schema `0.3.0`): a raster image placed by its lower-left

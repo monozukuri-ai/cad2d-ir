@@ -1,4 +1,12 @@
-"""Native JWW to CAD 2D IR importer."""
+"""Native JWW (drawing) and JWS (registered symbol) to CAD 2D IR importer.
+
+A JWS file is a symbol saved from a Jw_cad drawing with 図形登録. Its entities
+are the same records as a JWW drawing's, in the paper millimetres of the
+drawing it was registered from, so the entity conversion is shared. Only the
+header differs: a symbol has an insertion origin, the scale denominator of each
+layer group and recorded bounds, but no layer names, pen palette, line type
+patterns, paper size or memo.
+"""
 
 from __future__ import annotations
 
@@ -238,9 +246,18 @@ class _ConversionContext:
     embedded_images: int = 0
     linked_images: int = 0
     next_entity_number: int = 1
+    # "jww" (a drawing) or "jws" (a registered symbol); the entity records are the same
+    source_format: str = "jww"
+    # JWS: the scale denominator of each layer group, kept on the layers created on
+    # demand (a symbol has no layer table)
+    group_scales: list[float] | None = None
+
+    @property
+    def label(self) -> str:
+        return self.source_format.upper()
 
     def allocate_id(self) -> str:
-        entity_id = f"JWW_E{self.next_entity_number:08d}"
+        entity_id = f"{self.label}_E{self.next_entity_number:08d}"
         self.next_entity_number += 1
         return entity_id
 
@@ -276,6 +293,42 @@ def convert_jww_file_to_ir(
     )
 
 
+def convert_jws_file_to_ir(
+    path: str | Path,
+    *,
+    options: ImportOptions | None = None,
+) -> ImportResult:
+    """Read a JWS registered symbol with ``ezjww`` (0.7 or later) and convert it to IR.
+
+    Install the ``jww`` extra to enable this importer::
+
+        pip install "cad2d-ir[jww]"
+    """
+    try:
+        import ezjww
+    except ImportError as exc:
+        raise MissingOptionalDependencyError(
+            "JWS support requires the optional dependency ezjww; "
+            'install it with `pip install "cad2d-ir[jww]"`.'
+        ) from exc
+    read_jws_document = getattr(ezjww, "read_jws_document", None)
+    if read_jws_document is None:
+        raise MissingOptionalDependencyError(
+            "JWS support requires ezjww 0.7 or later; "
+            'upgrade it with `pip install --upgrade "cad2d-ir[jww]"`.'
+        )
+
+    source_path = Path(path)
+    jws_document = read_jws_document(str(source_path))
+    return jws_document_to_ir(
+        jws_document,
+        source_name=source_path.name,
+        source_sha256=_sha256_file(source_path),
+        options=options,
+        consume_source=True,
+    )
+
+
 def jww_document_to_ir(
     jww_document: Mapping[str, Any],
     *,
@@ -291,10 +344,62 @@ def jww_document_to_ir(
     pyo3 builds about 1.4 KB of dictionaries per JWW entity, so holding the raw
     document and the IR at the same time doubles the peak for large drawings.
     """
+    return _jw_document_to_ir(
+        jww_document,
+        source_format="jww",
+        source_name=source_name,
+        source_sha256=source_sha256,
+        options=options,
+        consume_source=consume_source,
+    )
+
+
+def jws_document_to_ir(
+    jws_document: Mapping[str, Any],
+    *,
+    source_name: str | None = None,
+    source_sha256: str | None = None,
+    options: ImportOptions | None = None,
+    consume_source: bool = False,
+) -> ImportResult:
+    """Convert an ``ezjww.read_jws_document`` result to CAD 2D IR.
+
+    The entities are converted exactly like a JWW drawing's: the coordinates
+    stay in the paper millimetres of the drawing the symbol was registered
+    from. The insertion origin, the scale denominator of each layer group and
+    the recorded bounds go to ``header.metadata.jws`` and are not applied
+    (``JWS_SYMBOL_COORDINATES``); placing the symbol into a drawing is a
+    separate step. Layers are created for the group/layer pairs in use, named
+    ``<group>-<layer>`` in hexadecimal like the JWW fallback, each carrying its
+    group scale in ``metadata.jww.group_scale``. The pen palette, line type
+    patterns, paper size and memo a drawing would have fall back to the Jw_cad
+    defaults (``JWS_DRAWING_SETTINGS_DEFAULTED``).
+    """
+    return _jw_document_to_ir(
+        jws_document,
+        source_format="jws",
+        source_name=source_name,
+        source_sha256=source_sha256,
+        options=options,
+        consume_source=consume_source,
+    )
+
+
+def _jw_document_to_ir(
+    jw_document: Mapping[str, Any],
+    *,
+    source_format: str,
+    source_name: str | None,
+    source_sha256: str | None,
+    options: ImportOptions | None,
+    consume_source: bool,
+) -> ImportResult:
     import_options = options or ImportOptions()
-    header = _mapping(jww_document.get("header"), "header")
+    is_symbol = source_format == "jws"
+    header = _mapping(jw_document.get("header"), "header")
+    # A symbol has no layer table: layers are created on demand with the group scale
     layers, layer_names = _build_layers(header)
-    block_defs = _mapping_sequence(jww_document.get("block_defs", []), "block_defs")
+    block_defs = _mapping_sequence(jw_document.get("block_defs", []), "block_defs")
     block_names = _build_block_names(block_defs)
     linetype_names, linetype_table, linetypes_from_file = _document_line_types(header)
     context = _ConversionContext(
@@ -303,24 +408,26 @@ def jww_document_to_ir(
         layer_names=layer_names,
         block_names=block_names,
         linetype_names=linetype_names,
+        source_format=source_format,
+        group_scales=_symbol_group_scales(header) if is_symbol else None,
     )
 
-    context.images = _embedded_images(jww_document)
+    context.images = _embedded_images(jw_document)
 
-    raw_entities = jww_document.get("entities", [])
+    raw_entities = jw_document.get("entities", [])
     if consume_source and isinstance(raw_entities, list):
         for index, item in enumerate(raw_entities):
             _mapping(item, f"entities[{index}]")
         source_entities: Sequence[Any] = raw_entities
     else:
         source_entities = _mapping_sequence(raw_entities, "entities")
-    metadata_settings = _collect_metadata_settings(jww_document, source_entities)
+    metadata_settings = _collect_metadata_settings(jw_document, source_entities)
     metadata_entity_indexes = {
         int(setting["entity_index"]) for setting in metadata_settings
     }
     # 文字スタイルの収集は生要素を読むので、逐次解放する変換ループより前に済ませる
     text_styles = _collect_text_styles(
-        jww_document, skipped_entity_indexes=metadata_entity_indexes
+        jw_document, skipped_entity_indexes=metadata_entity_indexes
     )
     entities = _convert_entity_sequence(
         source_entities,
@@ -340,23 +447,27 @@ def jww_document_to_ir(
         tables["blocks"] = blocks
 
     raw_version = int(header.get("version", 0))
-    source: dict[str, Any] = {"format": "jww", "version": str(raw_version)}
+    source: dict[str, Any] = {"format": source_format, "version": str(raw_version)}
     if source_name is not None:
         source["name"] = source_name
     if source_sha256 is not None:
         source["sha256"] = source_sha256
 
-    jww_metadata: dict[str, Any] = {
-        "version": raw_version,
-        "memo": str(header.get("memo", "")),
-        "paper_size": int(header.get("paper_size", 0)),
-        "write_layer_group": int(header.get("write_layer_group", 0)),
-        # "file": the linetype patterns are the ones this file records.
-        # "default": they are the Jw_cad defaults.
-        "line_type_settings": "file" if linetypes_from_file else "default",
-    }
+    format_metadata: dict[str, Any]
+    if is_symbol:
+        format_metadata = _symbol_metadata(header, raw_version, context)
+    else:
+        format_metadata = {
+            "version": raw_version,
+            "memo": str(header.get("memo", "")),
+            "paper_size": int(header.get("paper_size", 0)),
+            "write_layer_group": int(header.get("write_layer_group", 0)),
+            # "file": the linetype patterns are the ones this file records.
+            # "default": they are the Jw_cad defaults.
+            "line_type_settings": "file" if linetypes_from_file else "default",
+        }
     if metadata_settings:
-        jww_metadata["settings"] = metadata_settings
+        format_metadata["settings"] = metadata_settings
 
     document: dict[str, Any] = {
         "format": "cad2d-ir",
@@ -365,14 +476,16 @@ def jww_document_to_ir(
             "units": "mm",
             "angle_unit": "deg",
             "coord_space": "world",
-            "metadata": {"jww": jww_metadata},
+            "metadata": {source_format: format_metadata},
         },
         "source": source,
         "tables": tables,
         "entities": entities,
     }
 
-    _append_parser_diagnostics(jww_document, context)
+    if is_symbol:
+        _append_symbol_diagnostics(format_metadata, context)
+    _append_parser_diagnostics(jw_document, context)
     if metadata_settings:
         context.diagnostics.append(
             ImportDiagnostic(
@@ -390,19 +503,19 @@ def jww_document_to_ir(
                 },
             )
         )
-    _append_summary_diagnostics(jww_document, context)
+    _append_summary_diagnostics(jw_document, context)
     if import_options.validate:
         validate_ir(document)
 
     source_counts = {
         str(key): int(value)
         for key, value in _mapping(
-            jww_document.get("entity_counts", {}), "entity_counts"
+            jw_document.get("entity_counts", {}), "entity_counts"
         ).items()
     }
     block_entity_count = sum(len(block["entities"]) for block in blocks.values())
     statistics: dict[str, Any] = {
-        "source_format": "jww",
+        "source_format": source_format,
         "source_entities": len(source_entities),
         "source_entity_counts": dict(sorted(source_counts.items())),
         "metadata_settings": len(metadata_settings),
@@ -419,6 +532,93 @@ def jww_document_to_ir(
     }
     return ImportResult(
         document=document, diagnostics=context.diagnostics, statistics=statistics
+    )
+
+
+def _coordinate(value: Any, path: str) -> list[float]:
+    """``{"x": .., "y": ..}`` (ezjww) or a two-item sequence -> ``[x, y]``."""
+    if isinstance(value, Mapping):
+        return [float(value["x"]), float(value["y"])]
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        if len(value) != 2:
+            raise ImporterError(f"{path} must have two coordinates")
+        return [float(value[0]), float(value[1])]
+    raise ImporterError(f"{path} must be a coordinate")
+
+
+def _symbol_group_scales(header: Mapping[str, Any]) -> list[float]:
+    """The 16 scale denominators of a JWS header, indexed by layer group."""
+    raw = header.get("group_scales")
+    if not isinstance(raw, Sequence) or isinstance(raw, (str, bytes)) or not raw:
+        raise ImporterError("header.group_scales must be a list of scale denominators")
+    scales: list[float] = []
+    for index, item in enumerate(raw):
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            raise ImporterError(f"header.group_scales[{index}] must be a number")
+        scale = float(item)
+        if not math.isfinite(scale) or scale <= 0.0:
+            raise ImporterError(f"header.group_scales[{index}] must be positive")
+        scales.append(scale)
+    return scales
+
+
+def _symbol_metadata(
+    header: Mapping[str, Any], version: int, context: _ConversionContext
+) -> dict[str, Any]:
+    """``header.metadata.jws``: what the symbol header records besides the entities."""
+    assert context.group_scales is not None
+    return {
+        "version": version,
+        # Where the symbol is picked up when it is placed, in its own coordinates.
+        "origin": _coordinate(header.get("origin"), "header.origin"),
+        "group_scales": list(context.group_scales),
+        # Bounds as Jw_cad recorded them, not a computed extent of the geometry.
+        "bounds_min": _coordinate(header.get("bounds_min"), "header.bounds_min"),
+        "bounds_max": _coordinate(header.get("bounds_max"), "header.bounds_max"),
+        # The coordinates were not moved to the origin or scaled to real size.
+        "coordinate_space": "paper_millimeters",
+    }
+
+
+def _append_symbol_diagnostics(
+    metadata: Mapping[str, Any], context: _ConversionContext
+) -> None:
+    """Document-level facts about a JWS that a reader of the IR needs to know."""
+    scales = list(metadata["group_scales"])
+    used_groups = sorted({group for group, _layer in context.layer_names})
+    used_scales = {
+        str(group): scales[group] for group in used_groups if group < len(scales)
+    }
+    origin = list(metadata["origin"])
+    scale_text = ", ".join(
+        f"1/{scale:g} (group {group})" for group, scale in used_scales.items()
+    )
+    context.diagnostics.insert(
+        0,
+        ImportDiagnostic(
+            code="JWS_SYMBOL_COORDINATES",
+            severity="info",
+            message=(
+                "Coordinates are the paper millimetres of the drawing the symbol was "
+                f"registered from; the insertion origin ({origin[0]:g}, {origin[1]:g})"
+                + (f" and the layer group scales {scale_text}" if scale_text else "")
+                + " were not applied and are kept in header.metadata.jws."
+            ),
+            details={"origin": origin, "group_scales": used_scales},
+        ),
+    )
+    context.diagnostics.insert(
+        1,
+        ImportDiagnostic(
+            code="JWS_DRAWING_SETTINGS_DEFAULTED",
+            severity="info",
+            message=(
+                "A JWS symbol stores no layer names, pen palette, line type patterns, "
+                "paper size or memo; layers are named <group>-<layer> and line types "
+                "use the Jw_cad defaults."
+            ),
+            action="normalized",
+        ),
     )
 
 
@@ -542,14 +742,14 @@ def _convert_entity_safe(
     except (KeyError, TypeError, ValueError) as exc:
         if context.options.strict:
             raise ImporterError(
-                f"Failed to convert JWW {source_kind} at {source_id}: {exc}"
+                f"Failed to convert {context.label} {source_kind} at {source_id}: {exc}"
             ) from exc
         context.skipped_counts[source_kind] += 1
         context.diagnostics.append(
             ImportDiagnostic(
                 code="JWW_ENTITY_CONVERSION_FAILED",
                 severity="error",
-                message=f"Failed to convert JWW {source_kind}: {exc}",
+                message=f"Failed to convert {context.label} {source_kind}: {exc}",
                 source_id=source_id,
                 source_kind=source_kind,
                 action="skipped",
@@ -636,10 +836,15 @@ def _entity_common(
         fallback = f"{layer_group:X}-{layer:X}"
         layer_name = _unique_name(fallback, fallback, context.layers)
         context.layer_names[(layer_group, layer)] = layer_name
+        layer_metadata: dict[str, Any] = {"layer_group": layer_group, "layer": layer}
+        if context.group_scales is not None and 0 <= layer_group < len(
+            context.group_scales
+        ):
+            layer_metadata["group_scale"] = context.group_scales[layer_group]
         context.layers[layer_name] = {
             "color": (layer_group * 16 + layer) % 255 + 1,
             "linetype": "CONTINUOUS",
-            "metadata": {"jww": {"layer_group": layer_group, "layer": layer}},
+            "metadata": {"jww": layer_metadata},
         }
 
     pen_style = int(base.get("pen_style", 0))
@@ -653,7 +858,11 @@ def _entity_common(
         "color": _map_color(int(base.get("pen_color", 0))),
     }
     if context.options.entity_provenance:
-        common["source"] = {"format": "jww", "id": source_id, "kind": source_kind}
+        common["source"] = {
+            "format": context.source_format,
+            "id": source_id,
+            "kind": source_kind,
+        }
         common["metadata"] = {
             "jww": {
                 "group": int(base.get("group", 0)),
@@ -763,7 +972,7 @@ def _convert_text(
             ImportDiagnostic(
                 code="JWW_TEXT_HEIGHT_DEFAULTED",
                 severity="warning",
-                message="Non-positive JWW text height was replaced with 2.5 mm.",
+                message=f"Non-positive {context.label} text height was replaced with 2.5 mm.",
                 source_id=source_id,
                 source_kind="TEXT",
                 action="normalized",
@@ -926,6 +1135,23 @@ def _convert_image(
                 action="converted",
             )
         )
+    elif context.source_format == "jws":
+        # Jw_cad registers the placement text with the %temp% name of the drawing's
+        # archive entry, but a symbol file has no image archive to look it up in.
+        result["href"] = path
+        context.linked_images += 1
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="JWS_IMAGE_REFERENCE_ONLY",
+                severity="warning",
+                message=(
+                    f"Image {file_name} is referenced by the symbol, but a JWS file "
+                    "carries no image data; the placement keeps only the path."
+                ),
+                source_id=source_id,
+                source_kind="TEXT",
+            )
+        )
     else:
         result["href"] = path
         context.linked_images += 1
@@ -1060,7 +1286,7 @@ def _convert_block_reference(
             ImportDiagnostic(
                 code="JWW_ZERO_BLOCK_SCALE_NORMALIZED",
                 severity="warning",
-                message="Zero JWW block scale was replaced with 1.0.",
+                message=f"Zero {context.label} block scale was replaced with 1.0.",
                 source_id=source_id,
                 source_kind="BLOCK",
                 action="normalized",
@@ -1257,7 +1483,7 @@ def _append_parser_diagnostics(
                     code="JWW_ENTITY_LIST_TRUNCATED",
                     severity="error",
                     message=(
-                        "JWW entity list could not be read to its end: kept "
+                        f"{context.label} entity list could not be read to its end: kept "
                         f"{parsed} of {expected} announced entities"
                         + (f" ({error})" if error else "")
                         + "; the remaining entities and block definitions were skipped."
@@ -1296,7 +1522,7 @@ def _append_summary_diagnostics(
                 ImportDiagnostic(
                     code="JWW_UNSUPPORTED_ENTITY",
                     severity="warning",
-                    message=f"Skipped {count} unsupported JWW {source_kind} entities.",
+                    message=f"Skipped {count} unsupported {context.label} {source_kind} entities.",
                     source_kind=source_kind,
                     action="skipped",
                 )
@@ -1306,7 +1532,10 @@ def _append_summary_diagnostics(
             ImportDiagnostic(
                 code="JWW_CURVE_APPROXIMATED",
                 severity="warning",
-                message=f"Approximated {count} JWW {source_kind} entities with polyline hatch boundaries.",
+                message=(
+                    f"Approximated {count} {context.label} {source_kind} entities "
+                    "with polyline hatch boundaries."
+                ),
                 source_kind=source_kind,
                 action="approximated",
             )
@@ -1319,7 +1548,10 @@ def _append_summary_diagnostics(
             ImportDiagnostic(
                 code="JWW_UNRESOLVED_BLOCK_REFERENCE",
                 severity="warning",
-                message=f"JWW contains unresolved block definition numbers: {unresolved}.",
+                message=(
+                    f"{context.label} contains unresolved block definition numbers: "
+                    f"{unresolved}."
+                ),
                 source_kind="BLOCK",
                 action="preserved_reference",
             )

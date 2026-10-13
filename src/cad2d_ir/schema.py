@@ -634,6 +634,7 @@ def _validate_source(source: Any, path: str) -> None:
         "idw",
         "jww",
         "jwc",
+        "jws",
         "mi",
         "sxf",
         "unknown",

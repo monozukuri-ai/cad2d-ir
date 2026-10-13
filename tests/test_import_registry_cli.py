@@ -13,6 +13,7 @@ from cad2d_ir.importers import UnsupportedSourceFormatError
 def test_detect_source_format_is_case_insensitive() -> None:
     assert detect_source_format("drawing.DXF") == "dxf"
     assert detect_source_format("drawing.JWW") == "jww"
+    assert detect_source_format("symbol.JWS") == "jws"
     assert detect_source_format("drawing.DWG") == "dwg"
     assert detect_source_format("drawing.DGN") == "dgn"
     assert detect_source_format("drawing.DWF") == "dwf"
@@ -49,7 +50,7 @@ def test_generic_file_import_and_cli_support_dxf(tmp_path: Path) -> None:
 def test_registry_dispatches_optional_adapters(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from cad2d_ir.importers import dgn, dwf, dwg, idw, mi, sxf
+    from cad2d_ir.importers import dgn, dwf, dwg, idw, jww, mi, sxf
 
     calls: list[tuple[str, Path]] = []
 
@@ -77,11 +78,16 @@ def test_registry_dispatches_optional_adapters(
         calls.append(("idw", path))
         return "idw-result"
 
+    def fake_jws(path: Path, *, options: object) -> str:
+        calls.append(("jws", path))
+        return "jws-result"
+
     monkeypatch.setattr(dwg, "convert_dwg_file_to_ir", fake_dwg)
     monkeypatch.setattr(dgn, "convert_dgn_file_to_ir", fake_dgn)
     monkeypatch.setattr(dwf, "convert_dwf_file_to_ir", fake_dwf)
     monkeypatch.setattr(mi, "convert_mi_file_to_ir", fake_mi)
     monkeypatch.setattr(idw, "convert_idw_file_to_ir", fake_idw)
+    monkeypatch.setattr(jww, "convert_jws_file_to_ir", fake_jws)
     monkeypatch.setattr(sxf, "convert_sxf_file_to_ir", fake_sxf)
 
     dwg_path = tmp_path / "drawing.dwg"
@@ -89,12 +95,14 @@ def test_registry_dispatches_optional_adapters(
     dwf_path = tmp_path / "drawing.dwfx"
     mi_path = tmp_path / "drawing.mi"
     idw_path = tmp_path / "drawing.idw"
+    jws_path = tmp_path / "symbol.jws"
     sxf_path = tmp_path / "drawing.p21"
     assert convert_file_to_ir(dwg_path) == "dwg-result"
     assert convert_file_to_ir(dgn_path) == "dgn-result"
     assert convert_file_to_ir(dwf_path) == "dwf-result"
     assert convert_file_to_ir(mi_path) == "mi-result"
     assert convert_file_to_ir(idw_path) == "idw-result"
+    assert convert_file_to_ir(jws_path) == "jws-result"
     assert convert_file_to_ir(sxf_path) == "sxf-result"
     assert calls == [
         ("dwg", dwg_path),
@@ -102,6 +110,7 @@ def test_registry_dispatches_optional_adapters(
         ("dwf", dwf_path),
         ("mi", mi_path),
         ("idw", idw_path),
+        ("jws", jws_path),
         ("sxf", sxf_path),
     ]
 

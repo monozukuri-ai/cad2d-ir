@@ -256,6 +256,35 @@ parameters verbatim in `metadata.jww.image_params`, so a JWW writer can
 rebuild the placement. The DXF codec does not write images yet
 (`DXF_IMAGE_SKIPPED`).
 
+## JWS symbols
+
+A JWS file (a symbol registered from a Jw_cad drawing) imports with
+`source.format` `"jws"`. Its entities are JWW records, so they carry the same
+`metadata.jww` fields as a JWW drawing's entities (pen style, pen color, pen
+width, layer and group indexes, text extents, dimension parts). The drawing
+level metadata is `header.metadata.jws` instead of `header.metadata.jww`:
+
+```json
+{
+  "version": 700,
+  "origin": [10.0, 20.0],
+  "group_scales": [50.0, 100.0, 1.0, "... 16 denominators ..."],
+  "bounds_min": [10.0, 20.0],
+  "bounds_max": [40.0, 40.0],
+  "coordinate_space": "paper_millimeters"
+}
+```
+
+`origin` is the point Jw_cad picks the symbol up by when it is placed, in the
+symbol's own coordinates; it is not subtracted on import. `group_scales[g]` is
+the scale denominator of layer group `g` (also on each layer as
+`metadata.jww.group_scale`); it is not applied either, so the coordinates are
+the paper millimetres of the drawing the symbol was registered from, exactly
+as a JWW drawing's. A consumer that inserts the symbol into a drawing moves it
+by `origin` and applies the scales. There is no paper size, memo or layer
+table; `JWS_DRAWING_SETTINGS_DEFAULTED` records that the layer names and line
+types are generated defaults.
+
 ## Current conversion limitations
 
 - `constraints` are IR-only metadata today and are omitted on DXF export.

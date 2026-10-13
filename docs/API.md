@@ -6,7 +6,7 @@ Use `cad2d_ir.api` for file imports and diagnostic-aware DXF export.
 
 ### `convert_file_to_ir(path, *, source_format="auto", ir_version="0.2.0", validate=True, strict=True, curve_segments=96, encoding="auto")`
 
-Dispatches to the DXF, DWG, DGN, DWF/DWFx, JWW, MI/BI, or SXF adapter and returns
+Dispatches to the DXF, DWG, DGN, DWF/DWFx, IDW, JWW, JWS, MI/BI, or SXF adapter and returns
 `ImportResult`:
 
 - `document`: imported IR document
@@ -41,6 +41,7 @@ Format-specific helpers are also public:
 - `convert_dwf_file_to_ir(path, ...)`
 - `convert_idw_file_to_ir(path, *, entity_provenance=True, ...)`
 - `convert_jww_file_to_ir(path, ...)`
+- `convert_jws_file_to_ir(path, ...)` (Jw_cad registered symbol, `ezjww` 0.7+)
 - `convert_mi_file_to_ir(path, *, encoding="auto", ...)`
 - `convert_sxf_file_to_ir(path, ...)`
 - `convert_dxf_text_to_ir(dxf_text, ...)`

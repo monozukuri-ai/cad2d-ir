@@ -103,19 +103,22 @@ entity/source identifiers and structured details.
 | `IDW_UNITS_ASSUMED_CM` | info | normalized | IDW import | Coordinates were scaled from Inventor's internal centimetres to millimetres; the physical unit is not verified by the parser. Warning when a sheet does not match a standard paper size. |
 | `IDW_UNSUPPORTED_ELEMENT` | warning | skipped | IDW import | An element kind unknown to the adapter was skipped. |
 | `IDW_VIEW_RASTER_ONLY` | warning | preserved_metadata | IDW import | Drawing views stored only as raster view caches have no vector geometry in the IR. |
-| `JWW_CURVE_APPROXIMATED` | warning | approximated | JWW import | Source geometry was approximated. |
-| `JWW_DECODE_REPLACED` | warning | normalized | JWW import | `ezjww` replaced undecodable CP932 byte sequences in a JWW string with U+FFFD (details carry field and byte offset). |
-| `JWW_ENTITY_CONVERSION_FAILED` | error | skipped | JWW import | A malformed JWW entity was skipped. |
+| `JWS_DRAWING_SETTINGS_DEFAULTED` | info | normalized | JWS import | A JWS symbol stores no layer names, pen palette, line type patterns, paper size or memo; layers are named `<group>-<layer>` and line types use the Jw_cad defaults. |
+| `JWS_IMAGE_REFERENCE_ONLY` | warning | - | JWS import | A `^@BM` image placement in a symbol refers to a file that a JWS cannot carry; the `IMAGE` entity keeps the path in `href` and has no pixels. |
+| `JWS_SYMBOL_COORDINATES` | info | - | JWS import | The symbol's coordinates were kept in the paper millimetres of the drawing it was registered from; the insertion origin and the layer group scales are recorded in `header.metadata.jws` and were not applied. |
+| `JWW_CURVE_APPROXIMATED` | warning | approximated | JWW / JWS import | Source geometry was approximated. |
+| `JWW_DECODE_REPLACED` | warning | normalized | JWW / JWS import | `ezjww` replaced undecodable CP932 byte sequences in a JWW string with U+FFFD (details carry field and byte offset). |
+| `JWW_ENTITY_CONVERSION_FAILED` | error | skipped | JWW / JWS import | A malformed JWW entity was skipped. |
 | `JWW_ENTITY_LIST_TRUNCATED` | error | skipped | JWW import | `ezjww` could not read the main entity list to its end (truncated upload, unknown record layout, corrupt tag); entities parsed before the error were kept, the rest and all block definitions were skipped. |
 | `JWW_IMAGE_DECODE_FAILED` | warning | skipped | JWW import | An embedded image could not be decompressed; the `IMAGE` keeps the path in `href` and has no pixels. |
 | `JWW_IMAGE_EMBEDDED` | info | converted | JWW import | A `^@BM` image placement became an `IMAGE` entity with the file bytes decoded from the drawing's image archive into `data`. |
 | `JWW_IMAGE_LINKED` | warning | - | JWW import | A `^@BM` image placement refers to a file that is not embedded in the drawing (external link, or a `%temp%` name missing from the archive); the `IMAGE` keeps the path in `href` and has no pixels. |
-| `JWW_METADATA_SETTING_EXTRACTED` | info | preserved_metadata | JWW import | A sentinel-positioned Jw_cad internal setting record was retained under `header.metadata.jww.settings` instead of becoming drawing TEXT. |
-| `JWW_TEXT_HEIGHT_DEFAULTED` | warning | normalized | JWW import | A non-positive text height was replaced. |
-| `JWW_UNRESOLVED_BLOCK_REFERENCE` | warning | - | JWW import | A referenced JWW block was not resolved. |
-| `JWW_UNSUPPORTED_ENTITY` | warning | skipped | JWW import | An unsupported JWW entity was skipped. |
-| `JWW_ZERO_BLOCK_SCALE_NORMALIZED` | warning | normalized | JWW import | A zero block scale was replaced. |
-| `JWW_ZERO_FLATNESS_NORMALIZED` | warning | normalized | JWW import | A zero ellipse flatness was replaced. |
+| `JWW_METADATA_SETTING_EXTRACTED` | info | preserved_metadata | JWW / JWS import | A sentinel-positioned Jw_cad internal setting record was retained under `header.metadata.jww.settings` instead of becoming drawing TEXT. |
+| `JWW_TEXT_HEIGHT_DEFAULTED` | warning | normalized | JWW / JWS import | A non-positive text height was replaced. |
+| `JWW_UNRESOLVED_BLOCK_REFERENCE` | warning | - | JWW / JWS import | A referenced JWW block was not resolved. |
+| `JWW_UNSUPPORTED_ENTITY` | warning | skipped | JWW / JWS import | An unsupported JWW entity was skipped. |
+| `JWW_ZERO_BLOCK_SCALE_NORMALIZED` | warning | normalized | JWW / JWS import | A zero block scale was replaced. |
+| `JWW_ZERO_FLATNESS_NORMALIZED` | warning | normalized | JWW / JWS import | A zero ellipse flatness was replaced. |
 | `MI_ANNOTATION_FLATTENED` | warning | flattened | MI import | An MI annotation such as a leader was represented by simpler IR geometry while its source semantics remain in metadata. |
 | `MI_CURVE_APPROXIMATED` | warning | approximated | MI import | An MI spline fallback or curved hatch boundary was sampled as a polyline. |
 | `MI_ENTITY_CONVERSION_FAILED` | error | skipped | MI import | A malformed typed MI entity was skipped in lenient mode. |

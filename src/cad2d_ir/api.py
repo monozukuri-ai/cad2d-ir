@@ -166,6 +166,28 @@ def convert_jww_file_to_ir(
     )
 
 
+def convert_jws_file_to_ir(
+    path: str | Path,
+    *,
+    ir_version: str = CURRENT_IR_VERSION,
+    validate: bool = True,
+    strict: bool = True,
+    curve_segments: int = 96,
+) -> ImportResult:
+    """Convert a JWS registered symbol (Jw_cad 図形登録) to IR."""
+    from cad2d_ir.importers.jww import convert_jws_file_to_ir as import_jws
+
+    return import_jws(
+        path,
+        options=ImportOptions(
+            ir_version=ir_version,
+            validate=validate,
+            strict=strict,
+            curve_segments=curve_segments,
+        ),
+    )
+
+
 def convert_dwg_file_to_ir(
     path: str | Path,
     *,

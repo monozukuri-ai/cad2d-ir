@@ -67,6 +67,42 @@ The table lists the Jw_cad defaults. A file records its own line type settings, 
 
 `header.metadata.jww.line_type_settings` is `"file"` when the settings were read and `"default"` otherwise (an older `ezjww`, or a header that ends before them). In the default case the Jw_cad default printer pitch (10; 20 or 40 for the double-length types) is assumed, so a drawing saved with another pitch prints proportionally shorter or longer dashes than the IR pattern says, and user-defined line types stay `BYLAYER`.
 
+## JWS registered symbols
+
+A `.jws` file is a symbol saved from a Jw_cad drawing with 図形登録 (`ezjww`
+0.7 or later reads it; `read_jws_document`). Its entities are the same records
+as a JWW drawing's, so the adapter above converts them unchanged
+(`jws_document_to_ir` / `convert_jws_file_to_ir`), with `source.format` and
+the statistics saying `jws`, entity ids `JWS_E…`, and the shared `JWW_*`
+diagnostics naming the format in their messages. What differs is the header:
+
+| JWS header | IR | Notes |
+| --- | --- | --- |
+| file version (351, 420, 600, 700) | `source.version`, `header.metadata.jws.version` | |
+| insertion origin | `header.metadata.jws.origin` | not subtracted from the coordinates |
+| scale denominator of each of the 16 layer groups | `header.metadata.jws.group_scales`, and `metadata.jww.group_scale` on each layer | not applied to the coordinates |
+| recorded bounds | `header.metadata.jws.bounds_min` / `bounds_max` | as Jw_cad wrote them, not a computed extent |
+| layer names, pen palette, line type patterns, paper size, memo | absent | `JWS_DRAWING_SETTINGS_DEFAULTED` |
+
+The coordinates stay in the paper millimetres of the drawing the symbol was
+registered from (`header.metadata.jws.coordinate_space` is
+`"paper_millimeters"`, like a JWW drawing), which `JWS_SYMBOL_COORDINATES`
+states once per document together with the origin and the scales of the layer
+groups in use. Placing the symbol into a drawing at a scale is a separate
+operation that a consumer performs with that metadata. Layers are created for
+the group/layer pairs in use and named `<group>-<layer>` in hexadecimal, the
+JWW fallback naming, which also matches the layer names `ezjww` writes when it
+converts a JWS to DXF itself. Line types use the Jw_cad defaults.
+
+A symbol can contain a `^@BM` image placement but never the image archive a
+version-700 drawing appends, so the placement becomes an `IMAGE` with `href`
+only (`JWS_IMAGE_REFERENCE_ONLY`). Block definitions are read, including ones
+nothing references (Jw_cad keeps them with a `@@SfigorgFlag@@` suffix in the
+name). The `ezjww` JWS parser is strict: a truncated body, an unsupported
+version (230, 300) or trailing bytes raise an error with the byte offset
+instead of producing a partial document, so `JWW_ENTITY_LIST_TRUNCATED` does
+not occur for JWS.
+
 ## DWG adapter
 
 The DWG adapter consumes `ezdwg.read()` and enumerates every entity through `Document.entities().query()` (falling back to `modelspace().query()` on `ezdwg` releases before the placement-aware layouts), then partitions them itself: entities owned by a named block record become block-definition bodies, paper-space entities (layout frames, viewports, title blocks; `entmode == 1` or owned by a `*Paper_Space*` record) become `layouts`, and the rest form the IR modelspace. Low-level public table decoders are used only to recover layer names/colors, linetypes and block-header names.

@@ -6,7 +6,7 @@ for 2D CAD data.
 It provides:
 
 - a canonical JSON Schema for 2D CAD geometry and tables;
-- native DXF, DWG, DGN, DWF/DWFx, IDW, JWW, MI/BI, and SXF import paths;
+- native DXF, DWG, DGN, DWF/DWFx, IDW, JWW, JWS, MI/BI, and SXF import paths;
 - DXF R12 (`AC1009`) and R2010 (`AC1024`) export;
 - structured import/export diagnostics;
 - deterministic IR-entity to DXF-handle correspondence.
@@ -64,6 +64,7 @@ Import adapters:
 | DWF/DWFx 2D | normalized `ezdwf` sheet model | `cad2d-ir[dwf]` |
 | IDW (Autodesk Inventor drawing) | saved-display model from `inventor-kit` | `cad2d-ir[idw]` |
 | JWW | native `ezjww` model | `cad2d-ir[jww]` |
+| JWS (Jw_cad registered symbol) | native `ezjww` model (0.7 or later) | `cad2d-ir[jww]` |
 | MI / gzip-wrapped BI | native `ezmi2d` document model | `cad2d-ir[mi]` |
 | SXF SFC/P21 | backend-neutral `ezsxf` drawing | `cad2d-ir[sxf]` |
 
@@ -80,7 +81,7 @@ cad2d-ir validate examples/ir/minimal.json
 cad2d-ir dxf2ir drawing.dxf -o drawing.json --pretty
 cad2d-ir dxf2ir drawing.dxf --encoding cp932 -o drawing.json
 
-# Auto-detected DXF/DWG/DGN/DWF/DWFx/IDW/JWW/MI/BI/SFC/P21 -> IR
+# Auto-detected DXF/DWG/DGN/DWF/DWFx/IDW/JWW/JWS/MI/BI/SFC/P21 -> IR
 cad2d-ir import drawing.JWW -o drawing.json --pretty
 cad2d-ir import drawing.dwg -o drawing.json --pretty
 cad2d-ir import drawing.dgn -o drawing.json --pretty
