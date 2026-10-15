@@ -779,10 +779,14 @@ def test_jww_image_placement_becomes_image_entity_with_embedded_bytes() -> None:
     assert result.statistics["linked_images"] == 0
     assert result.statistics["converted_entity_counts"]["IMAGE"] == 1
     validate_ir(result.document, strict_jsonschema=True)
-    # The image never reaches DXF as text, and the codec reports the skip.
+    # The image reaches DXF as an IMAGE entity that references logo.bmp by name
+    # (a DXF never carries the pixels), never as the ^@BM text.
     exported = convert_ir_to_dxf_text(result.document)
     assert "^@BM" not in exported.dxf_text
-    assert {d.code for d in exported.diagnostics} >= {"DXF_IMAGE_SKIPPED"}
+    assert "\nIMAGE\n" in exported.dxf_text and "\nlogo.bmp\n" in exported.dxf_text
+    exported_codes = {d.code for d in exported.diagnostics}
+    assert "DXF_IMAGE_REFERENCED" in exported_codes
+    assert "DXF_IMAGE_SKIPPED" not in exported_codes
 
 
 def test_jww_uncompressed_archive_entry_and_rotation() -> None:

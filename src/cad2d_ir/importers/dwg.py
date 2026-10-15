@@ -1457,13 +1457,16 @@ def _convert_image(
     path = dxf.get("file_path")
     href = path.strip() if isinstance(path, str) and path.strip() else None
     definition = dxf.get("image_def")
-    name = (
+    definition_name = (
         definition.strip()
         if isinstance(definition, str) and definition.strip()
         else None
     )
-    if name is None and href is not None:
-        name = href.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1] or None
+    # ``name`` is the file name; the IMAGEDEF name (the file's stem in ezdwg)
+    # stands in when the path is empty.
+    name = (
+        href.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1] if href else ""
+    ) or definition_name
     result: dict[str, Any] = {
         **common,
         "kind": "IMAGE",
@@ -1494,6 +1497,7 @@ def _convert_image(
         "clipping": bool(dxf.get("clipping", False)),
         "clip_type": clip_type,
         "clip_vertices": clip_vertices,
+        "definition_name": definition_name,
     }
     if href is not None:
         image_metadata["file_path"] = href

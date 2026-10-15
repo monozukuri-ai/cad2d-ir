@@ -159,8 +159,50 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "warning",
         "skipped",
         "DXF export",
-        "An IMAGE entity was not written; DXF IMAGE needs IMAGEDEF objects, which "
-        "the codec does not emit yet.",
+        "An IMAGE entity was not written: DXF R12 has no raster images, or the "
+        "image has no positive size.",
+    ),
+    "DXF_IMAGE_REFERENCED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "DXF export",
+        "An embedded image was written as a reference to its file name; a DXF "
+        "never carries the pixels.",
+    ),
+    "DXF_IMAGE_SIZE_ASSUMED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "DXF export",
+        "The size of an image in pixels was unknown and one pixel per drawing "
+        "unit was assumed; the drawn size is kept.",
+    ),
+    "DXF_IMAGE_LINKED": DiagnosticCode(
+        "info",
+        None,
+        "DXF import",
+        "An IMAGE entity references its raster file by path; the IR keeps the "
+        "path in href and has no pixels.",
+    ),
+    "DXF_IMAGE_DEF_MISSING": DiagnosticCode(
+        "warning",
+        None,
+        "DXF import",
+        "The IMAGEDEF an IMAGE refers to is not in OBJECTS; the placement is "
+        "kept without a file path.",
+    ),
+    "DXF_IMAGE_CLIP_IGNORED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "DXF import",
+        "The clip boundary of an IMAGE was not applied; the IMAGE spans its "
+        "full extent.",
+    ),
+    "DXF_IMAGE_AXES_APPROXIMATED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "DXF import",
+        "The pixel axes of an IMAGE are mirrored or not at a right angle; the "
+        "IMAGE keeps its width, height and the rotation of the column axis only.",
     ),
     "JWW_IMAGE_EMBEDDED": DiagnosticCode(
         "info",

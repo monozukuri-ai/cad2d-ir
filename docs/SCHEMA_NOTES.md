@@ -257,7 +257,13 @@ rebuild the placement. The DWG importer (`ezdwg` 0.16 or later) maps an
 `IMAGE` entity to a placement with `href`: a DWG references the raster file by
 path and never embeds it, so the entity has no pixels; the pixel size, the
 pixel step vectors and the clip boundary stay in `metadata.dwg.image`. The DXF
-codec does not write images yet (`DXF_IMAGE_SKIPPED`).
+codec reads an `IMAGE` entity with its `IMAGEDEF` object the same way (the
+path in `href`, the DXF values in `metadata.dxf.image`, `DXF_IMAGE_LINKED`) and
+writes an `IMAGE` to R2010 output: a linked image keeps its `href`, an
+embedded one becomes a reference to its file name (`DXF_IMAGE_REFERENCED`),
+and the pixel count comes from the DXF/DWG metadata or the file header
+(`DXF_IMAGE_SIZE_ASSUMED` otherwise). R12 output has no raster images
+(`DXF_IMAGE_SKIPPED`).
 
 ## JWS symbols
 
@@ -293,7 +299,9 @@ types are generated defaults.
 - `constraints` are IR-only metadata today and are omitted on DXF export.
 - `GENERIC` dimensions are exported as visual LINE/TEXT/POINT/polyline primitives by default; they are not mislabeled as native DXF `DIMENSION` entities.
 - `HATCH` mapping currently focuses on polyline-like loops.
-- `IMAGE` entities are not written to DXF (no IMAGEDEF support yet).
+- `IMAGE` entities are written to R2010 DXF as references by path; a DXF never
+  carries the pixels, so an embedded image is reduced to its file name
+  (`DXF_IMAGE_REFERENCED`). R12 output has no raster images (`DXF_IMAGE_SKIPPED`).
 - Feature control frames (`TOLERANCE`) have no entity of their own: the importers draw them as the lines of their frame and one `TEXT` per compartment, with the geometric characteristic symbols as Unicode characters. Compartment widths are estimated.
 - Polygon meshes and polyface meshes are 3D surfaces and are skipped. 3D polylines are projected to XY.
 - Ellipse start/end parameters are always radians, independent of `header.angle_unit`, matching the DXF ellipse parameter convention.

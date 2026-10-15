@@ -423,7 +423,8 @@ def test_unknown_entity_and_constraints_have_structured_export_diagnostics() -> 
     assert result.entity_map[-1]["reason_code"] == "DXF_UNKNOWN_ENTITY_SKIPPED"
 
 
-def test_image_entities_are_skipped_with_a_dedicated_diagnostic() -> None:
+def test_image_entities_are_skipped_for_r12_with_a_dedicated_diagnostic() -> None:
+    # R12 has no raster images; R2010 output writes them (tests/test_dxf_images.py).
     document = {
         "format": "cad2d-ir",
         "version": "0.3.0",
@@ -443,7 +444,7 @@ def test_image_entities_are_skipped_with_a_dedicated_diagnostic() -> None:
         ],
     }
 
-    result = convert_ir_to_dxf_text(document)
+    result = convert_ir_to_dxf_text(document, target_version="AC1009")
 
     skipped = [d for d in result.diagnostics if d.code == "DXF_IMAGE_SKIPPED"]
     assert len(skipped) == 1

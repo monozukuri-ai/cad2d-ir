@@ -111,8 +111,8 @@ output handles are omitted and consumers use `index`.
 
 | Value | CAD release | Export behavior |
 |---|---|---|
-| `AC1009` | R12 | LWPOLYLINE to POLYLINE; MTEXT to TEXT; ELLIPSE/SPLINE to sampled POLYLINE; HATCH to boundary POLYLINE |
-| `AC1024` | R2010 | native supported entities, deterministic handles, and `$HANDSEED` |
+| `AC1009` | R12 | LWPOLYLINE to POLYLINE; MTEXT to TEXT; ELLIPSE/SPLINE to sampled POLYLINE; HATCH to boundary POLYLINE; IMAGE skipped |
+| `AC1024` | R2010 | native supported entities (IMAGE with its IMAGEDEF objects), deterministic handles, and `$HANDSEED` |
 
 AC1009 text output declares `$DWGCODEPAGE=ANSI_932`. Use
 `write_dxf_file(..., target_version="AC1009", encoding="cp932")`, or leave
@@ -124,6 +124,15 @@ declared codepage cannot disagree with the file bytes.
 `generic_dimensions="explode"` is the default. It preserves GENERIC
 dimension lines, rendered paths, text, and point markers as primitives.
 `"skip"` retains the previous omission behavior with a structured reason.
+
+Raster images (`IMAGE`) are written to AC1024 output as `IMAGE` entities with
+the `IMAGEDEF` objects, reactors, dictionary entries and `CLASSES` records DXF
+needs; a file without images keeps the sections it always had. A DXF never
+carries the pixels: a linked image keeps its `href`, an embedded image is
+written as a reference to its file name (`DXF_IMAGE_REFERENCED`), and the
+pixel count comes from `metadata.dxf.image`/`metadata.dwg.image` or from the
+PNG/GIF/BMP/JPEG header of the embedded data (`DXF_IMAGE_SIZE_ASSUMED`
+otherwise). AC1009 output skips images (`DXF_IMAGE_SKIPPED`).
 
 `convert_ir_file_to_dxf(path, ...)` accepts the same export options.
 

@@ -1187,7 +1187,7 @@ def test_dwg_image_placements_become_image_references() -> None:
         48.0
     )
     assert "rotation" not in logo and "data" not in logo
-    assert logo["href"] == "images/logo.png" and logo["name"] == "logo"
+    assert logo["href"] == "images/logo.png" and logo["name"] == "logo.png"
     image = logo["metadata"]["dwg"]["image"]
     assert image["size"] == [640.0, 480.0] and image["file_path"] == "images/logo.png"
     assert image["image_def_handle"] == "0x43" and image["clipping"] is False
@@ -1197,7 +1197,7 @@ def test_dwg_image_placements_become_image_references() -> None:
         32.0
     )
     assert site["rotation"] == pytest.approx(90.0)
-    assert site["href"] == "C:\\pics\\site.jpg" and site["name"] == "site"
+    assert site["href"] == "C:\\pics\\site.jpg" and site["name"] == "site.jpg"
     assert site["metadata"]["dwg"]["image"]["clip_vertices"] == [
         [0.0, 0.0],
         [1200.0, 0.0],
@@ -1281,7 +1281,8 @@ def test_dwg_image_written_by_ezdwg_round_trips(tmp_path) -> None:
         for e in result.document["tables"]["blocks"]["B"]["entities"]
         if e["kind"] == "IMAGE"
     )
-    assert block_image["width"] == pytest.approx(10.0) and block_image["name"] == "logo"
+    assert block_image["width"] == pytest.approx(10.0)
+    assert block_image["name"] == "logo.png"
     codes = [d.code for d in result.diagnostics]
     assert (
         "DWG_UNSUPPORTED_ENTITY" not in codes and codes.count("DWG_IMAGE_LINKED") == 1

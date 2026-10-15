@@ -88,7 +88,13 @@ entity/source identifiers and structured details.
 | `DXF_TOLERANCE_EXPLODED` | warning | exploded | DXF import | A feature control frame (`TOLERANCE`) was drawn as the lines of its frame and one `TEXT` per compartment; compartment widths are estimated. |
 | `DXF_TRAILING_DATA_IGNORED` | info | skipped | DXF import | Lines after the `0`/`EOF` marker were ignored. |
 | `DXF_TRAILING_LINE_IGNORED` | warning | skipped | DXF import | The text ended with an unpaired line (truncated file or stray data) that was ignored. |
-| `DXF_IMAGE_SKIPPED` | warning | skipped | DXF export | An `IMAGE` entity was not written; the codec does not emit the IMAGEDEF objects DXF images need yet. |
+| `DXF_IMAGE_SKIPPED` | warning | skipped | DXF export | An `IMAGE` entity was not written: DXF R12 has no raster images, or the image has no positive width and height. |
+| `DXF_IMAGE_REFERENCED` | warning | approximated | DXF export | An image the IR carried embedded (`data`) was written as an `IMAGE` that references its file name; a DXF never carries the pixels, so the file has to be placed next to the DXF. |
+| `DXF_IMAGE_SIZE_ASSUMED` | warning | approximated | DXF export | The size of an image in pixels was not known (no DXF/DWG metadata, no readable PNG/GIF/BMP/JPEG header) and one pixel per drawing unit was assumed; the drawn size is kept. |
+| `DXF_IMAGE_LINKED` | info | - | DXF import | An `IMAGE` entity references its raster file by path (a DXF never embeds the pixels); the `IMAGE` keeps the path in `href`, the DXF values in `metadata.dxf.image`, and has no pixels. |
+| `DXF_IMAGE_DEF_MISSING` | warning | - | DXF import | The IMAGEDEF an `IMAGE` refers to (group 340) is not in OBJECTS; the placement is kept without a file path. |
+| `DXF_IMAGE_CLIP_IGNORED` | warning | approximated | DXF import | The clip boundary of an `IMAGE` was not applied; the `IMAGE` spans its full extent and the boundary stays in `metadata.dxf.image`. |
+| `DXF_IMAGE_AXES_APPROXIMATED` | warning | approximated | DXF import | The pixel axes of an `IMAGE` are mirrored or not at a right angle; the `IMAGE` keeps its width, height and the rotation of the column axis only (the vectors stay in `metadata.dxf.image`). |
 | `DXF_UNKNOWN_ENTITY_SKIPPED` | warning | skipped | DXF export | An unknown IR entity kind was skipped. |
 | `IDW_CURVE_APPROXIMATED` | warning | approximated | IDW import | A curve whose ellipse parameters could not be recovered was sampled as a polyline. |
 | `IDW_CURVE_EDGE_ON_LINE` | warning | approximated | IDW import | An edge-on projected circle (minor axis ~0 after XY projection) was represented as a line segment. |

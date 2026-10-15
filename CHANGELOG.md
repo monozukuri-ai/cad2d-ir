@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.12.4
+
+- DXF import: `IMAGE` entities are read together with their `IMAGEDEF` objects
+  (OBJECTS section) into `IMAGE` entities with the same mapping as the DWG
+  importer: the lower-left corner, the drawn width and height, the rotation of
+  the column axis, the file path in `href` (`DXF_IMAGE_LINKED`) and the DXF
+  values (pixel size, vectors, display properties, clip boundary, definition
+  name) in `metadata.dxf.image`. A missing definition keeps the placement
+  (`DXF_IMAGE_DEF_MISSING`); a clip boundary is not applied
+  (`DXF_IMAGE_CLIP_IGNORED`) and mirrored or sheared axes keep only the
+  rotation (`DXF_IMAGE_AXES_APPROXIMATED`). Images were dropped with the plain
+  "Unsupported DXF entity skipped" warning before; images inside blocks and
+  on layouts are read too.
+- DXF export: `IMAGE` entities are written to AC1024 output as `IMAGE`
+  entities with their `IMAGEDEF` and `IMAGEDEF_REACTOR` objects, the
+  `ACAD_IMAGE_DICT` dictionary, `RASTERVARIABLES` and the `CLASSES` records;
+  a file without images keeps the sections it always had. A linked image
+  keeps its `href`; an embedded one is written as a reference to its file name
+  (`DXF_IMAGE_REFERENCED`), since a DXF never carries the pixels. The pixel
+  count comes from `metadata.dxf.image`/`metadata.dwg.image` or the
+  PNG/GIF/BMP/JPEG header of the embedded data, else one pixel per drawing
+  unit is assumed (`DXF_IMAGE_SIZE_ASSUMED`). AC1009 output still skips images
+  (`DXF_IMAGE_SKIPPED`, now also for an image without a positive size).
+- DWG import: the `name` of an `IMAGE` is its file name (the IMAGEDEF name
+  stood in before); the IMAGEDEF name stays in
+  `metadata.dwg.image.definition_name`.
+
 ## 0.12.3
 
 - DWG import: raster image placements (`IMAGE`, decoded by `ezdwg` 0.16 or

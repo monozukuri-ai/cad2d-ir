@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import base64
 import codecs
 import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import math
 from pathlib import Path
 import re
+import struct
 from typing import TYPE_CHECKING, Any, Iterable, Literal
 
 from cad2d_ir.constants import CURRENT_IR_VERSION
@@ -61,6 +63,7 @@ _ENTITY_SUBCLASSES: dict[str, tuple[str, ...]] = {
     "INSERT": ("AcDbBlockReference",),
     "HATCH": ("AcDbHatch",),
     "SPLINE": ("AcDbSpline",),
+    "IMAGE": ("AcDbRasterImage",),
     "BLOCK": ("AcDbBlockBegin",),
     "ENDBLK": ("AcDbBlockEnd",),
     "ATTRIB": ("AcDbText", "AcDbAttribute"),
@@ -87,6 +90,8 @@ _DIMENSION_SUBCLASSES = {
 class _RenderedEntity:
     dxf_type: str
     pairs: list[DXFPair]
+    # The IMAGEDEF_REACTOR an IMAGE owns; bound to the entity's handle when written.
+    reactor_handle: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,6 +126,215 @@ class _HandleAllocator:
     @property
     def handseed(self) -> str:
         return f"{self.next_value:X}"
+
+
+# ---------------------------------------------------------------------------
+# Raster images: IMAGE entities with IMAGEDEF objects (DXF R14 and later)
+# ---------------------------------------------------------------------------
+
+# Group 70 of IMAGE: show the image, also when it is not aligned with the
+# screen. Bit 4 (use the clip boundary) stays off: the IR carries no clip.
+_IMAGE_DISPLAY_FLAGS = 3
+# Group 72 of RASTERVARIABLES: the unit images are inserted in.
+_IR_TO_RASTER_UNITS = {"mm": 1, "cm": 2, "m": 3, "inch": 5, "ft": 6}
+_IMAGE_EXTENSIONS = {
+    "image/png": ".png",
+    "image/bmp": ".bmp",
+    "image/x-ms-bmp": ".bmp",
+    "image/jpeg": ".jpg",
+    "image/gif": ".gif",
+    "image/tiff": ".tif",
+    "image/webp": ".webp",
+}
+# Characters AutoCAD rejects in symbol and dictionary names.
+_IMAGE_NAME_INVALID = re.compile(r'[<>/\\":;?*|,=`]')
+_JPEG_FRAME_MARKERS = frozenset(
+    {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+)
+
+
+@dataclass(slots=True)
+class _ImageDefinition:
+    """One IMAGEDEF object: the raster file the IMAGE entities showing it share."""
+
+    handle: str
+    name: str
+    file_path: str
+    size: tuple[int, int]
+    pixel_size: tuple[float, float]
+    # (IMAGEDEF_REACTOR handle, handle of the IMAGE entity that owns it)
+    reactors: list[tuple[str, str | None]] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class _ImageRegistry:
+    """The objects behind the IMAGE entities of one R2010 file.
+
+    A DXF image is an IMAGE entity that refers to an IMAGEDEF object (the file
+    and its size in pixels) and owns an IMAGEDEF_REACTOR; the definitions hang
+    in the ACAD_IMAGE_DICT dictionary of the named object dictionary, and the
+    four classes are declared in CLASSES. The handles of a definition and of a
+    reactor are allocated while the entity is rendered, the handle of the entity
+    is bound once it is written, and the two sections are produced at the end.
+    """
+
+    allocator: _HandleAllocator
+    definitions: dict[str, _ImageDefinition] = field(default_factory=dict)
+    names: set[str] = field(default_factory=set)
+    pending: dict[str, _ImageDefinition] = field(default_factory=dict)
+
+    def definition(
+        self,
+        file_path: str,
+        size: tuple[int, int],
+        pixel_size: tuple[float, float],
+    ) -> _ImageDefinition:
+        existing = self.definitions.get(file_path)
+        if existing is not None:
+            return existing
+        name = _image_definition_name(file_path, self.names)
+        self.names.add(name.casefold())
+        definition = _ImageDefinition(
+            self.allocator.allocate(), name, file_path, size, pixel_size
+        )
+        self.definitions[file_path] = definition
+        return definition
+
+    def reactor(self, definition: _ImageDefinition) -> str:
+        handle = self.allocator.allocate()
+        definition.reactors.append((handle, None))
+        self.pending[handle] = definition
+        return handle
+
+    def bind(self, reactor_handle: str, image_handle: str) -> None:
+        definition = self.pending.pop(reactor_handle, None)
+        if definition is None:
+            return
+        definition.reactors = [
+            (handle, image_handle if handle == reactor_handle else owner)
+            for handle, owner in definition.reactors
+        ]
+
+    def _bound_reactors(self, definition: _ImageDefinition) -> list[tuple[str, str]]:
+        return [
+            (handle, owner)
+            for handle, owner in definition.reactors
+            if owner is not None
+        ]
+
+    def classes_pairs(self) -> list[DXFPair]:
+        images = sum(
+            len(self._bound_reactors(definition))
+            for definition in self.definitions.values()
+        )
+        pairs: list[DXFPair] = [(0, "SECTION"), (2, "CLASSES")]
+        for record, cpp_class, flags, count, is_entity in (
+            ("IMAGE", "AcDbRasterImage", 127, images, 1),
+            ("IMAGEDEF", "AcDbRasterImageDef", 0, len(self.definitions), 0),
+            ("IMAGEDEF_REACTOR", "AcDbRasterImageDefReactor", 1, images, 0),
+            ("RASTERVARIABLES", "AcDbRasterVariables", 0, 1, 0),
+        ):
+            pairs.extend(
+                [
+                    (0, "CLASS"),
+                    (1, record),
+                    (2, cpp_class),
+                    (3, "ISM"),
+                    (90, str(flags)),
+                    (91, str(count)),
+                    (280, "0"),
+                    (281, str(is_entity)),
+                ]
+            )
+        pairs.append((0, "ENDSEC"))
+        return pairs
+
+    def objects_pairs(self, units_name: str) -> list[DXFPair]:
+        root = self.allocator.allocate()
+        groups = self.allocator.allocate()
+        image_dict = self.allocator.allocate()
+        variables = self.allocator.allocate()
+        pairs: list[DXFPair] = [
+            (0, "SECTION"),
+            (2, "OBJECTS"),
+            (0, "DICTIONARY"),
+            (5, root),
+            (330, "0"),
+            (100, "AcDbDictionary"),
+            (281, "1"),
+            (3, "ACAD_GROUP"),
+            (350, groups),
+            (3, "ACAD_IMAGE_DICT"),
+            (350, image_dict),
+            (3, "ACAD_IMAGE_VARS"),
+            (350, variables),
+            (0, "DICTIONARY"),
+            (5, groups),
+            (330, root),
+            (100, "AcDbDictionary"),
+            (281, "1"),
+            (0, "DICTIONARY"),
+            (5, image_dict),
+            (330, root),
+            (100, "AcDbDictionary"),
+            (281, "1"),
+        ]
+        definitions = list(self.definitions.values())
+        for definition in definitions:
+            pairs.extend([(3, definition.name), (350, definition.handle)])
+        pairs.extend(
+            [
+                (0, "RASTERVARIABLES"),
+                (5, variables),
+                (330, root),
+                (100, "AcDbRasterVariables"),
+                (90, "0"),
+                (70, "1"),
+                (71, "1"),
+                (72, str(_IR_TO_RASTER_UNITS.get(units_name, 0))),
+            ]
+        )
+        for definition in definitions:
+            pairs.extend(
+                [
+                    (0, "IMAGEDEF"),
+                    (5, definition.handle),
+                    (102, "{ACAD_REACTORS"),
+                    (330, image_dict),
+                ]
+            )
+            pairs.extend(
+                (330, handle) for handle, _owner in self._bound_reactors(definition)
+            )
+            pairs.extend(
+                [
+                    (102, "}"),
+                    (330, image_dict),
+                    (100, "AcDbRasterImageDef"),
+                    (90, "0"),
+                    (1, definition.file_path),
+                    (10, _num(definition.size[0])),
+                    (20, _num(definition.size[1])),
+                    (11, _num(definition.pixel_size[0])),
+                    (21, _num(definition.pixel_size[1])),
+                    (280, "1"),
+                    (281, "0"),
+                ]
+            )
+        for definition in definitions:
+            for handle, owner in self._bound_reactors(definition):
+                pairs.extend(
+                    [
+                        (0, "IMAGEDEF_REACTOR"),
+                        (5, handle),
+                        (330, owner),
+                        (100, "AcDbRasterImageDefReactor"),
+                        (90, "2"),
+                        (330, owner),
+                    ]
+                )
+        pairs.append((0, "ENDSEC"))
+        return pairs
 
 
 _INSUNITS_TO_IR = {
@@ -456,12 +670,14 @@ def _pairs_to_ir(
         _pairs_to_records(sections.get("ENTITIES", []))
     )
     dimstyles = _dimstyle_sizes(sections.get("TABLES", []))
+    image_defs = _image_definitions(sections.get("OBJECTS", []))
     entities = _entity_records_to_ir(
         model_records,
         warnings=warnings,
         diagnostics=diagnostics,
         default_text_height=default_text_height,
         dimstyles=dimstyles,
+        image_defs=image_defs,
     )
     paper_space_blocks: dict[str, list[tuple[str, list[DXFPair]]]] = {}
     blocks = _blocks_to_ir(
@@ -471,6 +687,7 @@ def _pairs_to_ir(
         default_text_height=default_text_height,
         paper_space_blocks=paper_space_blocks,
         dimstyles=dimstyles,
+        image_defs=image_defs,
     )
     tables = _tables_to_ir(sections.get("TABLES", []))
     if blocks:
@@ -484,6 +701,7 @@ def _pairs_to_ir(
         diagnostics=diagnostics,
         default_text_height=default_text_height,
         dimstyles=dimstyles,
+        image_defs=image_defs,
     )
 
     ir_document: dict[str, Any] = {
@@ -564,6 +782,7 @@ def ir_to_dxf(
     export_diagnostics: list[ExportDiagnostic] = []
     generated_map: list[EntityMapEntry] = []
     allocator = _HandleAllocator() if target_version == "AC1024" else None
+    images = _ImageRegistry(allocator) if allocator is not None else None
     export_document = ir_document
     if _dimension_geometry_blocks_are_missing(ir_document):
         export_document = copy.deepcopy(ir_document)
@@ -595,6 +814,7 @@ def ir_to_dxf(
         curve_segments=curve_segments,
         generic_dimensions=generic_dimensions,
         allocator=allocator,
+        images=images,
         diagnostics=export_diagnostics,
         warnings=warnings,
         entity_map=generated_map,
@@ -621,6 +841,7 @@ def ir_to_dxf(
             curve_segments=curve_segments,
             generic_dimensions=generic_dimensions,
             allocator=allocator,
+            images=images,
             diagnostics=export_diagnostics,
             warnings=warnings,
             entity_map=generated_map,
@@ -632,12 +853,23 @@ def ir_to_dxf(
         curve_segments=curve_segments,
         generic_dimensions=generic_dimensions,
         allocator=allocator,
+        images=images,
         layer_handles=layer_handles,
         diagnostics=export_diagnostics,
         warnings=warnings,
         entity_map=generated_map,
     )
     entity_pairs.append((0, "ENDSEC"))
+
+    # Raster images need their classes and objects; a file without images keeps
+    # the sections it always had.
+    classes_pairs: list[DXFPair] = []
+    objects_pairs: list[DXFPair] = []
+    if images is not None and images.definitions:
+        classes_pairs = images.classes_pairs()
+        objects_pairs = images.objects_pairs(
+            str(export_document.get("header", {}).get("units", "mm"))
+        )
 
     header_pairs = _header_to_pairs(
         export_document,
@@ -647,7 +879,15 @@ def ir_to_dxf(
         warnings=warnings,
     )
 
-    pairs = header_pairs + table_pairs + block_pairs + entity_pairs + [(0, "EOF")]
+    pairs = (
+        header_pairs
+        + classes_pairs
+        + table_pairs
+        + block_pairs
+        + entity_pairs
+        + objects_pairs
+        + [(0, "EOF")]
+    )
     if diagnostics is not None:
         diagnostics.extend(export_diagnostics)
     if entity_map is not None:
@@ -1460,6 +1700,7 @@ def _entity_records_to_ir(
     diagnostics: list[ImportDiagnostic] | None = None,
     default_text_height: float = 2.5,
     dimstyles: dict[str, dict[str, float]] | None = None,
+    image_defs: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     projection = _detect_axis_projection(records)
     if projection is not None:
@@ -1487,6 +1728,7 @@ def _entity_records_to_ir(
         default_text_height=default_text_height,
         projection=projection,
         dimstyles=dimstyles,
+        image_defs=image_defs,
     )
 
 
@@ -1498,6 +1740,7 @@ def _blocks_to_ir(
     default_text_height: float = 2.5,
     paper_space_blocks: dict[str, list[tuple[str, list[DXFPair]]]] | None = None,
     dimstyles: dict[str, dict[str, float]] | None = None,
+    image_defs: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Block definitions by name.
 
@@ -1548,6 +1791,7 @@ def _blocks_to_ir(
                 context=f"BLOCK:{name}",
                 default_text_height=default_text_height,
                 dimstyles=dimstyles,
+                image_defs=image_defs,
             ),
         }
     return blocks
@@ -1818,6 +2062,7 @@ def _layouts_to_ir(
     diagnostics: list[ImportDiagnostic] | None,
     default_text_height: float,
     dimstyles: dict[str, dict[str, float]] | None = None,
+    image_defs: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Paper-space layouts of a DXF file, in tab order.
 
@@ -1879,6 +2124,7 @@ def _layouts_to_ir(
             default_text_height=default_text_height,
             in_block=False,
             dimstyles=dimstyles,
+            image_defs=image_defs,
         )
         viewports: list[dict[str, Any]] = []
         viewport_records = [pairs for kind, pairs in records if kind == "VIEWPORT"]
@@ -1945,7 +2191,7 @@ def _pairs_to_records(pairs: list[DXFPair]) -> list[tuple[str, list[DXFPair]]]:
     return records
 
 
-_AXIS_PROJECTABLE_DXF_KINDS = frozenset({"LINE", "POINT", "CIRCLE", "ARC"})
+_AXIS_PROJECTABLE_DXF_KINDS = frozenset({"LINE", "POINT", "CIRCLE", "ARC", "IMAGE"})
 
 
 def _detect_axis_projection(
@@ -2024,6 +2270,7 @@ _CONVERTIBLE_DXF_KINDS = frozenset(
         "HATCH",
         "SPLINE",
         "DIMENSION",
+        "IMAGE",
         "SOLID",
         "TRACE",
         "LEADER",
@@ -2042,6 +2289,7 @@ def _records_to_entities(
     projection: _AxisProjection | None = None,
     in_block: bool | None = None,
     dimstyles: dict[str, dict[str, float]] | None = None,
+    image_defs: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Convert entity records to IR entities.
 
@@ -2164,6 +2412,16 @@ def _records_to_entities(
             elif kind == "HATCH":
                 entity = _hatch_from_pairs(
                     pairs, serial, warnings=warnings, diagnostics=diagnostics
+                )
+            elif kind == "IMAGE":
+                entity = _image_from_pairs(
+                    pairs,
+                    serial,
+                    image_defs=image_defs,
+                    projection=projection,
+                    context=context,
+                    diagnostics=diagnostics,
+                    warnings=warnings,
                 )
             elif kind == "SPLINE":
                 entity = _spline_from_pairs(pairs, serial)
@@ -2940,6 +3198,253 @@ def _insert_from_pairs(
 
     if attributes:
         entity["attributes"] = attributes
+    return entity
+
+
+def _normalize_handle(value: str | None) -> str | None:
+    """Upper-case hex without leading zeros, so ``0A1`` and ``a1`` match."""
+    if value is None or not value.strip():
+        return None
+    return value.strip().upper().lstrip("0") or "0"
+
+
+def _image_base_name(path: str) -> str:
+    """The file name of a Windows or POSIX path."""
+    return re.split(r"[\\/]", path.strip())[-1].strip()
+
+
+def _integral(value: float) -> float | int:
+    return int(value) if float(value).is_integer() else value
+
+
+def _image_definitions(object_pairs: list[DXFPair]) -> dict[str, dict[str, Any]]:
+    """IMAGEDEF objects by normalized handle.
+
+    An IMAGEDEF holds the path of the raster file and its size in pixels; its
+    name is the key under which the ACAD_IMAGE_DICT dictionary lists it.
+    """
+    if not any(
+        code == 0 and value.strip() == "IMAGEDEF" for code, value in object_pairs
+    ):
+        return {}
+    definitions: dict[str, dict[str, Any]] = {}
+    names: dict[str, str] = {}
+    for kind, pairs in _pairs_to_records(object_pairs):
+        if kind == "IMAGEDEF":
+            handle = _normalize_handle(_first_string(pairs, 5))
+            if handle is None:
+                continue
+            try:
+                definitions[handle] = {
+                    "file_path": _first_string(pairs, 1) or "",
+                    "size": [
+                        _first_float(pairs, 10, default=None),
+                        _first_float(pairs, 20, default=None),
+                    ],
+                    "pixel_size": [
+                        _first_float(pairs, 11, default=None),
+                        _first_float(pairs, 21, default=None),
+                    ],
+                    "loaded": _first_int(pairs, 280, default=None),
+                    "resolution_units": _first_int(pairs, 281, default=None),
+                }
+            except (ValueError, TypeError, OverflowError):
+                continue
+        elif kind == "DICTIONARY":
+            key: str | None = None
+            for code, value in pairs:
+                if code == 3:
+                    key = value.strip()
+                elif code in {350, 360} and key is not None:
+                    target = _normalize_handle(value)
+                    if target is not None:
+                        names[target] = key
+                    key = None
+    for handle, definition in definitions.items():
+        if handle in names:
+            definition["name"] = names[handle]
+    return definitions
+
+
+def _is_full_image_clip(
+    clip_type: int | None,
+    vertices: list[list[float]],
+    columns: float,
+    rows: float,
+) -> bool:
+    """A rectangular boundary that covers the whole image (the default writers emit)."""
+    if not vertices:
+        return True
+    if clip_type == 2 or len(vertices) != 2:
+        return False
+    tolerance = 1e-6
+    xs = sorted(vertex[0] for vertex in vertices)
+    ys = sorted(vertex[1] for vertex in vertices)
+    return (
+        xs[0] <= tolerance
+        and ys[0] <= tolerance
+        and xs[1] >= columns - 0.5 - tolerance
+        and ys[1] >= rows - 0.5 - tolerance
+    )
+
+
+def _image_from_pairs(
+    pairs: list[DXFPair],
+    idx: int,
+    *,
+    image_defs: dict[str, dict[str, Any]] | None,
+    projection: _AxisProjection | None,
+    context: str,
+    diagnostics: list[ImportDiagnostic] | None,
+    warnings: list[str] | None,
+) -> dict[str, Any]:
+    """An IMAGE entity as an IR image placement.
+
+    The entity stores the lower-left corner, one pixel step along the columns
+    (U) and along the rows (V) and the size in pixels; the IMAGEDEF it refers
+    to (group 340) names the file. The IR keeps the drawn width and height
+    (step × count), the rotation of the column axis and the path in ``href``;
+    the DXF values stay in ``metadata.dxf.image``.
+    """
+    entity = _common_from_pairs(pairs, idx)
+    entity["kind"] = "IMAGE"
+    handle = _first_string(pairs, 5)
+    label = f"IMAGE {handle or idx}"
+    insert3 = _point3_from_pairs(pairs, 10, 20, 30)
+    u3 = _point3_from_pairs(pairs, 11, 21, 31)
+    v3 = _point3_from_pairs(pairs, 12, 22, 32)
+    columns = _first_float(pairs, 13, default=None)
+    rows = _first_float(pairs, 23, default=None)
+    if columns is None or rows is None:
+        raise ValueError("IMAGE requires its size in pixels (group codes 13 and 23)")
+    if not (columns > 0.0 and rows > 0.0):
+        raise ValueError("IMAGE size in pixels must be positive")
+    if projection is not None:
+        insert = projection.project_wcs(insert3)
+        u_vector = projection.project_wcs(u3)
+        v_vector = projection.project_wcs(v3)
+    else:
+        insert = [insert3[0], insert3[1]]
+        u_vector = [u3[0], u3[1]]
+        v_vector = [v3[0], v3[1]]
+    u_length = math.hypot(*u_vector)
+    v_length = math.hypot(*v_vector)
+    if u_length <= 1e-12 or v_length <= 1e-12:
+        raise ValueError("IMAGE pixel vectors must be non-zero")
+
+    definition_handle = _first_string(pairs, 340)
+    definition = (
+        image_defs.get(_normalize_handle(definition_handle) or "")
+        if image_defs and definition_handle
+        else None
+    )
+    file_path = str((definition or {}).get("file_path") or "").strip()
+    definition_name = (definition or {}).get("name")
+    if not isinstance(definition_name, str) or not definition_name:
+        definition_name = None
+    pixel_size = (definition or {}).get("pixel_size")
+    if not (
+        isinstance(pixel_size, list)
+        and len(pixel_size) == 2
+        and all(isinstance(value, float) for value in pixel_size)
+    ):
+        pixel_size = None
+
+    entity["insert"] = insert
+    entity["width"] = u_length * columns
+    entity["height"] = v_length * rows
+    entity["name"] = (
+        _image_base_name(file_path) or definition_name or f"IMAGE_{handle or idx}"
+    )
+    rotation = math.degrees(math.atan2(u_vector[1], u_vector[0]))
+    if abs(rotation) > 1e-9:
+        entity["rotation"] = rotation
+    if file_path:
+        entity["href"] = file_path
+
+    clipping = _first_int(pairs, 280, default=None)
+    clip_type = _first_int(pairs, 71, default=None)
+    clip_vertices = [
+        [x, y] for x, y in zip(_all_floats(pairs, 14), _all_floats(pairs, 24))
+    ]
+    image_metadata: dict[str, Any] = {
+        "size": [_integral(columns), _integral(rows)],
+        "u_vector": list(u3),
+        "v_vector": list(v3),
+        "display_props": _first_int(pairs, 70, default=None),
+        "clipping": bool(clipping) if clipping is not None else None,
+        "brightness": _first_int(pairs, 281, default=None),
+        "contrast": _first_int(pairs, 282, default=None),
+        "fade": _first_int(pairs, 283, default=None),
+        "clip_type": clip_type,
+        "clip_vertices": clip_vertices,
+        "clip_mode": _first_int(pairs, 290, default=None),
+        "file_path": file_path or None,
+        "image_def_handle": definition_handle,
+        "definition_name": definition_name,
+        "pixel_size": pixel_size,
+    }
+    entity.setdefault("metadata", {}).setdefault("dxf", {})["image"] = {
+        key: value for key, value in image_metadata.items() if value is not None
+    }
+
+    if definition is None:
+        _import_diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_IMAGE_DEF_MISSING",
+            severity="warning",
+            message=(
+                f"[{context}] {label}: its IMAGEDEF {definition_handle or '?'} is "
+                "not in OBJECTS; the placement is kept without a file path."
+            ),
+            source_id=handle,
+            source_kind="IMAGE",
+        )
+    else:
+        _import_diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_IMAGE_LINKED",
+            severity="info",
+            message=(
+                f"[{context}] {label} references {file_path!r} by path; a DXF "
+                "never embeds the pixels."
+            ),
+            source_id=handle,
+            source_kind="IMAGE",
+        )
+    cross = u_vector[0] * v_vector[1] - u_vector[1] * v_vector[0]
+    dot = u_vector[0] * v_vector[0] + u_vector[1] * v_vector[1]
+    if cross <= 0.0 or abs(dot) > 1e-9 * u_length * v_length:
+        _import_diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_IMAGE_AXES_APPROXIMATED",
+            severity="warning",
+            message=(
+                f"[{context}] {label}: the pixel axes are mirrored or not at a "
+                "right angle; the IMAGE keeps its width, height and the rotation "
+                "of the column axis only."
+            ),
+            source_id=handle,
+            source_kind="IMAGE",
+            action="approximated",
+        )
+    if clipping and not _is_full_image_clip(clip_type, clip_vertices, columns, rows):
+        _import_diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_IMAGE_CLIP_IGNORED",
+            severity="warning",
+            message=(
+                f"[{context}] {label}: the clip boundary was not applied; the "
+                "IMAGE spans its full extent."
+            ),
+            source_id=handle,
+            source_kind="IMAGE",
+            action="approximated",
+        )
     return entity
 
 
@@ -3893,6 +4398,304 @@ def _insert_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     return pairs
 
 
+def _render_image(
+    entity: dict[str, Any],
+    *,
+    target_version: TargetVersion,
+    images: _ImageRegistry | None,
+    diagnostics: list[ExportDiagnostic],
+    warnings: list[str] | None,
+) -> tuple[list[_RenderedEntity], str | None]:
+    """An IR image as an IMAGE entity (R2010 output; R12 has no raster images).
+
+    The entity references the file by path: an image the IR carries embedded
+    is written as a reference to its file name, since a DXF holds no pixels.
+    """
+    entity_id = str(entity.get("id", ""))
+    label = f"[IMAGE:{entity_id or '?'}]"
+    if images is None:
+        _diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_IMAGE_SKIPPED",
+            severity="warning",
+            message=(
+                f"{label} raster image placements need DXF R14 or later (IMAGE "
+                f"with IMAGEDEF objects); the placement was skipped for "
+                f"{target_version}."
+            ),
+            entity_id=entity_id or None,
+            action="skipped",
+        )
+        return [], "DXF_IMAGE_SKIPPED"
+    width = _positive_finite(entity.get("width"))
+    height = _positive_finite(entity.get("height"))
+    if width is None or height is None:
+        _diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_IMAGE_SKIPPED",
+            severity="warning",
+            message=f"{label} has no positive width and height; the placement was skipped.",
+            entity_id=entity_id or None,
+            action="skipped",
+        )
+        return [], "DXF_IMAGE_SKIPPED"
+
+    size = _image_pixel_size(entity)
+    if size is None:
+        size = (max(1, round(width)), max(1, round(height)))
+        _diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_IMAGE_SIZE_ASSUMED",
+            severity="warning",
+            message=(
+                f"{label} the size of the image in pixels is unknown; "
+                f"{size[0]}x{size[1]} pixels (one pixel per drawing unit) were "
+                "assumed, which keeps the drawn size."
+            ),
+            entity_id=entity_id or None,
+            action="approximated",
+        )
+    file_path, embedded = _image_file_reference(entity)
+    if embedded:
+        _diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_IMAGE_REFERENCED",
+            severity="warning",
+            message=(
+                f"{label} the embedded image was written as a reference to "
+                f"{file_path!r}; a DXF never embeds the pixels, so the file has to "
+                "be placed next to the DXF."
+            ),
+            entity_id=entity_id or None,
+            action="approximated",
+        )
+    definition = images.definition(file_path, size, (width / size[0], height / size[1]))
+    reactor_handle = images.reactor(definition)
+    pairs = _image_to_pairs(
+        entity,
+        width=width,
+        height=height,
+        size=size,
+        definition_handle=definition.handle,
+        reactor_handle=reactor_handle,
+    )
+    return [_RenderedEntity("IMAGE", pairs, reactor_handle=reactor_handle)], None
+
+
+def _positive_finite(value: Any) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    return number if math.isfinite(number) and number > 0.0 else None
+
+
+def _image_to_pairs(
+    entity: dict[str, Any],
+    *,
+    width: float,
+    height: float,
+    size: tuple[int, int],
+    definition_handle: str,
+    reactor_handle: str,
+) -> list[DXFPair]:
+    insert = entity["insert"]
+    angle = math.radians(float(entity.get("rotation", 0.0) or 0.0))
+    cos_a, sin_a = math.cos(angle), math.sin(angle)
+    pixel_width = width / size[0]
+    pixel_height = height / size[1]
+    u_vector = (
+        _snap(pixel_width * cos_a, pixel_width),
+        _snap(pixel_width * sin_a, pixel_width),
+    )
+    v_vector = (
+        _snap(-pixel_height * sin_a, pixel_height),
+        _snap(pixel_height * cos_a, pixel_height),
+    )
+    brightness, contrast, fade = _image_display_values(entity)
+    pairs: list[DXFPair] = [(0, "IMAGE")]
+    pairs.extend(_common_to_pairs(entity))
+    pairs.extend(
+        [
+            (90, "0"),
+            (10, _num(insert[0])),
+            (20, _num(insert[1])),
+            (30, "0"),
+            (11, _num(u_vector[0])),
+            (21, _num(u_vector[1])),
+            (31, "0"),
+            (12, _num(v_vector[0])),
+            (22, _num(v_vector[1])),
+            (32, "0"),
+            (13, _num(size[0])),
+            (23, _num(size[1])),
+            (340, definition_handle),
+            (70, str(_IMAGE_DISPLAY_FLAGS)),
+            (280, "0"),
+            (281, str(brightness)),
+            (282, str(contrast)),
+            (283, str(fade)),
+            (360, reactor_handle),
+            (71, "1"),
+            (91, "2"),
+            (14, "-0.5"),
+            (24, "-0.5"),
+            (14, _num(size[0] - 0.5)),
+            (24, _num(size[1] - 0.5)),
+            (290, "0"),
+        ]
+    )
+    return pairs
+
+
+def _snap(value: float, scale: float) -> float:
+    return 0.0 if abs(value) < 1e-12 * scale else value
+
+
+def _image_source_metadata(entity: dict[str, Any]) -> dict[str, Any]:
+    """The DXF or DWG image record the IR carried, if any."""
+    metadata = entity.get("metadata")
+    if not isinstance(metadata, dict):
+        return {}
+    for key in ("dxf", "dwg"):
+        section = metadata.get(key)
+        if isinstance(section, dict) and isinstance(section.get("image"), dict):
+            return section["image"]
+    return {}
+
+
+def _image_display_values(entity: dict[str, Any]) -> tuple[int, int, int]:
+    """Brightness, contrast and fade: the values the IR carried, else AutoCAD's."""
+    image = _image_source_metadata(entity)
+    values: list[int] = []
+    for key, default in (("brightness", 50), ("contrast", 50), ("fade", 0)):
+        value = image.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= 100:
+            values.append(value)
+        else:
+            values.append(default)
+    return values[0], values[1], values[2]
+
+
+def _image_pixel_size(entity: dict[str, Any]) -> tuple[int, int] | None:
+    """Columns and rows: from the DXF/DWG record the IR carried, else from the
+    header of the embedded file."""
+    size = _image_source_metadata(entity).get("size")
+    if isinstance(size, (list, tuple)) and len(size) == 2:
+        try:
+            columns, rows = (int(round(float(value))) for value in size)
+        except (TypeError, ValueError, OverflowError):
+            columns = rows = 0
+        if columns > 0 and rows > 0:
+            return columns, rows
+    data = entity.get("data")
+    if isinstance(data, str) and data.strip():
+        return _sniff_image_size(_decode_image_prefix(data))
+    return None
+
+
+def _decode_image_prefix(data: str, limit: int = 1 << 20) -> bytes:
+    compact = "".join(data.split())[:limit]
+    compact = compact[: len(compact) - len(compact) % 4]
+    try:
+        return base64.b64decode(compact, validate=False)
+    except ValueError:
+        return b""
+
+
+def _sniff_image_size(raw: bytes) -> tuple[int, int] | None:
+    """Width and height from the header of a PNG, GIF, BMP or JPEG file."""
+    try:
+        if raw.startswith(b"\x89PNG\r\n\x1a\n") and len(raw) >= 24:
+            width, height = struct.unpack(">II", raw[16:24])
+        elif raw[:6] in {b"GIF87a", b"GIF89a"} and len(raw) >= 10:
+            width, height = struct.unpack("<HH", raw[6:10])
+        elif raw.startswith(b"BM") and len(raw) >= 26:
+            (header_size,) = struct.unpack("<I", raw[14:18])
+            if header_size == 12:
+                width, height = struct.unpack("<HH", raw[18:22])
+            else:
+                width, height = struct.unpack("<ii", raw[18:26])
+                height = abs(height)
+        elif raw.startswith(b"\xff\xd8"):
+            frame = _jpeg_frame_size(raw)
+            if frame is None:
+                return None
+            width, height = frame
+        else:
+            return None
+    except struct.error:
+        return None
+    if width > 0 and height > 0:
+        return int(width), int(height)
+    return None
+
+
+def _jpeg_frame_size(raw: bytes) -> tuple[int, int] | None:
+    position = 2
+    while position + 4 <= len(raw):
+        if raw[position] != 0xFF:
+            position += 1
+            continue
+        marker = raw[position + 1]
+        if marker == 0xFF:
+            position += 1
+            continue
+        if marker in {0x01, 0xD8} or 0xD0 <= marker <= 0xD7:
+            position += 2
+            continue
+        if marker in {0xD9, 0xDA}:
+            return None
+        (length,) = struct.unpack(">H", raw[position + 2 : position + 4])
+        if marker in _JPEG_FRAME_MARKERS:
+            if position + 9 > len(raw):
+                return None
+            height, width = struct.unpack(">HH", raw[position + 5 : position + 9])
+            return width, height
+        position += 2 + length
+    return None
+
+
+def _image_file_reference(entity: dict[str, Any]) -> tuple[str, bool]:
+    """The path the IMAGEDEF names, and whether the IR carried the pixels.
+
+    A linked image keeps its ``href``. An embedded one (``data``) is written as
+    a reference to its file name, with the extension of its ``mime_type`` when
+    the name has none; a DXF cannot carry the bytes.
+    """
+    href = entity.get("href")
+    if isinstance(href, str) and href.strip():
+        return href.strip(), False
+    name = entity.get("name")
+    base = _image_base_name(name) if isinstance(name, str) else ""
+    data = entity.get("data")
+    embedded = isinstance(data, str) and bool(data.strip())
+    if not base:
+        entity_id = str(entity.get("id", "")).strip()
+        base = f"image_{entity_id}" if entity_id else "image"
+    if embedded and "." not in base:
+        base += _IMAGE_EXTENSIONS.get(
+            str(entity.get("mime_type", "")).strip().lower(), ""
+        )
+    return base, embedded
+
+
+def _image_definition_name(file_path: str, taken: set[str]) -> str:
+    """The key of an IMAGEDEF in ACAD_IMAGE_DICT: the file's stem, made unique."""
+    base = _image_base_name(file_path)
+    stem = base.rsplit(".", 1)[0] if "." in base[1:] else base
+    stem = _IMAGE_NAME_INVALID.sub("_", stem).strip() or "IMAGE"
+    candidate = stem
+    counter = 2
+    while candidate.casefold() in taken:
+        candidate = f"{stem}_{counter}"
+        counter += 1
+    return candidate
+
+
 def _attribute_to_pairs(
     attribute: dict[str, Any], *, default_layer: str
 ) -> list[DXFPair]:
@@ -4617,6 +5420,7 @@ def _blocks_to_pairs(
     diagnostics: list[ExportDiagnostic],
     warnings: list[str] | None,
     entity_map: list[EntityMapEntry],
+    images: _ImageRegistry | None = None,
 ) -> list[DXFPair]:
     pairs: list[DXFPair] = [(0, "SECTION"), (2, "BLOCKS")]
     if not isinstance(blocks, dict):
@@ -4662,6 +5466,7 @@ def _blocks_to_pairs(
                 curve_segments=curve_segments,
                 generic_dimensions=generic_dimensions,
                 allocator=allocator,
+                images=images,
                 diagnostics=diagnostics,
                 warnings=warnings,
                 entity_map=entity_map,
@@ -4691,6 +5496,7 @@ def _append_entity_output(
     entity_map: list[EntityMapEntry],
     ir_id_override: str | None = None,
     paper_space: bool = False,
+    images: _ImageRegistry | None = None,
 ) -> None:
     rendered, reason_code = _render_entity(
         entity,
@@ -4699,6 +5505,7 @@ def _append_entity_output(
         generic_dimensions=generic_dimensions,
         diagnostics=diagnostics,
         warnings=warnings,
+        images=images,
     )
     ir_id = ir_id_override if ir_id_override is not None else str(entity.get("id", ""))
     if not rendered:
@@ -4720,6 +5527,8 @@ def _append_entity_output(
         if allocator is not None:
             pairs = _add_r2010_subclasses(pairs)
             pairs, handle = _add_record_handles(pairs, allocator)
+        if item.reactor_handle is not None and images is not None and handle:
+            images.bind(item.reactor_handle, handle)
         output_pairs.extend(pairs)
         entity_map.append(
             {
@@ -4916,6 +5725,7 @@ def _append_layout_output(
     diagnostics: list[ExportDiagnostic],
     warnings: list[str] | None,
     entity_map: list[EntityMapEntry],
+    images: _ImageRegistry | None = None,
 ) -> None:
     """Write one paper-space layout into the ENTITIES section.
 
@@ -5013,6 +5823,7 @@ def _append_layout_output(
             warnings=warnings,
             entity_map=entity_map,
             paper_space=True,
+            images=images,
         )
 
 
@@ -5040,9 +5851,19 @@ def _render_entity(
     generic_dimensions: GenericDimensionMode,
     diagnostics: list[ExportDiagnostic],
     warnings: list[str] | None,
+    images: _ImageRegistry | None = None,
 ) -> tuple[list[_RenderedEntity], str | None]:
     entity_id = str(entity.get("id", ""))
     kind = str(entity.get("kind", ""))
+
+    if kind == "IMAGE":
+        return _render_image(
+            entity,
+            target_version=target_version,
+            images=images,
+            diagnostics=diagnostics,
+            warnings=warnings,
+        )
 
     if kind == "DIMENSION" and entity.get("dim_kind") == "GENERIC":
         if generic_dimensions == "skip":
@@ -5103,6 +5924,7 @@ def _render_entity(
                 generic_dimensions=generic_dimensions,
                 diagnostics=diagnostics,
                 warnings=warnings,
+                images=images,
             )
             rendered.extend(child_rendered)
         return rendered, None
@@ -5242,21 +6064,6 @@ def _render_entity(
         "SPLINE",
         "DIMENSION",
     }
-    if kind == "IMAGE":
-        _diagnose(
-            diagnostics,
-            warnings,
-            code="DXF_IMAGE_SKIPPED",
-            severity="warning",
-            message=(
-                f"[IMAGE:{entity_id or '?'}] raster image placements are not written "
-                "to DXF yet (IMAGE needs IMAGEDEF objects); the placement was skipped."
-            ),
-            entity_id=entity_id or None,
-            action="skipped",
-        )
-        return [], "DXF_IMAGE_SKIPPED"
-
     if kind not in supported:
         _diagnose(
             diagnostics,
