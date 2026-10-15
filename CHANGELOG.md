@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.3
+
+- DWG import: raster image placements (`IMAGE`, decoded by `ezdwg` 0.16 or
+  later together with their `IMAGEDEF`) become `IMAGE` entities with the
+  lower-left corner, the drawn width and height (pixel step × pixel count) and
+  the rotation of the column axis. A DWG references the file by path and never
+  embeds the pixels, so the path goes to `href` (`DWG_IMAGE_LINKED` counts
+  them) while the pixel size, the pixel vectors, display properties and the
+  clip boundary stay in `metadata.dwg.image`. A clip boundary is not applied
+  (`DWG_IMAGE_CLIP_IGNORED`) and mirrored or sheared pixel axes keep only the
+  rotation of the column axis (`DWG_IMAGE_AXES_APPROXIMATED`). Images were
+  skipped as `DWG_UNSUPPORTED_ENTITY` before.
+
 ## 0.12.2
 
 - DGN V8 import: the level table read by `ezdgn` 0.2.8 (`document.levels`) is

@@ -253,8 +253,11 @@ transparency parameters>` and, in version-700 files, the file itself in an
 archive at the end of the drawing (`%temp%<name>` paths). The JWW importer
 decodes the archive entry (gzip) into `data` and keeps the trailing
 parameters verbatim in `metadata.jww.image_params`, so a JWW writer can
-rebuild the placement. The DXF codec does not write images yet
-(`DXF_IMAGE_SKIPPED`).
+rebuild the placement. The DWG importer (`ezdwg` 0.16 or later) maps an
+`IMAGE` entity to a placement with `href`: a DWG references the raster file by
+path and never embeds it, so the entity has no pixels; the pixel size, the
+pixel step vectors and the clip boundary stay in `metadata.dwg.image`. The DXF
+codec does not write images yet (`DXF_IMAGE_SKIPPED`).
 
 ## JWS symbols
 

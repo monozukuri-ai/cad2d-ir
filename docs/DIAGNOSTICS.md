@@ -29,6 +29,9 @@ entity/source identifiers and structured details.
 | `DWG_ENTITY_CONVERSION_FAILED` | error | skipped | DWG import | A malformed DWG entity was skipped. |
 | `DWG_HIDDEN_ATTRIBUTE_SKIPPED` | info | skipped | DWG import | Attribute definitions inside block definitions (templates; block references show their own attribute values) and invisible attributes without a block reference were skipped. Attributes of a block reference are kept on the `INSERT`, invisible ones with `visible: false`. |
 | `DWG_HEADER_UNITS_UNREADABLE` | warning | - | DWG import | The DWG header variables could not be decoded for units. |
+| `DWG_IMAGE_AXES_APPROXIMATED` | warning | approximated | DWG import | The pixel axes of an `IMAGE` are mirrored or not at a right angle; the `IMAGE` keeps its width, height and the rotation of the column axis only (the vectors stay in `metadata.dwg.image`). |
+| `DWG_IMAGE_CLIP_IGNORED` | warning | approximated | DWG import | The clip boundary of an `IMAGE` was not applied; the `IMAGE` spans its full extent and the boundary stays in `metadata.dwg.image`. |
+| `DWG_IMAGE_LINKED` | info | - | DWG import | `IMAGE` entities reference raster files by path (a DWG never embeds the pixels, `ezdwg` 0.16 or later decodes them); each keeps the path in `href`, the pixel size and placement vectors in `metadata.dwg.image`, and has no pixels. |
 | `DWG_LAYOUT_PROMOTED` | info | promoted | DWG import | Model space holds no entity, so the active paper-space layout (or the first one with entities) became `entities`; `header.metadata.dwg.promoted_layout` names it. |
 | `DWG_MINSERT_ARRAY_PRESERVED` | warning | preserved_metadata | DWG import | MINSERT array data was preserved as metadata. |
 | `DWG_NONPLANAR_PROJECTED` | warning | projected | DWG import | Non-planar geometry was projected to XY. |

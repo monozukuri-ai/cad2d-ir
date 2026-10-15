@@ -7,6 +7,7 @@ import weakref
 import pytest
 
 from cad2d_ir.importers import ImportOptions
+from cad2d_ir.importers.base import ImporterError
 from cad2d_ir.importers.dwg import convert_dwg_file_to_ir, dwg_document_to_ir
 from cad2d_ir.schema import validate_ir
 
@@ -1133,3 +1134,155 @@ def test_dwg_tolerance_without_a_stored_height_is_skipped() -> None:
     exploded = [d for d in result.diagnostics if d.code == "DWG_TOLERANCE_EXPLODED"]
     assert len(exploded) == 1 and "Drew 1 DWG feature control" in exploded[0].message
     validate_ir(result.document, strict_jsonschema=True)
+
+
+def _image_entity(handle: int, **dxf: Any) -> _Entity:
+    """An ``IMAGE`` as ``ezdwg`` 0.16 decodes it (640x480 pixels, 0.1 units per pixel)."""
+    base: dict[str, Any] = {
+        "insert": (10.0, 20.0, 0.0),
+        "u_vector": (0.1, 0.0, 0.0),
+        "v_vector": (0.0, 0.1, 0.0),
+        "size": (640.0, 480.0),
+        "display_props": 3,
+        "clipping": False,
+        "brightness": 50,
+        "contrast": 50,
+        "fade": 0,
+        "clip_type": 1,
+        "clip_vertices": [(-0.5, -0.5), (639.5, 479.5)],
+        "image_def_handle": 67,
+        "image_def": "logo",
+        "file_path": "images/logo.png",
+        **_style(),
+    }
+    base.update(dxf)
+    return _Entity("IMAGE", handle, base)
+
+
+def test_dwg_image_placements_become_image_references() -> None:
+    result = dwg_document_to_ir(
+        _Document(
+            [
+                _image_entity(1),
+                _image_entity(
+                    2,
+                    insert=(100.0, 20.0, 0.0),
+                    u_vector=(0.0, 0.02666666666666667, 0.0),
+                    v_vector=(-0.04, 0.0, 0.0),
+                    size=(1200.0, 800.0),
+                    image_def="site",
+                    file_path="C:\\pics\\site.jpg",
+                    clipping=True,
+                    clip_type=2,
+                    clip_vertices=[(0.0, 0.0), (1200.0, 0.0), (600.0, 800.0)],
+                ),
+            ]
+        )
+    )
+    validate_ir(result.document)
+    logo, site = result.document["entities"]
+    assert logo["kind"] == "IMAGE" and logo["source"]["kind"] == "IMAGE"
+    assert logo["insert"] == [10.0, 20.0]
+    assert logo["width"] == pytest.approx(64.0) and logo["height"] == pytest.approx(
+        48.0
+    )
+    assert "rotation" not in logo and "data" not in logo
+    assert logo["href"] == "images/logo.png" and logo["name"] == "logo"
+    image = logo["metadata"]["dwg"]["image"]
+    assert image["size"] == [640.0, 480.0] and image["file_path"] == "images/logo.png"
+    assert image["image_def_handle"] == "0x43" and image["clipping"] is False
+    assert image["u_vector"] == [0.1, 0.0] and image["display_props"] == 3
+    # 1200x800 pixels drawn 32x32 units, columns pointing up: rotated by 90 degrees
+    assert site["width"] == pytest.approx(32.0) and site["height"] == pytest.approx(
+        32.0
+    )
+    assert site["rotation"] == pytest.approx(90.0)
+    assert site["href"] == "C:\\pics\\site.jpg" and site["name"] == "site"
+    assert site["metadata"]["dwg"]["image"]["clip_vertices"] == [
+        [0.0, 0.0],
+        [1200.0, 0.0],
+        [600.0, 800.0],
+    ]
+    codes = [diagnostic.code for diagnostic in result.diagnostics]
+    assert "DWG_UNSUPPORTED_ENTITY" not in codes
+    assert "DWG_IMAGE_AXES_APPROXIMATED" not in codes
+    clipped = [d for d in result.diagnostics if d.code == "DWG_IMAGE_CLIP_IGNORED"]
+    assert len(clipped) == 1 and clipped[0].source_id == "0x2"
+    linked = next(d for d in result.diagnostics if d.code == "DWG_IMAGE_LINKED")
+    assert linked.message.startswith("2 DWG images") and linked.source_kind == "IMAGE"
+
+
+def test_dwg_image_without_a_path_or_right_angle_axes_is_kept_and_reported() -> None:
+    result = dwg_document_to_ir(
+        _Document(
+            [
+                _image_entity(
+                    1, file_path=None, image_def=None, v_vector=(0.0, -0.1, 0.0)
+                )
+            ]
+        )
+    )
+    validate_ir(result.document)
+    image = result.document["entities"][0]
+    assert image["name"] == "IMAGE_1" and "href" not in image
+    assert image["height"] == pytest.approx(48.0)
+    assert "file_path" not in image["metadata"]["dwg"]["image"]
+    mirrored = [
+        d for d in result.diagnostics if d.code == "DWG_IMAGE_AXES_APPROXIMATED"
+    ]
+    assert len(mirrored) == 1 and mirrored[0].action == "approximated"
+    # A path without a definition name names the image after the file
+    result = dwg_document_to_ir(
+        _Document([_image_entity(2, image_def=None, file_path="C:\\pics\\site.jpg")])
+    )
+    assert result.document["entities"][0]["name"] == "site.jpg"
+    # Degenerate pixel vectors are skipped leniently and reported, rejected when strict
+    result = dwg_document_to_ir(
+        _Document([_image_entity(3, u_vector=(0.0, 0.0, 0.0))]),
+        options=ImportOptions(strict=False),
+    )
+    assert result.document["entities"] == []
+    assert any(d.code == "DWG_ENTITY_CONVERSION_FAILED" for d in result.diagnostics)
+    with pytest.raises(ImporterError, match="image width in pixels"):
+        dwg_document_to_ir(
+            _Document([_image_entity(4, size=(0.0, 480.0))]),
+            options=ImportOptions(strict=True),
+        )
+
+
+def test_dwg_image_written_by_ezdwg_round_trips(tmp_path) -> None:
+    ezdwg = pytest.importorskip("ezdwg")
+    drawing = ezdwg.new("AC1015")
+    if not hasattr(drawing, "image_defs"):
+        pytest.skip("ezdwg 0.16 or later writes IMAGE entities")
+    drawing.image_defs["logo"] = {"file_path": "images/logo.png", "size": (640, 480)}
+    modelspace = drawing.modelspace()
+    modelspace.add_image("logo", (10, 20), width=64, rotation=30)
+    modelspace.add_line((0, 0), (10, 0))
+    block = drawing.blocks.new("B")
+    block.add_image("logo", (0, 0), width=10)
+    modelspace.add_blockref("B", (300, 0))
+    path = tmp_path / "images.dwg"
+    drawing.save(path)
+
+    result = convert_dwg_file_to_ir(path)
+    validate_ir(result.document)
+    image = next(e for e in result.document["entities"] if e["kind"] == "IMAGE")
+    assert image["insert"] == [10.0, 20.0]
+    assert image["width"] == pytest.approx(64.0) and image["height"] == pytest.approx(
+        48.0
+    )
+    assert (
+        image["rotation"] == pytest.approx(30.0) and image["href"] == "images/logo.png"
+    )
+    assert image["metadata"]["dwg"]["image"]["size"] == [640.0, 480.0]
+    block_image = next(
+        e
+        for e in result.document["tables"]["blocks"]["B"]["entities"]
+        if e["kind"] == "IMAGE"
+    )
+    assert block_image["width"] == pytest.approx(10.0) and block_image["name"] == "logo"
+    codes = [d.code for d in result.diagnostics]
+    assert (
+        "DWG_UNSUPPORTED_ENTITY" not in codes and codes.count("DWG_IMAGE_LINKED") == 1
+    )

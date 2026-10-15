@@ -275,6 +275,28 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
     "DWG_UNSUPPORTED_ENTITY": DiagnosticCode(
         "warning", "skipped", "DWG import", "An unsupported DWG entity was skipped."
     ),
+    "DWG_IMAGE_LINKED": DiagnosticCode(
+        "info",
+        None,
+        "DWG import",
+        "IMAGE entities reference raster files by path (a DWG never embeds the "
+        "pixels); each keeps the path in href, the pixel size and placement "
+        "vectors in metadata.dwg.image, and has no pixels.",
+    ),
+    "DWG_IMAGE_CLIP_IGNORED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "DWG import",
+        "The clip boundary of an IMAGE was not applied; the IMAGE spans its full "
+        "extent and the boundary stays in metadata.dwg.image.",
+    ),
+    "DWG_IMAGE_AXES_APPROXIMATED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "DWG import",
+        "The pixel axes of an IMAGE are mirrored or not at a right angle; the "
+        "IMAGE keeps its width, height and the rotation of the column axis only.",
+    ),
     "DWG_PAPERSPACE_ENTITY_SKIPPED": DiagnosticCode(
         "info",
         "skipped",

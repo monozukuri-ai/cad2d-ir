@@ -65,6 +65,7 @@ class _ConversionContext:
     renamed_blocks: int = 0
     hidden_attributes: int = 0
     attached_attributes: int = 0
+    linked_images: int = 0
     inserts_by_handle: dict[int, dict[str, Any]] = field(default_factory=dict)
     next_entity_number: int = 1
 
@@ -788,6 +789,8 @@ def _convert_entity(
     if kind == "DIMENSION":
         context.preserved_dimensions += 1
         return [_convert_dimension(dxf, common, handle, kind, context)]
+    if kind == "IMAGE":
+        return [_convert_image(dxf, common, handle, kind, context)]
     return []
 
 
@@ -1419,6 +1422,147 @@ def _convert_dimension(
     }
 
 
+def _convert_image(
+    dxf: Mapping[str, Any],
+    common: dict[str, Any],
+    handle: int,
+    kind: str,
+    context: _ConversionContext,
+) -> dict[str, Any]:
+    """A raster image placement (``ezdwg`` >= 0.16 decodes ``IMAGE`` with its IMAGEDEF).
+
+    A DWG stores the lower-left corner, the step of one pixel along the columns
+    (``u_vector``) and along the rows (``v_vector``) and the pixel size; the file
+    is referenced by path and never embedded. The IR keeps the drawn width and
+    height (pixel step times pixel count), the rotation of the column axis and the
+    path in ``href``; the pixel size, the vectors, the display properties and the
+    clip boundary stay in ``metadata.dwg.image``.
+    """
+    insert = _point(dxf["insert"], handle, kind, context)
+    u_vector = _point(dxf["u_vector"], handle, kind, context)
+    v_vector = _point(dxf["v_vector"], handle, kind, context)
+    size = dxf.get("size")
+    if (
+        not isinstance(size, Sequence)
+        or isinstance(size, (str, bytes))
+        or len(size) < 2
+    ):
+        raise ValueError("image size must hold the pixel counts of both axes")
+    columns = _positive(size[0], "image width in pixels")
+    rows = _positive(size[1], "image height in pixels")
+    u_length = math.hypot(*u_vector)
+    v_length = math.hypot(*v_vector)
+    if u_length <= _EPSILON or v_length <= _EPSILON:
+        raise ValueError("image pixel vectors must be non-zero")
+    path = dxf.get("file_path")
+    href = path.strip() if isinstance(path, str) and path.strip() else None
+    definition = dxf.get("image_def")
+    name = (
+        definition.strip()
+        if isinstance(definition, str) and definition.strip()
+        else None
+    )
+    if name is None and href is not None:
+        name = href.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1] or None
+    result: dict[str, Any] = {
+        **common,
+        "kind": "IMAGE",
+        "insert": insert,
+        "width": u_length * columns,
+        "height": v_length * rows,
+        "name": name or f"IMAGE_{handle:X}",
+    }
+    rotation = math.degrees(math.atan2(u_vector[1], u_vector[0]))
+    if abs(rotation) > 1e-9:
+        result["rotation"] = rotation
+    if href is not None:
+        result["href"] = href
+    clip_type = _optional_int(dxf.get("clip_type"))
+    clip_vertices = [
+        [float(vertex[0]), float(vertex[1])]
+        for vertex in (dxf.get("clip_vertices") or [])
+        if isinstance(vertex, Sequence) and len(vertex) >= 2
+    ]
+    image_metadata: dict[str, Any] = {
+        "size": [columns, rows],
+        "u_vector": u_vector,
+        "v_vector": v_vector,
+        "display_props": _optional_int(dxf.get("display_props")),
+        "brightness": _optional_int(dxf.get("brightness")),
+        "contrast": _optional_int(dxf.get("contrast")),
+        "fade": _optional_int(dxf.get("fade")),
+        "clipping": bool(dxf.get("clipping", False)),
+        "clip_type": clip_type,
+        "clip_vertices": clip_vertices,
+    }
+    if href is not None:
+        image_metadata["file_path"] = href
+    image_def_handle = _optional_int(dxf.get("image_def_handle"))
+    if image_def_handle is not None:
+        image_metadata["image_def_handle"] = _handle_text(image_def_handle)
+    result["metadata"]["dwg"]["image"] = {
+        key: value for key, value in image_metadata.items() if value is not None
+    }
+    context.linked_images += 1
+    # The IR places the image with its width, height and one rotation: mirrored
+    # or sheared pixel axes (v not the column axis turned by +90 degrees) only
+    # keep the column axis.
+    cross = u_vector[0] * v_vector[1] - u_vector[1] * v_vector[0]
+    dot = u_vector[0] * v_vector[0] + u_vector[1] * v_vector[1]
+    if cross <= 0.0 or abs(dot) > 1e-9 * u_length * v_length:
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="DWG_IMAGE_AXES_APPROXIMATED",
+                severity="warning",
+                message=(
+                    "The pixel axes of a DWG IMAGE are mirrored or not at a right "
+                    "angle; the IMAGE keeps its width, height and the rotation of "
+                    "the column axis only."
+                ),
+                source_id=_handle_text(handle),
+                source_kind=kind,
+                action="approximated",
+            )
+        )
+    if bool(dxf.get("clipping", False)) and not _is_full_image_clip(
+        clip_type, clip_vertices, columns, rows
+    ):
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="DWG_IMAGE_CLIP_IGNORED",
+                severity="warning",
+                message=(
+                    "The clip boundary of a DWG IMAGE was not applied; the IMAGE "
+                    "spans its full extent and the boundary stays in metadata."
+                ),
+                source_id=_handle_text(handle),
+                source_kind=kind,
+                action="approximated",
+            )
+        )
+    return result
+
+
+def _is_full_image_clip(
+    clip_type: int | None,
+    vertices: Sequence[Sequence[float]],
+    columns: float,
+    rows: float,
+) -> bool:
+    """A rectangular clip boundary that covers the whole image (the default one)."""
+    if clip_type != 1 or len(vertices) != 2:
+        return False
+    xs = sorted(vertex[0] for vertex in vertices)
+    ys = sorted(vertex[1] for vertex in vertices)
+    tolerance = 1e-6
+    return (
+        xs[0] <= -0.5 + tolerance
+        and ys[0] <= -0.5 + tolerance
+        and xs[1] >= columns - 0.5 - tolerance
+        and ys[1] >= rows - 0.5 - tolerance
+    )
+
+
 def _build_blocks(
     block_names: Mapping[int, str],
     block_entities_by_owner: Mapping[int, list[dict[str, Any]]],
@@ -1833,6 +1977,19 @@ def _append_summary_diagnostics(context: _ConversionContext) -> None:
                     "name with another block."
                 ),
                 action="renamed",
+            )
+        )
+    if context.linked_images:
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="DWG_IMAGE_LINKED",
+                severity="info",
+                message=(
+                    f"{context.linked_images} DWG images reference raster files by "
+                    "path (a DWG never embeds the pixels); the IMAGE entities keep "
+                    "the path in href and have no pixels."
+                ),
+                source_kind="IMAGE",
             )
         )
     if context.exploded_tolerances:
