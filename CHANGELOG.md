@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.12.5
+
+- Importers: `isinstance` checks against `Mapping`, `Sequence` and `Iterable`
+  now use the `collections.abc` classes instead of the `typing` aliases. The
+  aliases go through `typing`'s instance check on every call, which the DWG,
+  JWW, SXF, MI, DWF, IDW and DGN importers (and `layouts`/`tolerance`) make
+  once or more per entity; on a 150k-entity DWG about a million such checks
+  cost two seconds. Behaviour is unchanged.
+
 ## 0.12.4
 
 - DXF import: `IMAGE` entities are read together with their `IMAGEDEF` objects

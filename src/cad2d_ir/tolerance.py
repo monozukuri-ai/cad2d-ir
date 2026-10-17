@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 # Characters of the GDT font (gdt.shx) and their Unicode counterparts.
 GDT_SYMBOLS: dict[str, str] = {

@@ -3,11 +3,11 @@ from __future__ import annotations
 import base64
 import codecs
 import copy
-from dataclasses import dataclass, field
 import math
-from pathlib import Path
 import re
 import struct
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Literal
 
 from cad2d_ir.constants import CURRENT_IR_VERSION

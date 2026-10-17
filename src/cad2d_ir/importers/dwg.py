@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import dataclass, field
 import hashlib
 import math
-from pathlib import Path
 import re
-from typing import Any, Iterable, Mapping, Sequence
+from collections import Counter
+from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 from cad2d_ir.codecs.dxf import INSUNITS_TO_IR_UNITS, text_alignment_from_dxf
 from cad2d_ir.importers.base import (

@@ -7,13 +7,14 @@ mapping; the V8 mapping lives in :mod:`cad2d_ir.importers.dgn_v8`.
 from __future__ import annotations
 
 import codecs
-from collections import Counter
-from dataclasses import dataclass, field
 import hashlib
 import math
-from pathlib import Path
 import re
-from typing import Any, Iterable, Sequence
+from collections import Counter
+from collections.abc import Iterable, Sequence
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 from cad2d_ir.importers.base import (
     ImportDiagnostic,

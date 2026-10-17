@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import dataclass, field
 import math
+from collections import Counter
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import Any, Iterable
+from typing import Any
 
 from cad2d_ir.importers.base import (
     ImportDiagnostic,

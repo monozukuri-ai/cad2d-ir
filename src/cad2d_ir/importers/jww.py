@@ -10,15 +10,16 @@ patterns, paper size or memo.
 
 from __future__ import annotations
 
-from collections import Counter
-from dataclasses import dataclass, field
 import base64
 import gzip
 import hashlib
 import math
 import zlib
+from collections import Counter
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping, Sequence, cast
+from typing import Any, cast
 
 from cad2d_ir.importers.base import (
     ImportDiagnostic,

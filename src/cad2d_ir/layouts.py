@@ -8,7 +8,8 @@ show model space at some scale. They live in ``document["layouts"]``.
 from __future__ import annotations
 
 import math
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 _EPSILON = 1.0e-9
 

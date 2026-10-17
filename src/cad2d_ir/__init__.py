@@ -2,16 +2,16 @@ from cad2d_ir.api import (
     DxfToIrResult,
     IrToDxfResult,
     convert_dgn_file_to_ir,
-    convert_dwg_file_to_ir,
     convert_dwf_file_to_ir,
+    convert_dwg_file_to_ir,
     convert_dxf_file_to_ir,
     convert_dxf_text_to_ir,
     convert_file_to_ir,
     convert_idw_file_to_ir,
     convert_ir_file_to_dxf,
     convert_ir_to_dxf_text,
-    convert_jww_file_to_ir,
     convert_jws_file_to_ir,
+    convert_jww_file_to_ir,
     convert_mi_file_to_ir,
     convert_sxf_file_to_ir,
     dump_ir_json,
@@ -34,16 +34,16 @@ from cad2d_ir.diagnostics import (
 )
 from cad2d_ir.importers import (
     ImportDiagnostic,
+    ImporterError,
     ImportOptions,
     ImportResult,
-    ImporterError,
     MissingOptionalDependencyError,
     UnsupportedSourceFormatError,
     detect_source_format,
 )
 from cad2d_ir.schema import IRValidationError, load_schema, validate_ir
 
-__version__ = "0.12.4"
+__version__ = "0.12.5"
 
 __all__ = [
     "__version__",
