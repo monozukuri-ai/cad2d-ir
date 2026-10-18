@@ -341,6 +341,56 @@ counted diagnostics; `inventor-kit` document diagnostics are forwarded as
 `ImportOptions.entity_provenance=False` omits per-entity `source`/`metadata`
 for render-only imports of large drawings.
 
+## PDF adapter
+
+The PDF adapter reads a vector PDF's page objects natively through PDFium
+(`pypdfium2`); nothing is rasterised. A plot keeps geometry and pen attributes but
+not CAD structure, so this is the one importer that infers structure. Every
+inference is disclosed by a `PDF_*` diagnostic and counted in `statistics`
+(`bezier_arcs`, `polyline_arc_refits`, `splines`, `fill_as_line`, `text_runs`,
+`images`, `paper_scale`). `convert_pdf_file_to_ir` reads a file;
+`pdf_document_to_ir` accepts an open `pypdfium2.PdfDocument`.
+
+| PDF object | IR mapping | Fidelity handling |
+| --- | --- | --- |
+| stroked straight segments | `LINE` (one or two segments) / `LWPOLYLINE` (three or more, `closed` from the path) | direct |
+| cubic Bezier shaped like a circular arc (control distance `4/3 tan(t/4) r`) | `ARC`; consecutive pieces merged; a full turn is a `CIRCLE` | fit checked at 0.02 mm; counted in `bezier_arcs` |
+| other cubic Beziers | `SPLINE` degree 3 with Bezier knots | exact |
+| polyline tracing a circle (six or more similar segments turning evenly, within 0.02 mm) | `ARC` / `CIRCLE` | `PDF_POLYLINE_ARC_REFITTED` |
+| closed stroked shape smaller than 0.1 mm (a plotted point marker) | `POINT` at its centre | `PDF_POINT_FROM_TINY_SHAPE` |
+| filled path | solid `HATCH`; a thin rectangle (at most 1 mm wide, four times longer) becomes a `LINE` with that lineweight | curves flattened at 0.05 mm (`PDF_HATCH_FLATTENED`); `PDF_FILL_AS_LINE`; many small filled curve shapes raise `PDF_TEXT_AS_OUTLINES` |
+| stroke width, stroke/fill colour | `lineweight_mm`, `color` (`#RRGGBB`) | paper width in millimetres |
+| dash array | `tables.linetypes` entry named by class (`DASHED`, `DOT`, `DASHDOT`, `CENTER`, `DIVIDE`, `PHANTOM`, `PDF_DASH`; `_2`, `_3` when patterns differ) | pattern in paper millimetres |
+| `/OC` marked content | layer named after the optional content group; other objects on layer `0` | `PDF_LAYERS_FROM_OCG`; visibility expressions are not evaluated |
+| rectangular clip | applied exactly to lines, polylines, arcs and circles; objects entirely outside are dropped | `PDF_CLIPPED_OUT`; other clip shapes keep objects whole (`PDF_CLIP_APPROXIMATED`) |
+| text (PDFium text page) | `TEXT` per glyph run: insert at the first glyph origin, rotation and width factor from the text matrix, `style` `PDF_<font>` | height is the measured capital/digit height for axis-aligned Latin text, the em size for CJK text, else 0.72 em; invisible text (render mode 3) is skipped (`PDF_TEXT_INVISIBLE_SKIPPED`) |
+| image | `IMAGE` placement with pixel size in metadata; `embed_images=True` embeds PNG data up to 16 Mpx | `PDF_IMAGE_PLACEHOLDER` / `PDF_IMAGE_TOO_LARGE` |
+| form XObject | recursed with its matrix (16 levels) | `PDF_FORM_DEPTH_EXCEEDED` |
+| shading, annotation | skipped | `PDF_UNSUPPORTED_OBJECT`, `PDF_ANNOTATIONS_SKIPPED` |
+
+Coordinates are paper millimetres from the lower-left corner of the page as
+displayed: `/Rotate` and `/CropBox` are applied (`PDF_PAGE_ROTATED`). Several
+pages are laid out along +X with a gap of a tenth of the widest page
+(`PDF_PAGES_TILED`); `pages=[...]` selects 1-based pages, and the page sizes,
+offsets and object counts stay in `source.metadata.pdf.pages`.
+
+`scale="auto"` (default) recovers the plot scale with `cad2d_ir.paper_scale`: each
+number that reads as a dimension value is paired with the extension lines on both
+sides of its dimension line, the ratio value/span is the scale, and the densest
+cluster within 3 % wins. When at least four pairs and a quarter of the numeric
+texts agree, the drawing is scaled to model millimetres, `header.linetype_scale`
+keeps the dash lengths on paper, and `PDF_SCALE_ESTIMATED` reports the label
+(`1:50`); otherwise the drawing stays in paper millimetres (`PDF_SCALE_UNKNOWN`).
+`scale="none"` keeps paper millimetres; a number applies that factor
+(`PDF_SCALE_APPLIED`). `header.metadata.pdf.coordinate_space` says which.
+
+Provenance: `source.id` is `page:object index` (nested forms as `3/1`),
+`metadata.pdf` keeps the page, the optional content group, the fill rule, the
+font and the font size. Exact duplicate lines, arcs and circles, which plotters
+emit for thick strokes, are removed (`PDF_DUPLICATE_REMOVED`). Elliptical arcs
+stay splines, glyph outlines are not recognised as text, and blend modes and
+soft masks are ignored.
+
 ## SXF adapter
 
 The SXF adapter parses either SFC or AP202/P21 and consumes `ezsxf.build_drawing()` (the private `ezsxf._drawing` entry point on ezsxf before 0.3.1). No DXF text is produced or reparsed.

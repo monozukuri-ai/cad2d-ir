@@ -6,7 +6,7 @@ for 2D CAD data.
 It provides:
 
 - a canonical JSON Schema for 2D CAD geometry and tables;
-- native DXF, DWG, DGN, DWF/DWFx, IDW, JWW, JWS, MI/BI, and SXF import paths;
+- native DXF, DWG, DGN, DWF/DWFx, IDW, JWW, JWS, MI/BI, SXF, and vector PDF import paths;
 - DXF R12 (`AC1009`) and R2010 (`AC1024`) export;
 - structured import/export diagnostics;
 - deterministic IR-entity to DXF-handle correspondence.
@@ -21,6 +21,7 @@ pip install "cad2d-ir[dwf]"
 pip install "cad2d-ir[idw]"   # Python 3.11+; see the IDW license notice below
 pip install "cad2d-ir[jww]"
 pip install "cad2d-ir[mi]"
+pip install "cad2d-ir[pdf]"   # vector PDF (pypdfium2)
 pip install "cad2d-ir[sxf]"
 pip install "cad2d-ir[all]"
 ```
@@ -66,6 +67,7 @@ Import adapters:
 | JWW | native `ezjww` model | `cad2d-ir[jww]` |
 | JWS (Jw_cad registered symbol) | native `ezjww` model (0.7 or later) | `cad2d-ir[jww]` |
 | MI / gzip-wrapped BI | native `ezmi2d` document model | `cad2d-ir[mi]` |
+| PDF (vector plot) | PDFium page objects via `pypdfium2`; arcs, linetypes, layers, text and plot scale recovered | `cad2d-ir[pdf]` |
 | SXF SFC/P21 | backend-neutral `ezsxf` drawing | `cad2d-ir[sxf]` |
 
 Native adapters preserve source semantics and provenance rather than flattening
@@ -81,13 +83,14 @@ cad2d-ir validate examples/ir/minimal.json
 cad2d-ir dxf2ir drawing.dxf -o drawing.json --pretty
 cad2d-ir dxf2ir drawing.dxf --encoding cp932 -o drawing.json
 
-# Auto-detected DXF/DWG/DGN/DWF/DWFx/IDW/JWW/JWS/MI/BI/SFC/P21 -> IR
+# Auto-detected DXF/DWG/DGN/DWF/DWFx/IDW/JWW/JWS/MI/BI/PDF/SFC/P21 -> IR
 cad2d-ir import drawing.JWW -o drawing.json --pretty
 cad2d-ir import drawing.dwg -o drawing.json --pretty
 cad2d-ir import drawing.dgn -o drawing.json --pretty
 cad2d-ir import drawing.dwfx -o drawing.json --pretty
 cad2d-ir import drawing.idw -o drawing.json --pretty
 cad2d-ir import drawing.mi -o drawing.json --pretty
+cad2d-ir import plot.pdf -o plot.json --pretty
 cad2d-ir import drawing.p21 -o drawing.json --pretty
 
 # IR -> R2010 or R12 DXF

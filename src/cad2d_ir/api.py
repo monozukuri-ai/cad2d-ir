@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -305,6 +306,40 @@ def convert_idw_file_to_ir(
             curve_segments=curve_segments,
             entity_provenance=entity_provenance,
         ),
+    )
+
+
+def convert_pdf_file_to_ir(
+    path: str | Path,
+    *,
+    ir_version: str = CURRENT_IR_VERSION,
+    validate: bool = True,
+    strict: bool = True,
+    entity_provenance: bool = True,
+    pages: Sequence[int] | None = None,
+    scale: str | float = "auto",
+    embed_images: bool = False,
+) -> ImportResult:
+    """Rebuild the CAD structure of a vector PDF directly as IR.
+
+    Requires the ``pdf`` extra (``pypdfium2``). Coordinates are paper
+    millimetres of the page as displayed; with ``scale="auto"`` the plot scale
+    is recovered from the dimension texts and applied when enough of them
+    agree. ``pages`` selects 1-based pages (default: all, tiled along +X).
+    """
+    from cad2d_ir.importers.pdf import convert_pdf_file_to_ir as import_pdf
+
+    return import_pdf(
+        path,
+        options=ImportOptions(
+            ir_version=ir_version,
+            validate=validate,
+            strict=strict,
+            entity_provenance=entity_provenance,
+        ),
+        pages=pages,
+        scale=scale,
+        embed_images=embed_images,
     )
 
 

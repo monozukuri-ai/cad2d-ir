@@ -25,6 +25,7 @@ _SUFFIX_TO_FORMAT = {
     ".mi": "mi",
     ".bi": "mi",
     ".p21": "sxf",
+    ".pdf": "pdf",
     ".sfc": "sxf",
     ".sxf": "sxf",
 }
@@ -141,5 +142,10 @@ def import_file(
         from cad2d_ir.importers.sxf import convert_sxf_file_to_ir
 
         return convert_sxf_file_to_ir(source_path, options=import_options)
+
+    if normalized_format == "pdf":
+        from cad2d_ir.importers.pdf import convert_pdf_file_to_ir
+
+        return convert_pdf_file_to_ir(source_path, options=import_options)
 
     raise UnsupportedSourceFormatError(f"Unsupported source format: {source_format!r}")

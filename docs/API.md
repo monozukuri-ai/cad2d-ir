@@ -6,7 +6,7 @@ Use `cad2d_ir.api` for file imports and diagnostic-aware DXF export.
 
 ### `convert_file_to_ir(path, *, source_format="auto", ir_version="0.2.0", validate=True, strict=True, curve_segments=96, encoding="auto")`
 
-Dispatches to the DXF, DWG, DGN, DWF/DWFx, IDW, JWW, JWS, MI/BI, or SXF adapter and returns
+Dispatches to the DXF, DWG, DGN, DWF/DWFx, IDW, JWW, JWS, MI/BI, PDF, or SXF adapter and returns
 `ImportResult`:
 
 - `document`: imported IR document
@@ -43,8 +43,18 @@ Format-specific helpers are also public:
 - `convert_jww_file_to_ir(path, ...)`
 - `convert_jws_file_to_ir(path, ...)` (Jw_cad registered symbol, `ezjww` 0.7+)
 - `convert_mi_file_to_ir(path, *, encoding="auto", ...)`
+- `convert_pdf_file_to_ir(path, *, pages=None, scale="auto", embed_images=False, ...)`
 - `convert_sxf_file_to_ir(path, ...)`
 - `convert_dxf_text_to_ir(dxf_text, ...)`
+
+PDF import reads page objects through PDFium (`cad2d-ir[pdf]`). `pages` selects
+1-based pages (default: all, tiled along +X); `scale="auto"` recovers the plot
+scale from the dimension texts and scales the drawing to model millimetres when
+enough of them agree (`PDF_SCALE_ESTIMATED`), `"none"` keeps paper millimetres and
+a number applies that many model millimetres per paper millimetre;
+`embed_images=True` stores raster images as PNG data. `cad2d_ir.importers.pdf.
+pdf_document_to_ir` accepts an already open `pypdfium2.PdfDocument` (for example
+built from bytes). The scale recovery itself is public as `cad2d_ir.paper_scale`.
 
 `DxfToIrResult` contains `document`, `diagnostics`,
 `warnings`, and an `encoding` convenience property for file input.

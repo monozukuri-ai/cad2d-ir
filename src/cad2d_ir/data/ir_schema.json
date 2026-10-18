@@ -187,7 +187,7 @@
       "additionalProperties": false,
       "required": ["format"],
       "properties": {
-        "format": { "type": "string", "enum": ["dxf", "dwg", "dgn", "dwf", "idw", "jww", "jwc", "jws", "mi", "sxf", "unknown"] },
+        "format": { "type": "string", "enum": ["dxf", "dwg", "dgn", "dwf", "idw", "jww", "jwc", "jws", "mi", "pdf", "sxf", "unknown"] },
         "version": { "type": "string" },
         "name": { "type": "string" },
         "sha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
@@ -201,7 +201,7 @@
       "additionalProperties": false,
       "required": ["format"],
       "properties": {
-        "format": { "type": "string", "enum": ["dxf", "dwg", "dgn", "dwf", "idw", "jww", "jwc", "jws", "mi", "sxf", "unknown"] },
+        "format": { "type": "string", "enum": ["dxf", "dwg", "dgn", "dwf", "idw", "jww", "jwc", "jws", "mi", "pdf", "sxf", "unknown"] },
         "id": { "type": "string" },
         "kind": { "type": "string" },
         "metadata": { "type": "object" }

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.13.0
+
+- New PDF importer (`cad2d-ir[pdf]`, backed by `pypdfium2`/PDFium): reads the page
+  objects of a vector PDF natively and rebuilds CAD structure. Straight segments
+  become `LINE`/`LWPOLYLINE`; cubic Beziers shaped like circular arcs become
+  `ARC`/`CIRCLE` and other curves exact `SPLINE`s; polylines that trace a circle
+  are refitted (`PDF_POLYLINE_ARC_REFITTED`); closed shapes under 0.1 mm become
+  `POINT`s; fills become solid `HATCH`es or,
+  for thin rectangles, lines with the rectangle width; stroke width, colour and
+  dash arrays become `lineweight_mm`, `color` and named linetypes; optional
+  content groups become layers; rectangular clips are applied; text is regrouped
+  from the text page into `TEXT` runs with height, rotation, width factor and
+  font; images keep their placement (`embed_images=True` embeds PNG). Pages are
+  tiled along +X (`pages=` selects), `/Rotate` and `/CropBox` are applied, and
+  `scale="auto"` recovers the plot scale from the dimension texts and scales the
+  drawing to model millimetres when enough of them agree. `cad2d-ir import`
+  accepts `.pdf`; `convert_pdf_file_to_ir` is public. Everything inferred is
+  disclosed by the new `PDF_*` diagnostic codes.
+- New `cad2d_ir.paper_scale` module: dimension-text based plot scale recovery
+  (`estimate_scale`, `snap_paper_scale`) and `scale_entity` for every IR kind.
+- Schema: `source.format` accepts `pdf` (additive).
+
 ## 0.12.5
 
 - Importers: `isinstance` checks against `Mapping`, `Sequence` and `Iterable`

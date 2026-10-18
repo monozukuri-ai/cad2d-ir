@@ -139,6 +139,29 @@ entity/source identifiers and structured details.
 | `MI_UNKNOWN_UNITS` | warning | preserved_metadata | MI import | The MI drawing-unit label had no IR unit mapping. |
 | `MI_UNSUPPORTED_ANNOTATION` | warning | skipped | MI import | An MI annotation without a lossless IR equivalent was skipped while referenced graphics remained available. |
 | `MI_UNSUPPORTED_ENTITY` | warning | skipped | MI import | An `ezmi2d.UnsupportedEntity` raw fallback had no typed mapping and was skipped. |
+| `PDF_PAGES_TILED` | warning | flattened | PDF import | Multiple pages were placed side by side in one IR modelspace with page offsets retained in metadata. |
+| `PDF_PAGE_ROTATED` | info | normalized | PDF import | The page /Rotate was applied so coordinates follow the page as displayed. |
+| `PDF_LAYERS_FROM_OCG` | info | detected | PDF import | Layers were taken from optional content group names. |
+| `PDF_POLYLINE_ARC_REFITTED` | info | normalized | PDF import | Evenly turning polyline runs that trace a circle were replaced by arcs or circles. |
+| `PDF_POINT_FROM_TINY_SHAPE` | info | normalized | PDF import | Closed shapes smaller than 0.1 mm (plotted point markers) were read as points. |
+| `PDF_FILL_AS_LINE` | info | normalized | PDF import | Thin filled rectangles were read as lines with the rectangle width as lineweight. |
+| `PDF_HATCH_FLATTENED` | warning | approximated | PDF import | Curved boundaries of filled shapes were flattened into polygon hatch loops. |
+| `PDF_TEXT_AS_OUTLINES` | warning | flattened | PDF import | Many small filled curve shapes look like text converted to outlines; they stay hatches. |
+| `PDF_CLIP_APPROXIMATED` | warning | approximated | PDF import | Entities crossing a non-rectangular clip were kept whole. |
+| `PDF_CLIPPED_OUT` | info | skipped | PDF import | Entities entirely outside their clip were dropped. |
+| `PDF_TEXT_INVISIBLE_SKIPPED` | info | skipped | PDF import | Invisible text (render mode 3, typically an OCR layer) was skipped. |
+| `PDF_TEXT_UNMAPPED_SKIPPED` | warning | skipped | PDF import | Text characters without a Unicode mapping were skipped. |
+| `PDF_IMAGE_PLACEHOLDER` | warning | preserved_metadata | PDF import | A raster image keeps its placement only; pixels were not embedded. |
+| `PDF_IMAGE_TOO_LARGE` | warning | preserved_metadata | PDF import | A raster image exceeded the embedding pixel limit and keeps its placement only. |
+| `PDF_IMAGE_EMBED_FAILED` | warning | preserved_metadata | PDF import | A raster image could not be decoded and keeps its placement only. |
+| `PDF_UNSUPPORTED_OBJECT` | warning | skipped | PDF import | An unsupported page object, such as a shading, was skipped. |
+| `PDF_FORM_DEPTH_EXCEEDED` | warning | skipped | PDF import | A form XObject nested deeper than the supported depth was skipped. |
+| `PDF_ANNOTATIONS_SKIPPED` | info | skipped | PDF import | Annotations were skipped; only page content is read. |
+| `PDF_DUPLICATE_REMOVED` | info | skipped | PDF import | Exact duplicate lines, arcs or circles were removed. |
+| `PDF_SCALE_ESTIMATED` | info | normalized | PDF import | The plot scale recovered from dimension texts was applied; coordinates are model millimetres. |
+| `PDF_SCALE_APPLIED` | info | normalized | PDF import | The requested plot scale was applied; coordinates are model millimetres. |
+| `PDF_SCALE_UNKNOWN` | info | - | PDF import | Too few dimension texts agreed on a plot scale; coordinates stay paper millimetres. |
+| `PDF_ENTITY_CONVERSION_FAILED` | error | skipped | PDF import | A PDF page object that could not be converted was skipped. |
 | `SXF_CURVE_APPROXIMATED` | warning | approximated | SXF import | Source geometry was approximated. |
 | `SXF_DIMENSION_CONVERSION_FAILED` | error | skipped | SXF import | A malformed SXF dimension was skipped. |
 | `SXF_DRAWING_WARNING` | warning | - | SXF import | The SXF drawing backend reported a warning. |

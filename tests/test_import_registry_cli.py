@@ -19,6 +19,7 @@ def test_detect_source_format_is_case_insensitive() -> None:
     assert detect_source_format("drawing.DWF") == "dwf"
     assert detect_source_format("drawing.DWFX") == "dwf"
     assert detect_source_format("drawing.IDW") == "idw"
+    assert detect_source_format("sheet.PDF") == "pdf"
     assert detect_source_format("drawing.MI") == "mi"
     assert detect_source_format("drawing.BI") == "mi"
     assert detect_source_format("drawing.SFC") == "sxf"
