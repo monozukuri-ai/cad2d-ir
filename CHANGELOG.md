@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.14.1
+
+- HP-GL adapter options: `label_mode="label"` emits one TEXT per label line
+  (lines grouped by glyph geometry, bytes outside Roman-8 re-decoded as
+  Shift_JIS with `HPGL_TEXT_ENCODING_GUESSED`, lines crossing the clip kept
+  with `HPGL_TEXT_CLIP_APPROXIMATED`), `model_page` promotes one page to the
+  model entities (`HPGL_PAGE_PROMOTED`, page metadata in
+  `header.metadata.hpgl`), `operation_metadata=False` omits the per-operation
+  tables. The pen-down mark at the start of a drawn vector is no longer
+  repeated as a POINT (plotter drivers lower the pen before every segment, which
+  doubled the entity count).
+- `[hpgl]` requires ezhpgl 0.1.0a2 (PS plot size, device-control commands and
+  palette range of real plotter-driver output).
+
 ## 0.14.0
 
 - New EXB importer (`cad2d-ir[exb]`, backed by `ezexb` 0.1): reads CAXA CAD

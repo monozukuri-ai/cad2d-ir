@@ -1,6 +1,6 @@
 [project]
 name = "cad2d-ir"
-version = "0.14.0"
+version = "0.14.1"
 description = "Intermediate representation (IR) and importers for 2D CAD formats"
 readme = "README.md"
 license = "MIT"
@@ -32,7 +32,7 @@ dwg = ["ezdwg>=0.11,<1"]
 dgn = ["ezdgn>=0.2.1,<0.3"]
 dwf = ["ezdwf>=0.0.1,<0.1"]
 exb = ["ezexb>=0.1,<0.2"]
-hpgl = ["ezhpgl>=0.1.0a1,<0.2"]
+hpgl = ["ezhpgl>=0.1.0a2,<0.2"]
 # inventor-kit needs Python 3.11+; it is deliberately not part of `all` because it
 # declares cq-acis (CadQuery/OCCT) for IPT/IAM geometry, which the IDW path does not use.
 idw = ["inventor-kit>=0.6,<0.7; python_version >= '3.11'"]
@@ -40,7 +40,7 @@ jww = ["ezjww>=0.2.6,<0.8"]
 mi = ["ezmi2d>=0.2,<0.3"]
 pdf = ["pypdfium2>=4.30,<6"]
 sxf = ["ezsxf>=0.2,<0.4"]
-all = ["ezhpgl>=0.1.0a1,<0.2", "ezdwg>=0.11,<1", "ezdgn>=0.2.1,<0.3", "ezdwf>=0.0.1,<0.1", "ezexb>=0.1,<0.2", "ezjww>=0.2.6,<0.8", "ezmi2d>=0.2,<0.3", "pypdfium2>=4.30,<6", "ezsxf>=0.2,<0.4"]
+all = ["ezhpgl>=0.1.0a2,<0.2", "ezdwg>=0.11,<1", "ezdgn>=0.2.1,<0.3", "ezdwf>=0.0.1,<0.1", "ezexb>=0.1,<0.2", "ezjww>=0.2.6,<0.8", "ezmi2d>=0.2,<0.3", "pypdfium2>=4.30,<6", "ezsxf>=0.2,<0.4"]
 
 [project.urls]
 Homepage = "https://github.com/neka-nat/cad2d-ir"

@@ -44,6 +44,57 @@ def _backend() -> Any:
     return ezhpgl
 
 
+LABEL_MODES = frozenset({"glyph", "label"})
+# Bytes HP-GL's Roman-8 character set never uses; Shift_JIS lead bytes live here.
+_ROMAN8_UNUSED = frozenset(range(0x80, 0xA0))
+
+
+def _glyph_lines(glyphs: Any) -> list[list[Any]]:
+    """Group glyph cells into text lines.
+
+    A cell starts a new line when it leaves the previous cell's baseline (LF) or
+    jumps back by more than half a cell (CR); overprinting (BS) stays on the line.
+    """
+    lines: list[list[Any]] = []
+    for glyph in glyphs:
+        if lines:
+            prev = lines[-1][-1]
+            ax, ay = prev.axis_x, prev.axis_y
+            width, height = math.hypot(ax.x, ax.y), math.hypot(ay.x, ay.y)
+            dx = glyph.origin.x - prev.origin.x
+            dy = glyph.origin.y - prev.origin.y
+            if width > 0 and height > 0:
+                along = (dx * ax.x + dy * ax.y) / width
+                across = (dx * ay.x + dy * ay.y) / height
+                if abs(across) <= 0.25 * height and along >= -0.5 * width:
+                    lines[-1].append(glyph)
+                    continue
+        lines.append([glyph])
+    return lines
+
+
+def _decode_label(label: Any, line_count: int) -> tuple[list[str] | None, str | None]:
+    """Re-decode label bytes as cp932 when they hold bytes Roman-8 never uses.
+
+    Returns (lines, encoding); lines is None when the glyph characters apply.
+    """
+    data = bytes(label.data)
+    if not any(b in _ROMAN8_UNUSED for b in data):
+        return None, None
+    try:
+        text = data.decode("cp932")
+    except UnicodeDecodeError:
+        return None, None
+    lines = [
+        "".join(ch for ch in line if ch >= " ")
+        for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    ]
+    lines = [line for line in lines if line.strip()]
+    if len(lines) != line_count:
+        return None, None
+    return lines, "cp932"
+
+
 def _xy(p: Any) -> list[float]:
     return [p.x, p.y]
 
@@ -204,15 +255,20 @@ def _curve_inside(curve: Any, box: list[float] | None) -> bool:
 
 
 class _Converter:
-    def __init__(self, options: ImportOptions, max_entities: int) -> None:
+    def __init__(
+        self, options: ImportOptions, max_entities: int, label_mode: str = "glyph"
+    ) -> None:
         if (
             isinstance(max_entities, bool)
             or not isinstance(max_entities, int)
             or max_entities < 0
         ):
             raise ValueError("max_entities must be a non-negative integer")
+        if label_mode not in LABEL_MODES:
+            raise ValueError(f"label_mode must be one of {sorted(LABEL_MODES)}")
         self.options = options
         self.max_entities = max_entities
+        self.label_mode = label_mode
         self.count = 0
         self.counts: Counter[str] = Counter()
         self.diagnostics: list[ImportDiagnostic] = []
@@ -364,8 +420,13 @@ class _Converter:
             if self.dot_mode:
                 self.path(points, box)
                 return
-            if g.start_dot and len(points) > 1:
-                self.path(points[:1], box)
+            if len(points) > 1 and all(p == points[0] for p in points[1:]):
+                # A pen-down without travel is a dot. The pen-down mark at the start
+                # of a drawn vector is covered by the vector (drivers lower the pen
+                # before every segment), so it is not repeated as a POINT.
+                if g.start_dot:
+                    self.path(points[:1], box)
+                return
             if g.curve is not None and _curve_inside(g.curve, box):
                 shape = _curve_entity(g.curve)
                 if shape is not None:
@@ -458,6 +519,9 @@ class _Converter:
             self.path(run, box)
 
     def label(self, label: Any, box: list[float] | None) -> None:
+        if self.label_mode == "label":
+            self.label_lines(label, box)
+            return
         self.note(
             "HPGL_TEXT_APPROXIMATED",
             "Each glyph becomes substitute-font TEXT; native font metrics and outlines are not reproduced.",
@@ -472,53 +536,96 @@ class _Converter:
                     "skipped",
                 )
                 continue
-            x, y = glyph.axis_x, glyph.axis_y
-            width = math.hypot(x.x, x.y)
-            if width == 0:
+            self.text(glyph, glyph.character, {"glyph_offset": glyph.source_offset})
+
+    def label_lines(self, label: Any, box: list[float] | None) -> None:
+        """One TEXT per label line, placed by the line's first glyph cell."""
+        self.note(
+            "HPGL_TEXT_APPROXIMATED",
+            "Each label line becomes substitute-font TEXT; native font metrics and outlines are not reproduced.",
+        )
+        lines = _glyph_lines(label.glyphs)
+        decoded, encoding = _decode_label(label, len(lines))
+        for index, glyphs in enumerate(lines):
+            text = (
+                decoded[index]
+                if decoded is not None
+                else "".join(g.character for g in glyphs)
+            ).rstrip()
+            if not text.strip():
                 continue
-            ux, uy = x.x / width, x.y / width
-            rise, shear = ux * y.y - uy * y.x, ux * y.x + uy * y.y
-            if abs(rise) <= 1e-12:
+            inside = [all(_inside(_xy(p), box) for p in g.envelope) for g in glyphs]
+            if not any(inside):
+                self.note(
+                    "HPGL_TEXT_CLIP_OMITTED",
+                    "A label line whose preview envelope is outside the clip was omitted; IR TEXT has no clip.",
+                    "skipped",
+                )
                 continue
-            shape = {
-                "kind": "TEXT",
-                "insert": _xy(glyph.origin),
-                "text": glyph.character,
-                "height": abs(rise),
-                "rotation": math.degrees(math.atan2(uy, ux)),
-                "width_factor": width / abs(rise),
-                "oblique_deg": math.degrees(math.atan2(shear, abs(rise))),
-                "style": "HPGL_FALLBACK",
-            }
-            self.source = {
-                **self.source,
-                "metadata": {
-                    **self.source["metadata"],
-                    "glyph_offset": glyph.source_offset,
-                    "font": _font(glyph.font),
-                    "axis_x": _xy(x),
-                    "axis_y": _xy(y),
-                },
-            }
-            if rise < 0:
-                # Negative text axes use a block reflection; TEXT width/height stay positive.
-                name = f"HPGL_GLYPH_{self.count + 1}"
-                content: list[dict[str, Any]] = []
-                self.emit(
-                    {**shape, "insert": [0.0, 0.0], "rotation": 0.0}, target=content
+            if not all(inside):
+                self.note(
+                    "HPGL_TEXT_CLIP_APPROXIMATED",
+                    "A label line crossing the clip is kept whole; IR TEXT has no clip.",
                 )
-                self.blocks[name] = {"base_point": [0.0, 0.0], "entities": content}
-                self.emit(
-                    {
-                        "kind": "INSERT",
-                        "block": name,
-                        "insert": shape["insert"],
-                        "scale": [1.0, -1.0],
-                        "rotation": shape["rotation"],
-                    }
+            metadata: dict[str, Any] = {
+                "glyph_offset": glyphs[0].source_offset,
+                "line": index,
+            }
+            if encoding is not None:
+                self.note(
+                    "HPGL_TEXT_ENCODING_GUESSED",
+                    "Label bytes outside HP-GL's Roman-8 set were decoded as Shift_JIS (cp932); the original bytes remain in layout metadata.",
                 )
-            else:
-                self.emit(shape)
+                metadata["encoding"] = encoding
+            self.text(glyphs[0], text, metadata)
+
+    def text(self, glyph: Any, text: str, metadata: dict[str, Any]) -> None:
+        """Emit TEXT from one glyph cell; reflected cells use a block INSERT."""
+        x, y = glyph.axis_x, glyph.axis_y
+        width = math.hypot(x.x, x.y)
+        if width == 0:
+            return
+        ux, uy = x.x / width, x.y / width
+        rise, shear = ux * y.y - uy * y.x, ux * y.x + uy * y.y
+        if abs(rise) <= 1e-12:
+            return
+        shape = {
+            "kind": "TEXT",
+            "insert": _xy(glyph.origin),
+            "text": text,
+            "height": abs(rise),
+            "rotation": math.degrees(math.atan2(uy, ux)),
+            "width_factor": width / abs(rise),
+            "oblique_deg": math.degrees(math.atan2(shear, abs(rise))),
+            "style": "HPGL_FALLBACK",
+        }
+        self.source = {
+            **self.source,
+            "metadata": {
+                **self.source["metadata"],
+                **metadata,
+                "font": _font(glyph.font),
+                "axis_x": _xy(x),
+                "axis_y": _xy(y),
+            },
+        }
+        if rise < 0:
+            # Negative text axes use a block reflection; TEXT width/height stay positive.
+            name = f"HPGL_GLYPH_{self.count + 1}"
+            content: list[dict[str, Any]] = []
+            self.emit({**shape, "insert": [0.0, 0.0], "rotation": 0.0}, target=content)
+            self.blocks[name] = {"base_point": [0.0, 0.0], "entities": content}
+            self.emit(
+                {
+                    "kind": "INSERT",
+                    "block": name,
+                    "insert": shape["insert"],
+                    "scale": [1.0, -1.0],
+                    "rotation": shape["rotation"],
+                }
+            )
+        else:
+            self.emit(shape)
 
 
 def hpgl_document_to_ir(
@@ -528,13 +635,30 @@ def hpgl_document_to_ir(
     source_name: str | None = None,
     source_sha256: str | None = None,
     max_entities: int = 200_000,
+    label_mode: str = "glyph",
+    model_page: int | None = None,
+    operation_metadata: bool = True,
 ) -> ImportResult:
-    """Map an ezhpgl PlotDocument to paper layouts, with explicit conversion losses."""
+    """Map an ezhpgl PlotDocument to paper layouts, with explicit conversion losses.
+
+    ``label_mode="label"`` emits one TEXT per label line instead of one per glyph
+    (bytes outside Roman-8 are re-decoded as cp932). ``model_page`` (zero based)
+    moves that page's entities to the model entities and its page metadata to
+    ``header.metadata.hpgl`` (``HPGL_PAGE_PROMOTED``); the other pages stay
+    layouts. ``operation_metadata=False`` omits the per-operation and label tables
+    from the page metadata, which grow with the plot.
+    """
     backend = _backend()
     if not isinstance(plot, backend.PlotDocument):
         raise TypeError("plot must be an ezhpgl.PlotDocument")
+    if model_page is not None and (
+        isinstance(model_page, bool)
+        or not isinstance(model_page, int)
+        or model_page < 0
+    ):
+        raise ValueError("model_page must be a non-negative integer or None")
     options = options or ImportOptions()
-    c = _Converter(options, max_entities)
+    c = _Converter(options, max_entities, label_mode=label_mode)
     for d in plot.diagnostics:
         c.diagnostics.append(
             ImportDiagnostic(
@@ -570,6 +694,9 @@ def hpgl_document_to_ir(
         operations: list[dict[str, Any]] = []
         labels: list[dict[str, Any]] = []
         for index, op in enumerate(page.operations):
+            if not operation_metadata:
+                c.operation(op, page.index, index)
+                continue
             operations.append(
                 {
                     "index": index,
@@ -612,6 +739,35 @@ def hpgl_document_to_ir(
         paper: dict[str, Any] = {"units": "mm"}
         if page.paper_size_mm is not None:
             paper["size_mm"] = list(page.paper_size_mm)
+        metadata: dict[str, Any] = {
+            "page_index": page.index,
+            "plot_size_mm": (
+                list(page.plot_size_mm) if page.plot_size_mm is not None else None
+            ),
+            "omitted_content": page.omitted_content,
+        }
+        if operation_metadata:
+            metadata["operations"] = operations
+            metadata["labels"] = labels
+        if page.index == model_page:
+            doc["entities"] = c.current
+            doc["header"]["metadata"] = {
+                "hpgl": {**metadata, "model_page": page.index, "paper": paper}
+            }
+            others = len(plot.pages) - 1
+            c.diagnostics.append(
+                ImportDiagnostic(
+                    code="HPGL_PAGE_PROMOTED",
+                    severity="warning",
+                    message=(
+                        f"Page {page.index + 1} became the model entities as requested; "
+                        f"{others} other page(s) remain layouts."
+                    ),
+                    action="normalized",
+                    details={"page_index": page.index, "pages": len(plot.pages)},
+                )
+            )
+            continue
         doc["layouts"].append(
             {
                 "name": f"Page{page.index + 1}",
@@ -619,18 +775,12 @@ def hpgl_document_to_ir(
                 "active": page.index == 0,
                 "paper": paper,
                 "entities": c.current,
-                "metadata": {
-                    "hpgl": {
-                        "page_index": page.index,
-                        "plot_size_mm": page.plot_size_mm,
-                        "omitted_content": page.omitted_content,
-                        "operations": operations,
-                        "labels": labels,
-                    }
-                },
+                "metadata": {"hpgl": metadata},
             }
         )
-    complete = plot.completeness == "complete" and not c.diagnostics
+    complete = plot.completeness == "complete" and all(
+        d.code == "HPGL_PAGE_PROMOTED" for d in c.diagnostics
+    )
     stats = {
         "source_format": "hpgl",
         "completeness": "complete" if complete else "partial",
@@ -671,8 +821,15 @@ def convert_hpgl_file_to_ir(
     limits: Any = None,
     geometry_limits: Any = None,
     max_entities: int = 200_000,
+    label_mode: str = "glyph",
+    model_page: int | None = None,
+    operation_metadata: bool = True,
 ) -> ImportResult:
-    """Read bounded binary input and convert all pages. File suffix never proves HP-GL."""
+    """Read bounded binary input and convert all pages. File suffix never proves HP-GL.
+
+    See ``hpgl_document_to_ir`` for ``label_mode``, ``model_page`` and
+    ``operation_metadata``.
+    """
     backend = _backend()
     options = options or ImportOptions()
     limit = limits if limits is not None else backend.Limits()
@@ -697,4 +854,7 @@ def convert_hpgl_file_to_ir(
         source_name=Path(path).name,
         source_sha256=hashlib.sha256(data).hexdigest(),
         max_entities=max_entities,
+        label_mode=label_mode,
+        model_page=model_page,
+        operation_metadata=operation_metadata,
     )

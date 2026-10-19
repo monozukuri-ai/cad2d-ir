@@ -167,10 +167,10 @@ def test_text_raw_bytes_attributes_reflection_and_clip():
 
 
 def test_source_diagnostics_partial_prefix_and_container_omissions(tmp_path):
-    path = save(tmp_path, b"\x1bE\x1b*b3Wabc\x0c\x1b%0BSP1;PD40,0;PS400,400;PD80,0;")
+    path = save(tmp_path, b"\x1bE\x1b*b3Wabc\x0c\x1b%0BSP1;PD40,0;ZZ;PD80,0;")
     result = convert_hpgl_file_to_ir(path, strict=False)
     ds = [d for d in result.diagnostics if d.code == "HPGL_SOURCE_DIAGNOSTIC"]
-    assert [d.details["code"] for d in ds] == ["OMITTED_RASTER", "UNSUPPORTED_COMMAND"]
+    assert [d.details["code"] for d in ds] == ["OMITTED_RASTER", "UNSUPPORTED_SYNTAX"]
     assert ds[-1].action == "stop_interpretation" and ds[-1].severity == "error"
     assert result.document["layouts"][0]["metadata"]["hpgl"]["omitted_content"]
     assert entities(result) == [] and entities(result, 1)[-1]["p2"] == [1, 0]
@@ -244,7 +244,7 @@ def test_dxf_page_selection_width_mapping_and_unused_blocks(tmp_path):
 def test_cli_requires_page_preserves_output_on_failure_and_reports_partial(
     tmp_path, capsys
 ):
-    path = save(tmp_path, b"SP1;PD40,0;PG;PD80,0;")
+    path = save(tmp_path, b"SP1;LA1,4;PD40,0;PG;PD80,0;")  # LA: caps approximated, so partial
     out, report, ir = [tmp_path / n for n in ("out.dxf", "report.json", "all.json")]
     out.write_text("keep")
     assert main(["hpgl2dxf", str(path), "-o", str(out)]) == 2
@@ -287,3 +287,57 @@ def test_closed_edges_dot_mode_and_collinear_fill():
     assert "HPGL_DOT_APPROXIMATED" in codes(result)
     result = convert(b"SP1;RA400,0;")
     assert not entities(result) and "HPGL_FILL_OMITTED" in codes(result)
+
+
+def test_start_dots_of_drawn_vectors_are_not_repeated_as_points():
+    result = convert(b"SP1;PA0,0;PD100,0;PU;PA50,50;PD;PU;PA10,10;PD;PA10,10;")
+    kinds = [e["kind"] for e in entities(result)]
+    assert kinds.count("LINE") == 1 and kinds.count("POINT") == 2
+    assert "HPGL_DOT_APPROXIMATED" in codes(result)
+    result = convert(b"SP1;PA0,0;PD100,0;")
+    assert [e["kind"] for e in entities(result)] == ["LINE"]
+    assert "HPGL_DOT_APPROXIMATED" not in codes(result)
+
+
+def test_label_mode_label_emits_one_text_per_line_and_guesses_cp932():
+    data = b"IN;SP1;PA1000,2000;SI0.5,0.7;LBAb\r\ncd\x03"
+    result = convert(data, label_mode="label")
+    texts = [e for e in entities(result) if e["kind"] == "TEXT"]
+    assert [t["text"] for t in texts] == ["Ab", "cd"]
+    assert texts[0]["insert"] == pytest.approx([25.0, 50.0])
+    assert texts[1]["insert"] == pytest.approx([25.0, 36.0])
+    assert texts[0]["height"] == pytest.approx(7.0)
+    assert texts[0]["source"]["metadata"]["line"] == 0
+    assert "HPGL_TEXT_ENCODING_GUESSED" not in codes(result)
+    assert len([e for e in entities(convert(data)) if e["kind"] == "TEXT"]) == 4
+    result = convert(b"IN;SP1;PA0,0;LB\x82\xa0\x82\xa2x\x03", label_mode="label")
+    (text,) = [e for e in entities(result) if e["kind"] == "TEXT"]
+    assert text["text"] == "あいx"
+    assert text["source"]["metadata"]["encoding"] == "cp932"
+    assert "HPGL_TEXT_ENCODING_GUESSED" in codes(result)
+    # Roman-8 accents (0xA0-0xFF) are not mistaken for Shift_JIS
+    result = convert(b"IN;SP1;PA0,0;LBStra\xdee\x03", label_mode="label")
+    (text,) = [e for e in entities(result) if e["kind"] == "TEXT"]
+    assert text["text"].startswith("Stra")
+    assert "HPGL_TEXT_ENCODING_GUESSED" not in codes(result)
+    with pytest.raises(ValueError):
+        convert(data, label_mode="words")
+
+
+def test_model_page_promotes_one_page_and_operation_metadata_is_optional():
+    data = b"SP1;PA0,0;PD100,0;PG;SP1;PA0,0;PD100,100;"
+    result = convert(data, model_page=0, operation_metadata=False)
+    doc = result.document
+    assert [e["kind"] for e in doc["entities"]] == ["LINE"]
+    assert [layout["name"] for layout in doc["layouts"]] == ["Page2"]
+    assert "operations" not in doc["layouts"][0]["metadata"]["hpgl"]
+    hpgl = doc["header"]["metadata"]["hpgl"]
+    assert hpgl["model_page"] == 0 and hpgl["paper"] == {"units": "mm"}
+    assert "operations" not in hpgl
+    assert "HPGL_PAGE_PROMOTED" in codes(result)
+    assert result.statistics["completeness"] == convert(data).statistics["completeness"]
+    result = convert(data, model_page=0)
+    assert "operations" in result.document["header"]["metadata"]["hpgl"]
+    assert not convert(data, model_page=5).document["entities"]
+    with pytest.raises(ValueError):
+        convert(data, model_page=-1)

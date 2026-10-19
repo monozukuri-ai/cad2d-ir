@@ -20,7 +20,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.14.0"
+version = "0.14.1"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
@@ -87,8 +87,8 @@ requires-dist = [
     { name = "ezdwg", marker = "extra == 'dwg'", specifier = ">=0.11,<1" },
     { name = "ezexb", marker = "extra == 'all'", specifier = ">=0.1,<0.2" },
     { name = "ezexb", marker = "extra == 'exb'", specifier = ">=0.1,<0.2" },
-    { name = "ezhpgl", marker = "extra == 'all'", directory = "../ezhpgl" },
-    { name = "ezhpgl", marker = "extra == 'hpgl'", directory = "../ezhpgl" },
+    { name = "ezhpgl", marker = "extra == 'all'", specifier = ">=0.1.0a2,<0.2" },
+    { name = "ezhpgl", marker = "extra == 'hpgl'", specifier = ">=0.1.0a2,<0.2" },
     { name = "ezjww", marker = "extra == 'all'", specifier = ">=0.2.6,<0.8" },
     { name = "ezjww", marker = "extra == 'jww'", specifier = ">=0.2.6,<0.8" },
     { name = "ezmi2d", marker = "extra == 'all'", specifier = ">=0.2,<0.3" },
@@ -299,11 +299,16 @@ wheels = [
 
 [[package]]
 name = "ezhpgl"
-source = { directory = "../ezhpgl" }
-
-[package.metadata]
-requires-dist = [{ name = "pytest", marker = "extra == 'test'", specifier = ">=8,<10" }]
-provides-extras = ["test"]
+version = "0.1.0a2"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/3f/67/59063ba12a74d4281859010906cc8525888f0d2abea08c81f602fa3c6f8d/ezhpgl-0.1.0a2.tar.gz", hash = "sha256:7dffbd88a3eb9722f2f08034b616537fa8445077661a249eda05b6b363ae0f6c", size = 117013, upload-time = "2026-10-19T11:38:24.322Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1a/2b/421f439957230e1a15d0f0b850a83850da35ae335177af2f39e2921aef6b/ezhpgl-0.1.0a2-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:ea86b19e033554d327b4c1abe32bfa086a7611426347eb95a37059dd203dae8c", size = 482707, upload-time = "2026-10-19T11:38:15.968Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/5a/2e7994712039431b333987490cd9d79c0eb236ab64ec9faf21313ffdd924/ezhpgl-0.1.0a2-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:8e53d6498cc67912dc2c9646778ad7d59ea35a5e76b03ff01c83b1917c6742bc", size = 484436, upload-time = "2026-10-19T11:38:17.723Z" },
+    { url = "https://files.pythonhosted.org/packages/05/7b/af11f58acd28dc8206649bf86122f266d9727b00e92acda41a4612019160/ezhpgl-0.1.0a2-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:e02a71a1ea971f3f01a98ee7e0f23230f7f457d574358df244a068c8f9da7778", size = 537510, upload-time = "2026-10-19T11:38:19.736Z" },
+    { url = "https://files.pythonhosted.org/packages/af/9d/6f9aad4c39594e4da7e7b5952c49365673f9def2bca61ad8d7bbf19d47b7/ezhpgl-0.1.0a2-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:9d929f463fe3154f92f13606c192de94b45becff8992fcc67ee93b9b128fafe2", size = 543850, upload-time = "2026-10-19T11:38:21.415Z" },
+    { url = "https://files.pythonhosted.org/packages/69/38/877383bf7f7b032e94f5dbc3ef35ae25a0f2972f754eb4c872341f6b1c2a/ezhpgl-0.1.0a2-cp310-abi3-win_amd64.whl", hash = "sha256:ff7b920120a74917603f90bd9bb0f674ae0d47701abe0e1341c9054875e598e4", size = 381014, upload-time = "2026-10-19T11:38:22.917Z" },
+]
 
 [[package]]
 name = "ezjww"

@@ -211,7 +211,10 @@ Use `cad2d_ir.diagnostics.ALL_CODES` for exhaustive CI checks and
 | `HPGL_FILL_OMITTED` | warning | skipped | A collinear fill, a fill crossing its clip, or a nonzero winding fill is omitted because IR HATCH cannot express that case safely. |
 | `HPGL_HATCH_EXPLODED` | warning | exploded | Hatch/crosshatch fill uses explicit core paint segments. |
 | `HPGL_LINE_STYLE_APPROXIMATED` | warning | approximated | Nominal dash lengths are retained; per-path phase, adaptive repeats, caps or joins may differ. |
+| `HPGL_PAGE_PROMOTED` | warning | normalized | The requested page became the model entities and its page metadata moved to header.metadata.hpgl; other pages remain layouts. |
 | `HPGL_SOURCE_APPROXIMATION` | warning | approximated | An entity depends on an approximate source label/cursor; per-entity approximation metadata retains this marker. |
 | `HPGL_SOURCE_DIAGNOSTIC` | warning | source_action | ezhpgl reports a source error, approximation or known omission; details retain its code and original byte span. |
 | `HPGL_TEXT_APPROXIMATED` | warning | approximated | Positioned glyphs use substitute-font TEXT; reflected glyphs use block INSERT. |
+| `HPGL_TEXT_CLIP_APPROXIMATED` | warning | approximated | In label mode a label line crossing its clip is kept whole; IR TEXT has no clip. |
 | `HPGL_TEXT_CLIP_OMITTED` | warning | skipped | A glyph not wholly inside its clip envelope is omitted; original label bytes remain in layout metadata. |
+| `HPGL_TEXT_ENCODING_GUESSED` | warning | approximated | In label mode label bytes outside Roman-8 (0x80-0x9F) were decoded as Shift_JIS (cp932); the original bytes remain in layout metadata. |

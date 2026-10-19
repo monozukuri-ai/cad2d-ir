@@ -104,6 +104,24 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "HP-GL import/export",
         "A glyph not wholly inside its clip envelope is omitted; original label bytes remain in layout metadata.",
     ),
+    "HPGL_TEXT_CLIP_APPROXIMATED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "HP-GL import/export",
+        "In label mode a label line crossing its clip is kept whole; IR TEXT has no clip.",
+    ),
+    "HPGL_TEXT_ENCODING_GUESSED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "HP-GL import/export",
+        "In label mode label bytes outside Roman-8 (0x80-0x9F) were decoded as Shift_JIS (cp932); the original bytes remain in layout metadata.",
+    ),
+    "HPGL_PAGE_PROMOTED": DiagnosticCode(
+        "warning",
+        "normalized",
+        "HP-GL import/export",
+        "The requested page became the model entities and its page metadata moved to header.metadata.hpgl; other pages remain layouts.",
+    ),
     "HPGL_DXF_LAYOUT_METADATA_OMITTED": DiagnosticCode(
         "warning",
         "skipped",

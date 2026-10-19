@@ -67,7 +67,10 @@ Resource limits always fail; no success is reported for a truncated budget.
 
 Each `PlotPage` becomes a separate `layouts` entry in millimetres, with operation
 order intact. No plot is tiled into model space and no original CAD scale is
-inferred. Unknown paper sizes remain unknown; plot extents are separate metadata.
+inferred. `model_page=<n>` (zero based) makes that page's entities the model
+entities and moves its page metadata (plot size, paper, operations) to
+`header.metadata.hpgl`, reported as `HPGL_PAGE_PROMOTED`; the other pages stay
+layouts. Unknown paper sizes remain unknown; plot extents are separate metadata.
 Input suffixes `.hpgl`, `.hpg`, `.plt`, and `.pcl` select the adapter, but ezhpgl
 still inspects the contents. An unrelated file named `.plt` is rejected.
 
@@ -81,7 +84,8 @@ still inspects the contents. An unrelated file named `.plt` is rejected.
 | Collinear solid fills | omitted with diagnostic | Device-specific stroke fallback is outside this adapter |
 | Hatch/crosshatch | explicit lines | Core hatch segments retained, with nominal pen attributes |
 | Labels | per-glyph substitute-font `TEXT`; mirrored `INSERT` blocks | Font metrics/outlines are approximate; glyphs crossing/outside their clip are omitted |
-| Pen dots / `LT0` | `POINT` | CAD point-display semantics differ from physical pen marks |
+| Labels with `label_mode="label"` | one `TEXT` per label line from its first glyph cell | Lines are grouped by glyph geometry (LF/CR); bytes outside Roman-8 are re-decoded as Shift_JIS (`HPGL_TEXT_ENCODING_GUESSED`); a line crossing its clip is kept whole |
+| Pen dots / `LT0` | `POINT` | CAD point-display semantics differ from physical pen marks; the pen-down mark at the start of a drawn vector is not repeated as a POINT |
 
 Pen identity maps to `HPGL_PEN_<number>` layers; these are not recovered CAD
 layers. Color, pen width, and nominal dash patterns are retained. Dash phase,
@@ -97,7 +101,8 @@ indices, clip windows, line attributes, and raw label bytes/attributes. Entity
 `source.metadata.hpgl` carries completeness, original diagnostic codes, input
 events and statistics; `source.sha256` identifies the complete input. The
 `entity_provenance=False` option omits per-entity provenance only. Per-operation
-and document metadata remain available.
+and document metadata remain available; `operation_metadata=False` omits the
+operation and label tables (they grow with the plot).
 
 The adapter defaults to at most 200,000 emitted entities, including block
 contents; `max_entities` changes that limit. Input bytes, parser commands, preview

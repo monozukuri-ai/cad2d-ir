@@ -452,11 +452,17 @@ def convert_hpgl_file_to_ir(
     geometry_limits: Any = None,
     max_entities: int = 200_000,
     entity_provenance: bool = True,
+    label_mode: str = "glyph",
+    model_page: int | None = None,
+    operation_metadata: bool = True,
 ) -> ImportResult:
     """Import HP-GL/limited PCL/PJL into separate paper layouts in mm.
 
     Requires cad2d-ir[hpgl]. Profile and resource arguments are ezhpgl objects.
     Approximation and known omission diagnostics remain nonfatal in strict mode.
+    ``label_mode="label"`` emits one TEXT per label line; ``model_page`` (zero
+    based) promotes that page to the model entities; ``operation_metadata=False``
+    omits the per-operation tables from the page metadata.
     """
     from cad2d_ir.importers.hpgl import convert_hpgl_file_to_ir as import_hpgl
 
@@ -472,6 +478,9 @@ def convert_hpgl_file_to_ir(
         limits=limits,
         geometry_limits=geometry_limits,
         max_entities=max_entities,
+        label_mode=label_mode,
+        model_page=model_page,
+        operation_metadata=operation_metadata,
     )
 
 

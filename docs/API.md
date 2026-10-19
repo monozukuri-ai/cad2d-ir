@@ -192,10 +192,14 @@ and semantic-versioning policy.
 ## HP-GL paper-space conversion
 
 `convert_hpgl_file_to_ir(path, *, strict=True, profile=None, limits=None,
-geometry_limits=None, max_entities=200_000, entity_provenance=True, ...)`
+geometry_limits=None, max_entities=200_000, entity_provenance=True,
+label_mode="glyph", model_page=None, operation_metadata=True, ...)`
 returns `ImportResult` with every plot page in `document["layouts"]` in mm.
 Profile and resource objects come from ezhpgl. Per-entity and document metadata
-retain source spans and diagnostics; the model-space entity list stays empty.
+retain source spans and diagnostics; the model-space entity list stays empty
+unless `model_page` (zero based) promotes one page to it. `label_mode="label"`
+emits one TEXT per label line; `operation_metadata=False` omits the
+per-operation tables from the page metadata.
 
 `convert_hpgl_file_to_dxf(path, *, page=None, strict=True, profile=None,
 limits=None, geometry_limits=None, max_entities=200_000, target_version="AC1024")`
