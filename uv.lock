@@ -20,7 +20,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.13.0"
+version = "0.14.0"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
@@ -31,6 +31,8 @@ all = [
     { name = "ezdgn" },
     { name = "ezdwf" },
     { name = "ezdwg" },
+    { name = "ezexb" },
+    { name = "ezhpgl" },
     { name = "ezjww" },
     { name = "ezmi2d" },
     { name = "ezsxf" },
@@ -44,6 +46,12 @@ dwf = [
 ]
 dwg = [
     { name = "ezdwg" },
+]
+exb = [
+    { name = "ezexb" },
+]
+hpgl = [
+    { name = "ezhpgl" },
 ]
 idw = [
     { name = "inventor-kit", marker = "python_full_version >= '3.11'" },
@@ -77,6 +85,10 @@ requires-dist = [
     { name = "ezdwf", marker = "extra == 'dwf'", specifier = ">=0.0.1,<0.1" },
     { name = "ezdwg", marker = "extra == 'all'", specifier = ">=0.11,<1" },
     { name = "ezdwg", marker = "extra == 'dwg'", specifier = ">=0.11,<1" },
+    { name = "ezexb", marker = "extra == 'all'", specifier = ">=0.1,<0.2" },
+    { name = "ezexb", marker = "extra == 'exb'", specifier = ">=0.1,<0.2" },
+    { name = "ezhpgl", marker = "extra == 'all'", directory = "../ezhpgl" },
+    { name = "ezhpgl", marker = "extra == 'hpgl'", directory = "../ezhpgl" },
     { name = "ezjww", marker = "extra == 'all'", specifier = ">=0.2.6,<0.8" },
     { name = "ezjww", marker = "extra == 'jww'", specifier = ">=0.2.6,<0.8" },
     { name = "ezmi2d", marker = "extra == 'all'", specifier = ">=0.2,<0.3" },
@@ -88,7 +100,7 @@ requires-dist = [
     { name = "pypdfium2", marker = "extra == 'all'", specifier = ">=4.30,<6" },
     { name = "pypdfium2", marker = "extra == 'pdf'", specifier = ">=4.30,<6" },
 ]
-provides-extras = ["dwg", "dgn", "dwf", "idw", "jww", "mi", "pdf", "sxf", "all"]
+provides-extras = ["dwg", "dgn", "dwf", "exb", "hpgl", "idw", "jww", "mi", "pdf", "sxf", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -272,6 +284,26 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/9c/60/a1e8bf092d77938d48c7b02b961a774bdbf2bba485e113ab7dd027590376/ezdwg-0.16.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:135b42d243d9c3e78c667cb5d53413baf2ec6187cfbe027ce2fe538a3fbd5a78", size = 1705599, upload-time = "2026-10-14T15:01:23.86Z" },
     { url = "https://files.pythonhosted.org/packages/ef/1d/49cfd2c4a8acfd3f0ec2c2ea2739625a600a4875735115631de686189ae8/ezdwg-0.16.0-cp310-abi3-win_amd64.whl", hash = "sha256:d2db21aea843aba23284532184d645dc731fbfebf6a05f59dccdac3fe4599319", size = 1537126, upload-time = "2026-10-14T15:01:25.177Z" },
 ]
+
+[[package]]
+name = "ezexb"
+version = "0.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a7/65/1c6f568e9de38e3d9df80c1ed5d93ac4ee2914ce207f290373bd7dd95bd3/ezexb-0.1.0.tar.gz", hash = "sha256:b00d6baea57339bc7d4cc7fb45b35b7d6b9b2b38cb4872b6c3893b73be5f19af", size = 154221, upload-time = "2026-10-19T05:27:08.082Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c9/97/f9beb13bd5103e959989da6fa9981118e05e8dc7e95715f8f57830a8cb0e/ezexb-0.1.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:30a577406255758e84b81e77fe159fd1bea49547a7537d4a888752f268ad6f79", size = 572762, upload-time = "2026-10-19T05:27:02.073Z" },
+    { url = "https://files.pythonhosted.org/packages/67/4e/6b96d8a419805829916a5d9007aa11c3afb2c3a6a829c08bc49726b8cf10/ezexb-0.1.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:e22db57ed7f9f010e1093a978c2d17f021b4eb296e25949a141de71f8b6e7db1", size = 559639, upload-time = "2026-10-19T05:27:03.806Z" },
+    { url = "https://files.pythonhosted.org/packages/03/41/6a9602e8440e9e72ba76c573d27159dda2782dad182c702305590ca5f507/ezexb-0.1.0-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:62d8247c1a3f7b79b1d2fe05c0644c8fb93d17058df6e4f67742f339d78c286c", size = 604907, upload-time = "2026-10-19T05:27:05.363Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/33/951388982d9b643ba0401cafe7d2ba6001a6679973b4281cd2c2f991f8ba/ezexb-0.1.0-cp310-abi3-win_amd64.whl", hash = "sha256:0e608871b089592b84bdac955d1a9f114607e160634a83463d9761eef1a8e08a", size = 484704, upload-time = "2026-10-19T05:27:06.906Z" },
+]
+
+[[package]]
+name = "ezhpgl"
+source = { directory = "../ezhpgl" }
+
+[package.metadata]
+requires-dist = [{ name = "pytest", marker = "extra == 'test'", specifier = ">=8,<10" }]
+provides-extras = ["test"]
 
 [[package]]
 name = "ezjww"

@@ -6,7 +6,7 @@ for 2D CAD data.
 It provides:
 
 - a canonical JSON Schema for 2D CAD geometry and tables;
-- native DXF, DWG, DGN, DWF/DWFx, IDW, JWW, JWS, MI/BI, SXF, and vector PDF import paths;
+- native DXF, DWG, DGN, DWF/DWFx, EXB, HP-GL/PLT, IDW, JWW, JWS, MI/BI, SXF, and vector PDF import paths;
 - DXF R12 (`AC1009`) and R2010 (`AC1024`) export;
 - structured import/export diagnostics;
 - deterministic IR-entity to DXF-handle correspondence.
@@ -18,6 +18,8 @@ pip install cad2d-ir
 pip install "cad2d-ir[dwg]"
 pip install "cad2d-ir[dgn]"
 pip install "cad2d-ir[dwf]"
+# HP-GL: install local ezhpgl + cad2d-ir wheels until the first ezhpgl release
+# then: pip install "cad2d-ir[hpgl]"
 pip install "cad2d-ir[idw]"   # Python 3.11+; see the IDW license notice below
 pip install "cad2d-ir[jww]"
 pip install "cad2d-ir[mi]"
@@ -38,7 +40,11 @@ adapters are optional extras.
 `inventor-kit`; install `[idw]` explicitly when needed. The development command
 `uv sync --all-extras` below includes `[idw]` and installs `inventor-kit`.
 
-For development:
+HP-GL uses ezhpgl through the optional `[hpgl]` extra. See [HP-GL conversion](docs/HPGL.md)
+for local wheel installation, paper-space mapping, page selection and loss reporting.
+
+For development, the current lock requires an adjacent `../ezhpgl` checkout
+until its first registry release. Registry CI validation follows publication:
 
 ```bash
 uv sync
@@ -63,6 +69,8 @@ Import adapters:
 | DWG | native `ezdwg` model | `cad2d-ir[dwg]` |
 | DGN V7 2D / V8 | native `ezdgn` models | `cad2d-ir[dgn]` |
 | DWF/DWFx 2D | normalized `ezdwf` sheet model | `cad2d-ir[dwf]` |
+| EXB (CAXA CAD / 电子图板) | stored-entity model from `ezexb` | `cad2d-ir[exb]` |
+| HP-GL / HP-GL/2 / bounded PCL/PJL | Rust plot model from `ezhpgl` | `cad2d-ir[hpgl]` |
 | IDW (Autodesk Inventor drawing) | saved-display model from `inventor-kit` | `cad2d-ir[idw]` |
 | JWW | native `ezjww` model | `cad2d-ir[jww]` |
 | JWS (Jw_cad registered symbol) | native `ezjww` model (0.7 or later) | `cad2d-ir[jww]` |
@@ -83,15 +91,21 @@ cad2d-ir validate examples/ir/minimal.json
 cad2d-ir dxf2ir drawing.dxf -o drawing.json --pretty
 cad2d-ir dxf2ir drawing.dxf --encoding cp932 -o drawing.json
 
-# Auto-detected DXF/DWG/DGN/DWF/DWFx/IDW/JWW/JWS/MI/BI/PDF/SFC/P21 -> IR
+# Auto-detected DXF/DWG/DGN/DWF/DWFx/EXB/HP-GL/IDW/JWW/JWS/MI/BI/PDF/SFC/P21 -> IR
 cad2d-ir import drawing.JWW -o drawing.json --pretty
 cad2d-ir import drawing.dwg -o drawing.json --pretty
 cad2d-ir import drawing.dgn -o drawing.json --pretty
 cad2d-ir import drawing.dwfx -o drawing.json --pretty
+cad2d-ir import drawing.exb -o drawing.json --pretty
 cad2d-ir import drawing.idw -o drawing.json --pretty
 cad2d-ir import drawing.mi -o drawing.json --pretty
 cad2d-ir import plot.pdf -o plot.json --pretty
 cad2d-ir import drawing.p21 -o drawing.json --pretty
+
+# HP-GL -> all-page IR, or one explicit paper-space DXF page
+cad2d-ir import drawing.plt -o drawing.ir.json --pretty
+cad2d-ir hpgl2dxf drawing.plt --page 1 -o page1.dxf --report page1-report.json
+# Status 1 means a partial/approximate result was written; inspect the report.
 
 # IR -> R2010 or R12 DXF
 cad2d-ir ir2dxf drawing.json --target-version AC1024 -o drawing-r2010.dxf

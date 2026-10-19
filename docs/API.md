@@ -6,7 +6,7 @@ Use `cad2d_ir.api` for file imports and diagnostic-aware DXF export.
 
 ### `convert_file_to_ir(path, *, source_format="auto", ir_version="0.2.0", validate=True, strict=True, curve_segments=96, encoding="auto")`
 
-Dispatches to the DXF, DWG, DGN, DWF/DWFx, IDW, JWW, JWS, MI/BI, PDF, or SXF adapter and returns
+Dispatches to the DXF, DWG, DGN, DWF/DWFx, EXB, IDW, JWW, JWS, MI/BI, PDF, or SXF adapter and returns
 `ImportResult`:
 
 - `document`: imported IR document
@@ -39,6 +39,7 @@ Format-specific helpers are also public:
 - `convert_dwg_file_to_ir(path, ...)`
 - `convert_dgn_file_to_ir(path, *, encoding="auto", ...)`
 - `convert_dwf_file_to_ir(path, ...)`
+- `convert_exb_file_to_ir(path, *, entity_provenance=True, parse_options=None, ...)` (CAXA EXB, `ezexb`)
 - `convert_idw_file_to_ir(path, *, entity_provenance=True, ...)`
 - `convert_jww_file_to_ir(path, ...)`
 - `convert_jws_file_to_ir(path, ...)` (Jw_cad registered symbol, `ezjww` 0.7+)
@@ -55,6 +56,12 @@ a number applies that many model millimetres per paper millimetre;
 `embed_images=True` stores raster images as PNG data. `cad2d_ir.importers.pdf.
 pdf_document_to_ir` accepts an already open `pypdfium2.PdfDocument` (for example
 built from bytes). The scale recovery itself is public as `cad2d_ir.paper_scale`.
+
+EXB import reads CAXA CAD (电子图板) drawings through `ezexb` (`cad2d-ir[exb]`)
+in partial mode with raised resource budgets; `parse_options` takes an
+`ezexb.ParseOptions`. Coordinates are millimetres at real size and the drawing
+scale and the paper measured from the frame block are in `header.metadata.exb`
+(see "EXB adapter" in docs/IMPORTERS.md).
 
 `DxfToIrResult` contains `document`, `diagnostics`,
 `warnings`, and an `encoding` convenience property for file input.
@@ -181,3 +188,18 @@ and semantic-versioning policy.
 
 - `load_ir_json(path, validate=True)`
 - `dump_ir_json(document, path, pretty=True, validate=True)`
+
+## HP-GL paper-space conversion
+
+`convert_hpgl_file_to_ir(path, *, strict=True, profile=None, limits=None,
+geometry_limits=None, max_entities=200_000, entity_provenance=True, ...)`
+returns `ImportResult` with every plot page in `document["layouts"]` in mm.
+Profile and resource objects come from ezhpgl. Per-entity and document metadata
+retain source spans and diagnostics; the model-space entity list stays empty.
+
+`convert_hpgl_file_to_dxf(path, *, page=None, strict=True, profile=None,
+limits=None, geometry_limits=None, max_entities=200_000, target_version="AC1024")`
+returns `HpglToDxfResult(imported, exported, page)`. `page` is zero based and
+mandatory for a multi-page plot. All pages remain in `imported.document`, while
+`exported.dxf_text` contains only the selected paper-space sheet. Inspect both
+stages' diagnostics. See [HP-GL behavior and installation](HPGL.md).

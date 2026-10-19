@@ -19,7 +19,12 @@ _SUFFIX_TO_FORMAT = {
     ".dgn": "dgn",
     ".dwf": "dwf",
     ".dwfx": "dwf",
+    ".exb": "exb",
     ".idw": "idw",
+    ".hpgl": "hpgl",
+    ".hpg": "hpgl",
+    ".plt": "hpgl",
+    ".pcl": "hpgl",
     ".jww": "jww",
     ".jws": "jws",
     ".mi": "mi",
@@ -127,6 +132,16 @@ def import_file(
         from cad2d_ir.importers.dwf import convert_dwf_file_to_ir
 
         return convert_dwf_file_to_ir(source_path, options=import_options)
+
+    if normalized_format == "exb":
+        from cad2d_ir.importers.exb import convert_exb_file_to_ir
+
+        return convert_exb_file_to_ir(source_path, options=import_options)
+
+    if normalized_format == "hpgl":
+        from cad2d_ir.importers.hpgl import convert_hpgl_file_to_ir
+
+        return convert_hpgl_file_to_ir(source_path, options=import_options)
 
     if normalized_format == "idw":
         from cad2d_ir.importers.idw import convert_idw_file_to_ir

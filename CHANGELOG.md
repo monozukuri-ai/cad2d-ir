@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.14.0
+
+- New EXB importer (`cad2d-ir[exb]`, backed by `ezexb` 0.1): reads CAXA CAD
+  (电子图板) drawings natively (`convert_exb_file_to_ir`, `exb_document_to_ir`,
+  `--format exb`, suffix detection). The first space becomes the model
+  entities and further spaces layouts; coordinates are millimetres at real
+  size, with the drawing scale and the paper measured from the frame block
+  in `header.metadata.exb` (`EXB_UNITS_ASSUMED_MM`, `EXB_PAPER_DETECTED`).
+  Lines, circles, arcs, polylines, text (height × drawing scale, 3×3
+  alignment grid, `%c %d %p %x` and tolerance escapes normalised), block
+  references with attached attributes, hatches and solids (sampled
+  boundaries, pattern kept as metadata), NURBS, ellipses and the five
+  dimension types (rebuilt from the cached presentation in a dimension
+  block) are converted; records `ezexb` cannot decode are skipped with
+  `EXB_UNSUPPORTED_ENTITY`, and the reader always runs in partial mode with
+  raised budgets (`DEFAULT_PARSE_BUDGETS`, `parse_options`). Everything
+  assumed is disclosed by the new `EXB_*` diagnostic codes. See "EXB
+  adapter" in docs/IMPORTERS.md and "EXB drawings" in docs/SCHEMA_NOTES.md.
+- Schema: `source.format` accepts `exb` (additive).
+- The `all` extra includes `ezexb`.
+
 ## 0.13.0
 
 - New PDF importer (`cad2d-ir[pdf]`, backed by `pypdfium2`/PDFium): reads the page

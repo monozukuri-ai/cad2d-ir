@@ -1,12 +1,16 @@
 from cad2d_ir.api import (
     DxfToIrResult,
     IrToDxfResult,
+    HpglToDxfResult,
+    convert_hpgl_file_to_dxf,
     convert_dgn_file_to_ir,
     convert_dwf_file_to_ir,
     convert_dwg_file_to_ir,
     convert_dxf_file_to_ir,
     convert_dxf_text_to_ir,
+    convert_exb_file_to_ir,
     convert_file_to_ir,
+    convert_hpgl_file_to_ir,
     convert_idw_file_to_ir,
     convert_ir_file_to_dxf,
     convert_ir_to_dxf_text,
@@ -44,7 +48,7 @@ from cad2d_ir.importers import (
 )
 from cad2d_ir.schema import IRValidationError, load_schema, validate_ir
 
-__version__ = "0.13.0"
+__version__ = "0.14.0"
 
 __all__ = [
     "__version__",
@@ -59,6 +63,8 @@ __all__ = [
     "ImportOptions",
     "ImportResult",
     "IrToDxfResult",
+    "HpglToDxfResult",
+    "convert_hpgl_file_to_dxf",
     "MissingOptionalDependencyError",
     "UnsupportedSourceFormatError",
     "SUPPORTED_DXF_TARGET_VERSIONS",
@@ -67,7 +73,9 @@ __all__ = [
     "convert_dwf_file_to_ir",
     "convert_dxf_file_to_ir",
     "convert_dxf_text_to_ir",
+    "convert_exb_file_to_ir",
     "convert_file_to_ir",
+    "convert_hpgl_file_to_ir",
     "convert_idw_file_to_ir",
     "convert_ir_file_to_dxf",
     "convert_ir_to_dxf_text",

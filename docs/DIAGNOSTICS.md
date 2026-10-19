@@ -96,6 +96,29 @@ entity/source identifiers and structured details.
 | `DXF_IMAGE_CLIP_IGNORED` | warning | approximated | DXF import | The clip boundary of an `IMAGE` was not applied; the `IMAGE` spans its full extent and the boundary stays in `metadata.dxf.image`. |
 | `DXF_IMAGE_AXES_APPROXIMATED` | warning | approximated | DXF import | The pixel axes of an `IMAGE` are mirrored or not at a right angle; the `IMAGE` keeps its width, height and the rotation of the column axis only (the vectors stay in `metadata.dxf.image`). |
 | `DXF_UNKNOWN_ENTITY_SKIPPED` | warning | skipped | DXF export | An unknown IR entity kind was skipped. |
+| `EXB_ATTRIBUTE_DEFINITIONS_SKIPPED` | info | skipped | EXB import | Attribute definitions (title block templates) were not converted; the values a block reference carries are kept as `attribute_texts` on the INSERT. |
+| `EXB_BLOCK_SOLID_ATTACHED` | info | - | EXB import | A block definition's attached fill was converted as a solid HATCH inside the block. |
+| `EXB_DIMENSION_FROM_CACHE` | info | flattened | EXB import | Dimensions were rebuilt from the display records CAXA cached (lines, arcs, arrow fills, text) in a block referenced by `definition.block`; the stored value and text are kept, the construction, associativity and tolerance semantics are not decoded. |
+| `EXB_ELLIPSE_AXES_ASSUMED` | warning | approximated | EXB import | An ellipse's major axis was taken as the stored x axis rotated by the stored rotation. |
+| `EXB_ENTITY_CONVERSION_FAILED` | error | skipped | EXB import | A malformed EXB entity was skipped. |
+| `EXB_HATCH_BOUNDARY_SAMPLED` | warning | approximated | EXB import | Hatch or solid boundaries with arcs, ellipses, NURBS or bulges were sampled as polyline loops. |
+| `EXB_HATCH_PATTERN_PRESERVED` | info | preserved_metadata | EXB import | The CAXA hatch pattern name, angle, scale and stored line definitions are kept in `metadata.exb.hatch`; the pattern lines are not regenerated. |
+| `EXB_LAYOUTS_PRESERVED` | info | preserved_metadata | EXB import | Spaces after the first were kept as `layouts`. |
+| `EXB_LAYOUT_PROMOTED` | warning | normalized | EXB import | The first space had no entities; the space with the most entities became the model entities. |
+| `EXB_LINE_WIDTH_PRESET` | info | assumed | EXB import | Symbolic CAXA line widths (thin / mid / wide / double wide) were mapped to the default 0.25 / 0.35 / 0.5 / 0.7 mm. |
+| `EXB_PAPER_DETECTED` | info | detected | EXB import | The paper size was measured from the `*FRAME…` block placed in the space and recorded in `header.metadata.exb.paper`. |
+| `EXB_PARTIAL_READ` | warning | - | EXB import | `ezexb` read the drawing in partial mode: some records could not be decoded and the dimension semantics are not decoded. |
+| `EXB_POLYLINE_WIDTH_DROPPED` | warning | approximated | EXB import | A polyline had segment widths, which the IR polyline does not carry. |
+| `EXB_TEXT_ALIGNMENT_ASSUMED` | info | assumed | EXB import | Texts use an alignment code that was not verified against CAXA: 2 (top-right by the 3×3 grid) or an unknown code read as top-left. |
+| `EXB_TEXT_ESCAPE_NORMALIZED` | info | normalized | EXB import | CAXA text escapes were rewritten: `%c` / `%d` / `%p` / `%x` as ⌀ ° ± ×, deviation (`\D…\|b;`) and fit (`\V…\|a;`) tolerances as DXF-style `\S上^下;` stacks. |
+| `EXB_TEXT_FIT_WIDTH_FACTOR` | info | approximated | EXB import | A fit-to-box text got a `width_factor` derived from its stored box width, since CAXA compresses the glyphs to the box. |
+| `EXB_TEXT_STYLE_UNRESOLVED` | warning | normalized | EXB import | Texts reference text style ids missing from the text style table; no style was assigned. |
+| `EXB_TEXT_SYMBOL_DROPPED` | warning | skipped | EXB import | A surface roughness symbol embedded in text (`\R…;`) has no text form and was removed. |
+| `EXB_TEXT_VERTICAL_IGNORED` | warning | approximated | EXB import | A vertical-writing text was converted as horizontal text; the writing direction is in `metadata.exb`. |
+| `EXB_UNITS_ASSUMED_MM` | info | assumed | EXB import | An EXB drawing carries no unit; coordinates were taken as millimetres at real size (the drawing scale is `header.metadata.exb.paper_scale`). |
+| `EXB_UNRESOLVED_LAYER` | warning | normalized | EXB import | Entities reference layer ids missing from the layer table; placeholder layer names `EXB_LAYER_<id>` were used. |
+| `EXB_UNSUPPORTED_ENTITY` | warning | skipped | EXB import | Records of a type `ezexb` cannot decode (CAXA annotations such as roughness, geometric tolerance, chamfer and table objects) were skipped; `details.type_id` is the record GUID. |
+| `EXB_ZERO_INSERT_SCALE_NORMALIZED` | warning | normalized | EXB import | A zero block reference scale was replaced with 1.0. |
 | `IDW_CURVE_APPROXIMATED` | warning | approximated | IDW import | A curve whose ellipse parameters could not be recovered was sampled as a polyline. |
 | `IDW_CURVE_EDGE_ON_LINE` | warning | approximated | IDW import | An edge-on projected circle (minor axis ~0 after XY projection) was represented as a line segment. |
 | `IDW_DRAWING_WARNING` | warning | forwarded | IDW import | An `inventor-kit` drawing diagnostic (for example `drawing.unverified`) was forwarded with its upstream code in `details`. The instance severity follows the upstream diagnostic. |
@@ -175,3 +198,20 @@ entity/source identifiers and structured details.
 
 Use `cad2d_ir.diagnostics.ALL_CODES` for exhaustive CI checks and
 `cad2d_ir.diagnostics.DIAGNOSTIC_CODES` for catalog metadata.
+
+## HP-GL diagnostics
+
+| Code | Severity | Action | Condition |
+|---|---|---|---|
+| `HPGL_CLIP_APPROXIMATED` | warning | approximated | Rectangle clipping applies to centerlines; painted stroke edges and clipped caps may differ. |
+| `HPGL_CURVE_APPROXIMATED` | warning | approximated | A clipped/degenerate curve or polygon boundary uses core preview vertices. |
+| `HPGL_DOT_APPROXIMATED` | warning | approximated | A pen dot uses POINT display semantics. |
+| `HPGL_DXF_LAYOUT_METADATA_OMITTED` | warning | skipped | The current DXF writer does not serialize layout name or paper setup. |
+| `HPGL_DXF_WIDTH_APPROXIMATED` | warning | approximated | HP-GL direct DXF export maps arbitrary pen widths to supported DXF lineweights; IR keeps original widths. |
+| `HPGL_FILL_OMITTED` | warning | skipped | A collinear fill, a fill crossing its clip, or a nonzero winding fill is omitted because IR HATCH cannot express that case safely. |
+| `HPGL_HATCH_EXPLODED` | warning | exploded | Hatch/crosshatch fill uses explicit core paint segments. |
+| `HPGL_LINE_STYLE_APPROXIMATED` | warning | approximated | Nominal dash lengths are retained; per-path phase, adaptive repeats, caps or joins may differ. |
+| `HPGL_SOURCE_APPROXIMATION` | warning | approximated | An entity depends on an approximate source label/cursor; per-entity approximation metadata retains this marker. |
+| `HPGL_SOURCE_DIAGNOSTIC` | warning | source_action | ezhpgl reports a source error, approximation or known omission; details retain its code and original byte span. |
+| `HPGL_TEXT_APPROXIMATED` | warning | approximated | Positioned glyphs use substitute-font TEXT; reflected glyphs use block INSERT. |
+| `HPGL_TEXT_CLIP_OMITTED` | warning | skipped | A glyph not wholly inside its clip envelope is omitted; original label bytes remain in layout metadata. |

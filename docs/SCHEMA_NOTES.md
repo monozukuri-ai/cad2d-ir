@@ -294,6 +294,37 @@ by `origin` and applies the scales. There is no paper size, memo or layer
 table; `JWS_DRAWING_SETTINGS_DEFAULTED` records that the layer names and line
 types are generated defaults.
 
+## EXB drawings
+
+A CAXA EXB drawing imports with `source.format` `"exb"`, coordinates in
+millimetres at real size, and the drawing-level facts in
+`header.metadata.exb`:
+
+```json
+{
+  "product_build": "10.0.0.0000",
+  "profile": "exb-stored-planar-v1",
+  "units_assumed": true,
+  "spaces": [{"id": -7, "name": "Paper1", "scale": 3.0, "block_id": -5, "entities": 1204}],
+  "main_space_id": -7,
+  "paper_scale": 3.0,
+  "paper": {"width_mm": 841.0, "height_mm": 594.0, "frame_block": "*FRAME20",
+            "insert_scale": 3.0, "insert": [0.0, 0.0],
+            "extent": [-1261.5, -891.0, 1261.5, 891.0]}
+}
+```
+
+`paper_scale` is the space's paper scale, i.e. the drawing scale denominator
+(`3.0` is 1:3, `0.5` is 2:1): the frame block, defined in paper millimetres,
+is placed in the space scaled by it, so `paper` is the sheet measured from
+that block and `paper.extent` the frame in model coordinates (absent when no
+`*FRAME…` block is placed). A consumer that writes
+the drawing to a sheet-based format divides the coordinates by `paper_scale`
+and uses `paper` as the sheet. `source.metadata.exb` records the `ezexb` read
+report (completeness, record counts and the GUIDs of undecoded record types),
+and each entity's `metadata.exb` the raw colour, width and line type
+selection; `metadata.exb.hatch` keeps the hatch pattern definition.
+
 ## Current conversion limitations
 
 - `constraints` are IR-only metadata today and are omitted on DXF export.

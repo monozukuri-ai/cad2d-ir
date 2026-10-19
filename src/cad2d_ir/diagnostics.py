@@ -44,6 +44,78 @@ class DiagnosticCode:
 
 
 DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
+    "HPGL_SOURCE_DIAGNOSTIC": DiagnosticCode(
+        "warning",
+        "source_action",
+        "HP-GL import/export",
+        "ezhpgl reports a source error, approximation or known omission; details retain its code and original byte span.",
+    ),
+    "HPGL_SOURCE_APPROXIMATION": DiagnosticCode(
+        "warning",
+        "approximated",
+        "HP-GL import/export",
+        "An entity depends on an approximate source label/cursor; per-entity approximation metadata retains this marker.",
+    ),
+    "HPGL_DOT_APPROXIMATED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "HP-GL import/export",
+        "A pen dot uses POINT display semantics.",
+    ),
+    "HPGL_LINE_STYLE_APPROXIMATED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "HP-GL import/export",
+        "Nominal dash lengths are retained; per-path phase, adaptive repeats, caps or joins may differ.",
+    ),
+    "HPGL_CLIP_APPROXIMATED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "HP-GL import/export",
+        "Rectangle clipping applies to centerlines; painted stroke edges and clipped caps may differ.",
+    ),
+    "HPGL_CURVE_APPROXIMATED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "HP-GL import/export",
+        "A clipped/degenerate curve or polygon boundary uses core preview vertices.",
+    ),
+    "HPGL_HATCH_EXPLODED": DiagnosticCode(
+        "warning",
+        "exploded",
+        "HP-GL import/export",
+        "Hatch/crosshatch fill uses explicit core paint segments.",
+    ),
+    "HPGL_FILL_OMITTED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "HP-GL import/export",
+        "A collinear fill, a fill crossing its clip, or a nonzero winding fill is omitted because IR HATCH cannot express that case safely.",
+    ),
+    "HPGL_TEXT_APPROXIMATED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "HP-GL import/export",
+        "Positioned glyphs use substitute-font TEXT; reflected glyphs use block INSERT.",
+    ),
+    "HPGL_TEXT_CLIP_OMITTED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "HP-GL import/export",
+        "A glyph not wholly inside its clip envelope is omitted; original label bytes remain in layout metadata.",
+    ),
+    "HPGL_DXF_LAYOUT_METADATA_OMITTED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "HP-GL import/export",
+        "The current DXF writer does not serialize layout name or paper setup.",
+    ),
+    "HPGL_DXF_WIDTH_APPROXIMATED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "HP-GL import/export",
+        "HP-GL direct DXF export maps arbitrary pen widths to supported DXF lineweights; IR keeps original widths.",
+    ),
     "DXF_IMPORT_WARNING": DiagnosticCode(
         "warning", None, "DXF import", "Legacy wrapper for a DXF parser warning."
     ),
@@ -286,6 +358,144 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "JWS import",
         "A ^@BM image placement in a symbol refers to a file that a JWS cannot "
         "carry; the IMAGE entity keeps the path in href and has no pixels.",
+    ),
+    "EXB_UNITS_ASSUMED_MM": DiagnosticCode(
+        "info",
+        "assumed",
+        "EXB import",
+        "An EXB drawing carries no unit; coordinates were taken as millimetres at real size (the drawing scale is `header.metadata.exb.paper_scale`).",
+    ),
+    "EXB_PAPER_DETECTED": DiagnosticCode(
+        "info",
+        "detected",
+        "EXB import",
+        "The paper size was measured from the `*FRAME…` block placed in the space and recorded in `header.metadata.exb.paper`.",
+    ),
+    "EXB_PARTIAL_READ": DiagnosticCode(
+        "warning",
+        None,
+        "EXB import",
+        "`ezexb` read the drawing in partial mode: some records could not be decoded and the dimension semantics are not decoded.",
+    ),
+    "EXB_UNSUPPORTED_ENTITY": DiagnosticCode(
+        "warning",
+        "skipped",
+        "EXB import",
+        "Records of a type `ezexb` cannot decode (CAXA annotations such as roughness, geometric tolerance, chamfer and table objects) were skipped; `details.type_id` is the record GUID.",
+    ),
+    "EXB_ENTITY_CONVERSION_FAILED": DiagnosticCode(
+        "error",
+        "skipped",
+        "EXB import",
+        "A malformed EXB entity was skipped.",
+    ),
+    "EXB_DIMENSION_FROM_CACHE": DiagnosticCode(
+        "info",
+        "flattened",
+        "EXB import",
+        "Dimensions were rebuilt from the display records CAXA cached (lines, arcs, arrow fills, text) in a block referenced by `definition.block`; the stored value and text are kept, the construction, associativity and tolerance semantics are not decoded.",
+    ),
+    "EXB_TEXT_ALIGNMENT_ASSUMED": DiagnosticCode(
+        "info",
+        "assumed",
+        "EXB import",
+        "Texts use an alignment code that was not verified against CAXA: 2 (top-right by the 3×3 grid) or an unknown code read as top-left.",
+    ),
+    "EXB_TEXT_ESCAPE_NORMALIZED": DiagnosticCode(
+        "info",
+        "normalized",
+        "EXB import",
+        "CAXA text escapes were rewritten: `%c` / `%d` / `%p` / `%x` as ⌀ ° ± ×, deviation (`\\D…|b;`) and fit (`\\V…|a;`) tolerances as DXF-style `\\S上^下;` stacks.",
+    ),
+    "EXB_TEXT_SYMBOL_DROPPED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "EXB import",
+        "A surface roughness symbol embedded in text (`\\R…;`) has no text form and was removed.",
+    ),
+    "EXB_TEXT_FIT_WIDTH_FACTOR": DiagnosticCode(
+        "info",
+        "approximated",
+        "EXB import",
+        "A fit-to-box text got a `width_factor` derived from its stored box width, since CAXA compresses the glyphs to the box.",
+    ),
+    "EXB_TEXT_VERTICAL_IGNORED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "EXB import",
+        "A vertical-writing text was converted as horizontal text; the writing direction is in `metadata.exb`.",
+    ),
+    "EXB_HATCH_BOUNDARY_SAMPLED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "EXB import",
+        "Hatch or solid boundaries with arcs, ellipses, NURBS or bulges were sampled as polyline loops.",
+    ),
+    "EXB_HATCH_PATTERN_PRESERVED": DiagnosticCode(
+        "info",
+        "preserved_metadata",
+        "EXB import",
+        "The CAXA hatch pattern name, angle, scale and stored line definitions are kept in `metadata.exb.hatch`; the pattern lines are not regenerated.",
+    ),
+    "EXB_LINE_WIDTH_PRESET": DiagnosticCode(
+        "info",
+        "assumed",
+        "EXB import",
+        "Symbolic CAXA line widths (thin / mid / wide / double wide) were mapped to the default 0.25 / 0.35 / 0.5 / 0.7 mm.",
+    ),
+    "EXB_POLYLINE_WIDTH_DROPPED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "EXB import",
+        "A polyline had segment widths, which the IR polyline does not carry.",
+    ),
+    "EXB_ZERO_INSERT_SCALE_NORMALIZED": DiagnosticCode(
+        "warning",
+        "normalized",
+        "EXB import",
+        "A zero block reference scale was replaced with 1.0.",
+    ),
+    "EXB_ELLIPSE_AXES_ASSUMED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "EXB import",
+        "An ellipse's major axis was taken as the stored x axis rotated by the stored rotation.",
+    ),
+    "EXB_ATTRIBUTE_DEFINITIONS_SKIPPED": DiagnosticCode(
+        "info",
+        "skipped",
+        "EXB import",
+        "Attribute definitions (title block templates) were not converted; the values a block reference carries are kept as `attribute_texts` on the INSERT.",
+    ),
+    "EXB_BLOCK_SOLID_ATTACHED": DiagnosticCode(
+        "info",
+        None,
+        "EXB import",
+        "A block definition's attached fill was converted as a solid HATCH inside the block.",
+    ),
+    "EXB_LAYOUTS_PRESERVED": DiagnosticCode(
+        "info",
+        "preserved_metadata",
+        "EXB import",
+        "Spaces after the first were kept as `layouts`.",
+    ),
+    "EXB_LAYOUT_PROMOTED": DiagnosticCode(
+        "warning",
+        "normalized",
+        "EXB import",
+        "The first space had no entities; the space with the most entities became the model entities.",
+    ),
+    "EXB_UNRESOLVED_LAYER": DiagnosticCode(
+        "warning",
+        "normalized",
+        "EXB import",
+        "Entities reference layer ids missing from the layer table; placeholder layer names `EXB_LAYER_<id>` were used.",
+    ),
+    "EXB_TEXT_STYLE_UNRESOLVED": DiagnosticCode(
+        "warning",
+        "normalized",
+        "EXB import",
+        "Texts reference text style ids missing from the text style table; no style was assigned.",
     ),
     "DWG_ENTITY_CONVERSION_FAILED": DiagnosticCode(
         "error", "skipped", "DWG import", "A malformed DWG entity was skipped."

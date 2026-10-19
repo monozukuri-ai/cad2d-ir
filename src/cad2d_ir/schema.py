@@ -631,6 +631,8 @@ def _validate_source(source: Any, path: str) -> None:
         "dwg",
         "dgn",
         "dwf",
+        "exb",
+        "hpgl",
         "idw",
         "jww",
         "jwc",

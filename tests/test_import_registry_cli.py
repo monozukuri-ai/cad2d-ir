@@ -51,7 +51,7 @@ def test_generic_file_import_and_cli_support_dxf(tmp_path: Path) -> None:
 def test_registry_dispatches_optional_adapters(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from cad2d_ir.importers import dgn, dwf, dwg, idw, jww, mi, sxf
+    from cad2d_ir.importers import dgn, dwf, dwg, exb, idw, jww, mi, sxf
 
     calls: list[tuple[str, Path]] = []
 
@@ -83,12 +83,17 @@ def test_registry_dispatches_optional_adapters(
         calls.append(("jws", path))
         return "jws-result"
 
+    def fake_exb(path: Path, *, options: object) -> str:
+        calls.append(("exb", path))
+        return "exb-result"
+
     monkeypatch.setattr(dwg, "convert_dwg_file_to_ir", fake_dwg)
     monkeypatch.setattr(dgn, "convert_dgn_file_to_ir", fake_dgn)
     monkeypatch.setattr(dwf, "convert_dwf_file_to_ir", fake_dwf)
     monkeypatch.setattr(mi, "convert_mi_file_to_ir", fake_mi)
     monkeypatch.setattr(idw, "convert_idw_file_to_ir", fake_idw)
     monkeypatch.setattr(jww, "convert_jws_file_to_ir", fake_jws)
+    monkeypatch.setattr(exb, "convert_exb_file_to_ir", fake_exb)
     monkeypatch.setattr(sxf, "convert_sxf_file_to_ir", fake_sxf)
 
     dwg_path = tmp_path / "drawing.dwg"
@@ -97,6 +102,7 @@ def test_registry_dispatches_optional_adapters(
     mi_path = tmp_path / "drawing.mi"
     idw_path = tmp_path / "drawing.idw"
     jws_path = tmp_path / "symbol.jws"
+    exb_path = tmp_path / "drawing.exb"
     sxf_path = tmp_path / "drawing.p21"
     assert convert_file_to_ir(dwg_path) == "dwg-result"
     assert convert_file_to_ir(dgn_path) == "dgn-result"
@@ -104,6 +110,7 @@ def test_registry_dispatches_optional_adapters(
     assert convert_file_to_ir(mi_path) == "mi-result"
     assert convert_file_to_ir(idw_path) == "idw-result"
     assert convert_file_to_ir(jws_path) == "jws-result"
+    assert convert_file_to_ir(exb_path) == "exb-result"
     assert convert_file_to_ir(sxf_path) == "sxf-result"
     assert calls == [
         ("dwg", dwg_path),
@@ -112,6 +119,7 @@ def test_registry_dispatches_optional_adapters(
         ("mi", mi_path),
         ("idw", idw_path),
         ("jws", jws_path),
+        ("exb", exb_path),
         ("sxf", sxf_path),
     ]
 

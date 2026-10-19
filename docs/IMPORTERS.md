@@ -391,6 +391,39 @@ emit for thick strokes, are removed (`PDF_DUPLICATE_REMOVED`). Elliptical arcs
 stay splines, glyph outlines are not recognised as text, and blend modes and
 soft masks are ignored.
 
+## EXB adapter
+
+`convert_exb_file_to_ir` / `exb_document_to_ir` read a CAXA CAD (电子图板)
+drawing through `ezexb` (`cad2d-ir[exb]`), always in `ezexb`'s partial mode
+and with resource budgets raised far above its defaults
+(`cad2d_ir.importers.exb.DEFAULT_PARSE_BUDGETS`; pass an `ezexb.ParseOptions`
+as `parse_options` to change them). `ezexb` 0.1 decodes five observed product
+builds (`10.0.0.0000`, `11.7.0.5203`, `15.0.0.5681`, `16.4.0.13104`,
+`18.0.0.18159`); any other build raises `ImporterError` ("Unsupported EXB
+product build …"), as do legacy pre-2007 files (signature
+`CaxaEbForWindows`) and compound documents without EXB streams.
+
+| EXB | IR | Notes |
+| --- | --- | --- |
+| first space (`model` / `Paper1`, id -7) | `entities` | the fullest space is promoted when the first is empty (`EXB_LAYOUT_PROMOTED`); further spaces become `layouts` (`EXB_LAYOUTS_PRESERVED`) |
+| stored coordinates | millimetres at real size | `EXB_UNITS_ASSUMED_MM`; `header.metadata.exb.paper_scale` is the drawing scale (1:3 is `3.0`, 2:1 is `0.5`) and `header.metadata.exb.paper` the sheet measured from the `*FRAME…` block (`EXB_PAPER_DETECTED`) |
+| LINE / CIRCLE / ARC | `LINE` / `CIRCLE` / `ARC` | arc direction from the basis handedness and the sweep sign |
+| POLYLINE | `LWPOLYLINE` with bulges | segment widths dropped (`EXB_POLYLINE_WIDTH_DROPPED`) |
+| TEXT | `TEXT`, or `MTEXT` when it has `\P` or formatting | height = stored height × drawing scale; alignment code on a 3×3 grid (0 top-left … 8 bottom-right, verified against the CAXA viewer except 2; `EXB_TEXT_ALIGNMENT_ASSUMED` for 2 and unknown codes); `%c %d %p %x` and tolerance escapes normalised (`EXB_TEXT_ESCAPE_NORMALIZED`), roughness symbols dropped (`EXB_TEXT_SYMBOL_DROPPED`); fit-to-box texts get a `width_factor` (`EXB_TEXT_FIT_WIDTH_FACTOR`) |
+| INSERT with attached attributes | `INSERT` with `attribute_texts` | attribute texts are in the INSERT's coordinate system; `AttributeDefinition` records are skipped (`EXB_ATTRIBUTE_DEFINITIONS_SKIPPED`) |
+| HATCH / SOLID | `HATCH` (`solid` for SOLID) | boundary curves sampled (`EXB_HATCH_BOUNDARY_SAMPLED`); pattern name, angle, scale and line definitions kept in `metadata.exb.hatch` (`EXB_HATCH_PATTERN_PRESERVED`); a block's attached SOLID becomes a solid HATCH in the block (`EXB_BLOCK_SOLID_ATTACHED`) |
+| NURBS | `SPLINE` | weights only when they differ from 1 |
+| ELLIPSE | `ELLIPSE` | major axis = x axis rotated by the stored rotation (`EXB_ELLIPSE_AXES_ASSUMED`) |
+| Dimension (linear, diameter, radius, leader, angular) | `DIMENSION` with `definition.block` | the cached presentation (lines, arcs, arrow solids, text) goes into a `*EXB_D<id>` block; `definition.measurement`, `text`, `points.location` / `text_midpoint` and the stored fields in `source_geometry`; semantics not decoded (`EXB_DIMENSION_FROM_CACHE`). The leader type is `GENERIC` |
+| Layer / Linetype / TextStyle | tables | layer colour from the stored COLORREF, width flag 2 = stored millimetres, 3–6 = preset (`EXB_LINE_WIDTH_PRESET`); `pattern_mm` = dashes × scale; `font` = the CJK font name |
+| records `ezexb` cannot decode | skipped | `EXB_UNSUPPORTED_ENTITY` per record type GUID, `EXB_PARTIAL_READ` once per document |
+
+Explicit entity colours are the low 24 bits of the stored value read as a
+COLORREF (`0x00BBGGRR`); ByLayer and ByBlock colours, widths and line types are
+left to the layer. Entity ids are `EXB_E…`; `source.metadata` keeps the record
+type GUID, block id and stream path and `metadata.exb` the raw attribute values
+when `entity_provenance` is on.
+
 ## SXF adapter
 
 The SXF adapter parses either SFC or AP202/P21 and consumes `ezsxf.build_drawing()` (the private `ezsxf._drawing` entry point on ezsxf before 0.3.1). No DXF text is produced or reparsed.
@@ -471,3 +504,9 @@ An additional adapter should:
 8. add synthetic mapping tests plus a real-corpus validation gate.
 
 Register the suffix and dispatch branch only after the adapter passes those gates. A parser-to-DXF-to-IR shortcut should not be used where it destroys dimensions, block semantics, or source metadata.
+
+## HP-GL adapter
+
+`cad2d-ir[hpgl]` maps the `ezhpgl` Rust plot model to separate paper-space
+layouts in mm. See [the HP-GL contract](HPGL.md) for supported geometry,
+source metadata, clipping/fill/text losses, page selection and resource limits.
