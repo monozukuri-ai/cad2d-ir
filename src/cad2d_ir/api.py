@@ -23,6 +23,7 @@ from cad2d_ir.importers.base import (
     ImportResult,
 )
 from cad2d_ir.importers.registry import import_file
+from cad2d_ir.model3d import Model3DCollector
 from cad2d_ir.schema import validate_ir
 
 
@@ -31,6 +32,8 @@ class DxfToIrResult:
     document: dict[str, Any]
     warnings: list[str]
     diagnostics: list[ImportDiagnostic] = field(default_factory=list)
+    # ``keep_3d=True`` の側道(cad2d_ir.model3d)。それ以外は None
+    model3d: dict[str, Any] | None = None
 
     @property
     def encoding(self) -> str | None:
@@ -185,13 +188,17 @@ def convert_dxf_text_to_ir(
     *,
     ir_version: str = CURRENT_IR_VERSION,
     validate: bool = True,
+    keep_3d: bool = False,
+    curve_segments: int = 96,
 ) -> DxfToIrResult:
     warnings: list[str] = []
+    collector = Model3DCollector(curve_segments=curve_segments) if keep_3d else None
     document = dxf_to_ir(
         dxf_text,
         ir_version=ir_version,
         validate=validate,
         warnings=warnings,
+        model3d=collector,
     )
     diagnostics = [
         ImportDiagnostic(
@@ -205,7 +212,16 @@ def convert_dxf_text_to_ir(
         document=document,
         warnings=warnings,
         diagnostics=diagnostics,
+        model3d=_finalize_model3d(collector, document),
     )
+
+
+def _finalize_model3d(
+    collector: Model3DCollector | None, document: dict[str, Any]
+) -> dict[str, Any] | None:
+    if collector is None:
+        return None
+    return collector.finalize(units=document.get("header", {}).get("units"))
 
 
 def convert_dxf_file_to_ir(
@@ -214,9 +230,12 @@ def convert_dxf_file_to_ir(
     ir_version: str = CURRENT_IR_VERSION,
     validate: bool = True,
     encoding: str = "auto",
+    keep_3d: bool = False,
+    curve_segments: int = 96,
 ) -> DxfToIrResult:
     warnings: list[str] = []
     diagnostics: list[ImportDiagnostic] = []
+    collector = Model3DCollector(curve_segments=curve_segments) if keep_3d else None
     document = read_dxf_file(
         path,
         ir_version=ir_version,
@@ -224,6 +243,7 @@ def convert_dxf_file_to_ir(
         warnings=warnings,
         diagnostics=diagnostics,
         encoding=encoding,
+        model3d=collector,
     )
     diagnosed_messages = {diagnostic.message for diagnostic in diagnostics}
     diagnostics.extend(
@@ -239,6 +259,7 @@ def convert_dxf_file_to_ir(
         document=document,
         warnings=warnings,
         diagnostics=diagnostics,
+        model3d=_finalize_model3d(collector, document),
     )
 
 
@@ -252,11 +273,14 @@ def convert_file_to_ir(
     curve_segments: int = 96,
     encoding: str = "auto",
     entity_provenance: bool = True,
+    keep_3d: bool = False,
 ) -> ImportResult:
     """Convert a supported CAD file to IR using format detection or an explicit adapter.
 
     ``entity_provenance=False`` omits per-entity ``source``/``metadata`` (JWW),
     roughly halving peak memory for render-only imports of very large drawings.
+    ``keep_3d=True`` (DWG/DXF) returns the geometry before XY projection in
+    ``ImportResult.model3d``; see ``cad2d_ir.model3d``.
     """
     return import_file(
         path,
@@ -268,6 +292,7 @@ def convert_file_to_ir(
             curve_segments=curve_segments,
             encoding=encoding,
             entity_provenance=entity_provenance,
+            keep_3d=keep_3d,
         ),
     )
 
@@ -323,6 +348,7 @@ def convert_dwg_file_to_ir(
     validate: bool = True,
     strict: bool = True,
     curve_segments: int = 96,
+    keep_3d: bool = False,
 ) -> ImportResult:
     """Convert a DWG file directly to IR without an intermediate DXF."""
     from cad2d_ir.importers.dwg import convert_dwg_file_to_ir as import_dwg
@@ -334,6 +360,7 @@ def convert_dwg_file_to_ir(
             validate=validate,
             strict=strict,
             curve_segments=curve_segments,
+            keep_3d=keep_3d,
         ),
     )
 

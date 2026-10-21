@@ -28,6 +28,21 @@ from cad2d_ir.layouts import (
     unnamed_layout_name,
     viewport_from_dxf_values,
 )
+from cad2d_ir.model3d import (
+    UNSUPPORTED_3D_KINDS,
+    Model3DCollector,
+    arc_points,
+    bulge_polyline_points,
+    ellipse_points,
+    face3d_triangles,
+    grid_triangles,
+    normalize_extrusion,
+    ocs_to_wcs,
+    point3,
+    polyface_triangles,
+    solid_triangles,
+    spline_points,
+)
 from cad2d_ir.schema import validate_ir
 from cad2d_ir.tolerance import explode_tolerance
 
@@ -69,11 +84,18 @@ class _ConversionContext:
     linked_images: int = 0
     inserts_by_handle: dict[int, dict[str, Any]] = field(default_factory=dict)
     next_entity_number: int = 1
+    # ``ImportOptions.keep_3d``: 投影前の 3D 幾何を集める側道。scope は None(モデル空間)、
+    # ブロック定義のヘッダハンドル、または _MODEL3D_SKIP(ペーパー空間: 集めない)
+    model3d: Model3DCollector | None = None
+    model3d_scope: Any = None
 
     def allocate_id(self) -> str:
         entity_id = f"DWG_E{self.next_entity_number:08d}"
         self.next_entity_number += 1
         return entity_id
+
+
+_MODEL3D_SKIP = object()
 
 
 @dataclass(slots=True)
@@ -305,6 +327,11 @@ def dwg_document_to_ir(
         layer_names=layer_names,
         layers=layers,
         linetypes=linetypes,
+        model3d=(
+            Model3DCollector(curve_segments=import_options.curve_segments)
+            if import_options.keep_3d
+            else None
+        ),
     )
 
     block_names = {
@@ -366,6 +393,10 @@ def dwg_document_to_ir(
         if _is_hidden_attribute(source_entity, in_block):
             context.hidden_attributes += 1
             continue
+        if in_paperspace:
+            context.model3d_scope = _MODEL3D_SKIP
+        else:
+            context.model3d_scope = owner_handle if in_block else None
         converted = _convert_entity_sequence((source_entity,), context)
         if source_kind == "ATTDEF" and not in_block:
             # Outside of a block the definition itself is displayed, by its tag.
@@ -474,6 +505,12 @@ def dwg_document_to_ir(
     if import_options.validate:
         validate_ir(document)
 
+    model3d: dict[str, Any] | None = None
+    if context.model3d is not None:
+        model3d = context.model3d.finalize(
+            units=header_units, block_names=block_name_by_handle
+        )
+
     block_entity_count = sum(len(block["entities"]) for block in blocks.values())
     statistics: dict[str, Any] = {
         "source_format": "dwg",
@@ -496,6 +533,7 @@ def dwg_document_to_ir(
         document=document,
         diagnostics=context.diagnostics,
         statistics=statistics,
+        model3d=model3d,
     )
 
 
@@ -679,7 +717,211 @@ def _convert_entity_safe(
         return []
     if not result:
         context.skipped_counts[source_kind] += 1
+    if context.model3d is not None and context.model3d_scope is not _MODEL3D_SKIP:
+        _collect_model3d(source_entity, result, context)
     return result
+
+
+def _collect_model3d(
+    source_entity: Any, converted: list[dict[str, Any]], context: _ConversionContext
+) -> None:
+    """Side channel of ``keep_3d``: the 3D geometry this entity had before projection.
+
+    Best effort: a malformed entity is already reported by the 2D conversion, so
+    the side channel silently leaves it out. Coordinates of ARC/CIRCLE/LWPOLYLINE
+    are taken as ezdwg exposes them (no extrusion for those types yet, so they
+    stay in the XY plane at their elevation).
+    """
+    collector = context.model3d
+    assert collector is not None
+    scope = context.model3d_scope
+    kind = _source_kind(source_entity)
+    dxf = _dxf(source_entity)
+    source_id = _handle_text(_entity_handle(source_entity))
+    entity = converted[0] if converted else None
+    segments = collector.curve_segments
+    try:
+        if kind == "LINE":
+            collector.add_curve(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                points=[point3(dxf["start"]), point3(dxf["end"])],
+            )
+        elif kind in {"CIRCLE", "ARC"}:
+            extrusion = normalize_extrusion(dxf.get("extrusion"))
+            full = kind == "CIRCLE"
+            points = arc_points(
+                point3(dxf["center"]),
+                float(dxf["radius"]),
+                0.0 if full else float(dxf["start_angle"]),
+                360.0 if full else float(dxf["end_angle"]),
+                extrusion=extrusion,
+                curve_segments=segments,
+                full=full,
+            )
+            collector.add_curve(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                points=points,
+                closed=full,
+            )
+        elif kind == "ELLIPSE":
+            start = float(dxf.get("start_angle", 0.0))
+            end = float(dxf.get("end_angle", 2.0 * math.pi))
+            points = ellipse_points(
+                point3(dxf["center"]),
+                point3(dxf["major_axis"]),
+                float(dxf["axis_ratio"]),
+                start,
+                end,
+                extrusion=normalize_extrusion(dxf.get("extrusion")),
+                curve_segments=segments,
+            )
+            full = abs((end - start) % (2.0 * math.pi)) <= 1e-9
+            collector.add_curve(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                points=points,
+                closed=full,
+            )
+        elif kind in {"LWPOLYLINE", "POLYLINE_2D"}:
+            elevation = float(dxf.get("elevation", 0.0) or 0.0)
+            closed = bool(dxf.get("closed", False))
+            extrusion = normalize_extrusion(dxf.get("extrusion"))
+            if dxf.get("interpolation_applied"):
+                raw_points = dxf.get("interpolated_points", [])
+                bulges: list[float] = []
+            else:
+                raw_points = dxf.get("points", [])
+                bulges = [float(value) for value in dxf.get("bulges", [])]
+            vertices = [point3(value, elevation) for value in raw_points]
+            points = bulge_polyline_points(
+                vertices,
+                bulges,
+                closed=closed,
+                extrusion=extrusion,
+                curve_segments=segments,
+            )
+            collector.add_curve(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                points=points,
+                closed=closed,
+            )
+        elif kind in {"POLYLINE_3D", "LEADER", "MLINE"}:
+            collector.add_curve(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                points=[point3(value) for value in dxf.get("points", [])],
+                closed=bool(dxf.get("closed", False)),
+            )
+        elif kind == "SPLINE":
+            controls = [point3(value) for value in dxf.get("control_points", [])]
+            if len(controls) >= 2:
+                points = spline_points(
+                    controls,
+                    int(dxf.get("degree", 3)),
+                    dxf.get("knots"),
+                    dxf.get("weights"),
+                    closed=bool(dxf.get("closed", False)),
+                    curve_segments=segments,
+                )
+            else:
+                points = [point3(value) for value in dxf.get("points", [])]
+            collector.add_curve(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                points=points,
+                closed=bool(dxf.get("closed", False)),
+            )
+        elif kind == "3DFACE":
+            collector.add_faces(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                triangles=face3d_triangles(
+                    [point3(value) for value in dxf.get("points", [])]
+                ),
+            )
+        elif kind in {"SOLID", "TRACE"}:
+            extrusion = normalize_extrusion(dxf.get("extrusion"))
+            corners = [
+                ocs_to_wcs(point3(value), extrusion) for value in dxf.get("points", [])
+            ]
+            collector.add_faces(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                triangles=solid_triangles(corners),
+            )
+        elif kind == "POLYLINE_PFACE":
+            collector.add_faces(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                triangles=polyface_triangles(
+                    [point3(value) for value in dxf.get("vertices", [])],
+                    [list(face) for face in dxf.get("faces", [])],
+                ),
+            )
+        elif kind == "POLYLINE_MESH":
+            flags = int(dxf.get("flags", 0) or 0)
+            collector.add_faces(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                triangles=grid_triangles(
+                    [point3(value) for value in dxf.get("points", [])],
+                    int(dxf.get("m_vertex_count", 0) or 0),
+                    int(dxf.get("n_vertex_count", 0) or 0),
+                    closed_m=bool(flags & 1),
+                    closed_n=bool(flags & 32),
+                ),
+            )
+        elif kind in {"INSERT", "MINSERT"}:
+            block = str(
+                (entity or {}).get("block")
+                or dxf.get("name")
+                or f"UNRESOLVED_BLOCK_{_entity_handle(source_entity):X}"
+            )
+            collector.add_insert(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                block=block,
+                insert=point3(dxf["insert"]),
+                extrusion=normalize_extrusion(dxf.get("extrusion")),
+                scale=(
+                    float(dxf.get("xscale", 1.0) or 1.0),
+                    float(dxf.get("yscale", 1.0) or 1.0),
+                    float(dxf.get("zscale", 1.0) or 1.0),
+                ),
+                rotation_deg=float(dxf.get("rotation", 0.0) or 0.0),
+                columns=int(dxf.get("column_count", 1) or 1),
+                rows=int(dxf.get("row_count", 1) or 1),
+                column_spacing=float(dxf.get("column_spacing", 0.0) or 0.0),
+                row_spacing=float(dxf.get("row_spacing", 0.0) or 0.0),
+            )
+        elif kind in UNSUPPORTED_3D_KINDS:
+            collector.add_unsupported(kind)
+    except (KeyError, TypeError, ValueError, OverflowError, IndexError):
+        return
 
 
 def _convert_entity(

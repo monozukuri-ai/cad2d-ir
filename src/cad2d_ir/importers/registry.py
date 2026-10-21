@@ -12,6 +12,7 @@ from cad2d_ir.importers.base import (
     ImportResult,
     UnsupportedSourceFormatError,
 )
+from cad2d_ir.model3d import Model3DCollector
 
 _SUFFIX_TO_FORMAT = {
     ".dxf": "dxf",
@@ -65,6 +66,11 @@ def import_file(
     if normalized_format == "dxf":
         warnings: list[str] = []
         diagnostics: list[ImportDiagnostic] = []
+        collector = (
+            Model3DCollector(curve_segments=import_options.curve_segments)
+            if import_options.keep_3d
+            else None
+        )
         document = read_dxf_file(
             source_path,
             ir_version=import_options.ir_version,
@@ -72,6 +78,7 @@ def import_file(
             warnings=warnings,
             diagnostics=diagnostics,
             encoding=import_options.encoding,
+            model3d=collector,
         )
         diagnosed_messages = {diagnostic.message for diagnostic in diagnostics}
         diagnostics.extend(
@@ -94,6 +101,11 @@ def import_file(
         return ImportResult(
             document=document,
             diagnostics=diagnostics,
+            model3d=(
+                collector.finalize(units=document.get("header", {}).get("units"))
+                if collector is not None
+                else None
+            ),
             statistics={
                 "source_format": "dxf",
                 "encoding": metadata.get("encoding"),

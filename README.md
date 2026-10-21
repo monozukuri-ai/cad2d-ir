@@ -136,6 +136,11 @@ R2010 output assigns deterministic handles and emits `$HANDSEED`.
 Re-importing the DXF records each handle in `entity.source.id`. R12 omits
 handles and retains deterministic `index` values in the entity map.
 
+`convert_file_to_ir("model.dwg", keep_3d=True)` additionally returns the
+geometry DWG/DXF sources had before XY projection (3D polylines, faces, block
+placements, counts of unreadable solids) in `ImportResult.model3d`; the IR
+itself stays two-dimensional. See `docs/IMPORTERS.md`, "3D side channel".
+
 ## Export behavior
 
 - `TABLES` contains LAYER, LTYPE, and STYLE records from IR tables.

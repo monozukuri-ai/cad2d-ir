@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Literal
 
+from cad2d_ir import model3d as _model3d
 from cad2d_ir.constants import CURRENT_IR_VERSION
 from cad2d_ir.diagnostics import ExportAction, ExportDiagnostic
 from cad2d_ir.layouts import (
@@ -474,6 +475,7 @@ def read_dxf_file(
     warnings: list[str] | None = None,
     diagnostics: list[ImportDiagnostic] | None = None,
     encoding: str = "auto",
+    model3d: _model3d.Model3DCollector | None = None,
 ) -> dict[str, Any]:
     from cad2d_ir.importers.base import ImportDiagnostic
 
@@ -489,6 +491,7 @@ def read_dxf_file(
             warnings=warnings,
             diagnostics=import_diagnostics,
             encoding=encoding,
+            model3d=model3d,
         )
     selected_encoding, encoding_source = _select_dxf_encoding(raw, encoding)
     dxf_text = raw.decode(selected_encoding, errors="replace")
@@ -533,6 +536,7 @@ def read_dxf_file(
         validate=validate,
         warnings=warnings,
         diagnostics=import_diagnostics,
+        model3d=model3d,
     )
     document["source"] = {
         "format": "dxf",
@@ -611,6 +615,7 @@ def dxf_to_ir(
     validate: bool = True,
     warnings: list[str] | None = None,
     diagnostics: list[ImportDiagnostic] | None = None,
+    model3d: _model3d.Model3DCollector | None = None,
 ) -> dict[str, Any]:
     """Parse DXF text into an IR document.
 
@@ -625,6 +630,7 @@ def dxf_to_ir(
         validate=validate,
         warnings=warnings,
         diagnostics=diagnostics,
+        model3d=model3d,
     )
 
 
@@ -648,6 +654,7 @@ def _pairs_to_ir(
     validate: bool,
     warnings: list[str] | None,
     diagnostics: list[ImportDiagnostic] | None,
+    model3d: _model3d.Model3DCollector | None = None,
 ) -> dict[str, Any]:
     pairs = [
         (code, _decode_dxf_text_escapes(value))
@@ -678,6 +685,7 @@ def _pairs_to_ir(
         default_text_height=default_text_height,
         dimstyles=dimstyles,
         image_defs=image_defs,
+        model3d=model3d,
     )
     paper_space_blocks: dict[str, list[tuple[str, list[DXFPair]]]] = {}
     blocks = _blocks_to_ir(
@@ -688,6 +696,7 @@ def _pairs_to_ir(
         paper_space_blocks=paper_space_blocks,
         dimstyles=dimstyles,
         image_defs=image_defs,
+        model3d=model3d,
     )
     tables = _tables_to_ir(sections.get("TABLES", []))
     if blocks:
@@ -1292,6 +1301,7 @@ def _read_binary_dxf(
     warnings: list[str] | None,
     diagnostics: list[ImportDiagnostic],
     encoding: str,
+    model3d: _model3d.Model3DCollector | None = None,
 ) -> dict[str, Any]:
     """Import an ``AutoCAD Binary DXF`` file through the regular pair pipeline."""
     typed_pairs = _binary_dxf_pairs(raw)
@@ -1385,6 +1395,7 @@ def _read_binary_dxf(
 
     document = _pairs_to_ir(
         pairs,
+        model3d=model3d,
         ir_version=ir_version,
         validate=validate,
         warnings=warnings,
@@ -1701,6 +1712,7 @@ def _entity_records_to_ir(
     default_text_height: float = 2.5,
     dimstyles: dict[str, dict[str, float]] | None = None,
     image_defs: dict[str, dict[str, Any]] | None = None,
+    model3d: _model3d.Model3DCollector | None = None,
 ) -> list[dict[str, Any]]:
     projection = _detect_axis_projection(records)
     if projection is not None:
@@ -1729,6 +1741,8 @@ def _entity_records_to_ir(
         projection=projection,
         dimstyles=dimstyles,
         image_defs=image_defs,
+        model3d=model3d,
+        model3d_scope=None,
     )
 
 
@@ -1741,6 +1755,7 @@ def _blocks_to_ir(
     paper_space_blocks: dict[str, list[tuple[str, list[DXFPair]]]] | None = None,
     dimstyles: dict[str, dict[str, float]] | None = None,
     image_defs: dict[str, dict[str, Any]] | None = None,
+    model3d: _model3d.Model3DCollector | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Block definitions by name.
 
@@ -1782,6 +1797,15 @@ def _blocks_to_ir(
             paper_space_blocks.setdefault(name, []).extend(entity_records)
             continue
 
+        if model3d is not None:
+            model3d.set_block_base_point(
+                name,
+                (
+                    float(base_point[0]),
+                    float(base_point[1]),
+                    _first_float(pairs, 30, default=0.0) or 0.0,
+                ),
+            )
         blocks[name] = {
             "base_point": base_point,
             "entities": _records_to_entities(
@@ -1792,6 +1816,8 @@ def _blocks_to_ir(
                 default_text_height=default_text_height,
                 dimstyles=dimstyles,
                 image_defs=image_defs,
+                model3d=model3d,
+                model3d_scope=name,
             ),
         }
     return blocks
@@ -2290,6 +2316,8 @@ def _records_to_entities(
     in_block: bool | None = None,
     dimstyles: dict[str, dict[str, float]] | None = None,
     image_defs: dict[str, dict[str, Any]] | None = None,
+    model3d: _model3d.Model3DCollector | None = None,
+    model3d_scope: Any = None,
 ) -> list[dict[str, Any]]:
     """Convert entity records to IR entities.
 
@@ -2342,6 +2370,8 @@ def _records_to_entities(
             consumed = max(1, lookahead - record_index)
 
         if kind not in _CONVERTIBLE_DXF_KINDS:
+            if model3d is not None:
+                _collect_dxf_model3d_unconverted(model3d, model3d_scope, kind, pairs)
             _warn(warnings, f"[{context}] Unsupported DXF entity skipped: {kind}")
             record_index += consumed
             continue
@@ -2379,6 +2409,10 @@ def _records_to_entities(
                         source_kind="POLYLINE",
                         action="skipped",
                     )
+                    if model3d is not None:
+                        _collect_dxf_polyline_mesh(
+                            model3d, model3d_scope, pairs, vertex_pairs, polyline_flags
+                        )
                     record_index += consumed
                     continue
                 entity = _polyline_from_pairs(pairs, vertex_pairs, serial)
@@ -2521,11 +2555,348 @@ def _records_to_entities(
         for produced in exploded:
             _make_entity_id_unique(produced, used_ids)
             entities.append(produced)
+        if model3d is not None and entity is not None:
+            _collect_dxf_model3d(
+                model3d, model3d_scope, kind, pairs, vertex_pairs, entity
+            )
         if exploded:
             serial += 1
         record_index += consumed
 
     return entities
+
+
+def _points3_sequence(
+    pairs: list[DXFPair], x_code: int = 10, y_code: int = 20, z_code: int = 30
+) -> list[tuple[float, float, float]]:
+    """Repeated ``(x, y[, z])`` groups in file order (polyline/spline vertices)."""
+    points: list[list[float]] = []
+    for code, value in pairs:
+        if code == x_code:
+            points.append([_to_float(value), 0.0, 0.0])
+        elif code == y_code and points:
+            points[-1][1] = _to_float(value)
+        elif code == z_code and points:
+            points[-1][2] = _to_float(value)
+    return [(point[0], point[1], point[2]) for point in points]
+
+
+def _bulges_sequence(pairs: list[DXFPair], x_code: int = 10) -> list[float]:
+    """Bulge (42) of each vertex that starts with ``x_code``; 0 when absent."""
+    bulges: list[float] = []
+    for code, value in pairs:
+        if code == x_code:
+            bulges.append(0.0)
+        elif code == 42 and bulges:
+            bulges[-1] = _to_float(value)
+    return bulges
+
+
+def _collect_dxf_model3d(
+    collector: _model3d.Model3DCollector,
+    scope: Any,
+    kind: str,
+    pairs: list[DXFPair],
+    vertex_pairs: list[list[DXFPair]],
+    entity: dict[str, Any],
+) -> None:
+    """Side channel of ``keep_3d``: the geometry of a converted record before projection."""
+    source_id = _first_string(pairs, 5)
+    segments = collector.curve_segments
+    try:
+        if kind == "LINE":
+            collector.add_curve(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                points=[
+                    _point3_from_pairs(pairs, 10, 20, 30),
+                    _point3_from_pairs(pairs, 11, 21, 31),
+                ],
+            )
+        elif kind in {"CIRCLE", "ARC"}:
+            full = kind == "CIRCLE"
+            points = _model3d.arc_points(
+                _point3_from_pairs(pairs, 10, 20, 30),
+                _required_float(pairs, 40),
+                0.0 if full else _required_float(pairs, 50),
+                360.0 if full else _required_float(pairs, 51),
+                extrusion=_extrusion_from_pairs(pairs),
+                curve_segments=segments,
+                full=full,
+            )
+            collector.add_curve(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                points=points,
+                closed=full,
+            )
+        elif kind == "ELLIPSE":
+            start = _first_float(pairs, 41, default=0.0) or 0.0
+            end = _first_float(pairs, 42, default=None)
+            if end is None:
+                end = 2.0 * math.pi
+            points = _model3d.ellipse_points(
+                _point3_from_pairs(pairs, 10, 20, 30),
+                _point3_from_pairs(pairs, 11, 21, 31),
+                _required_float(pairs, 40),
+                start,
+                end,
+                extrusion=_extrusion_from_pairs(pairs),
+                curve_segments=segments,
+            )
+            full = abs((end - start) % (2.0 * math.pi)) <= 1e-9
+            collector.add_curve(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                points=points,
+                closed=full,
+            )
+        elif kind == "LWPOLYLINE":
+            elevation = _first_float(pairs, 38, default=0.0) or 0.0
+            closed = bool((_first_int(pairs, 70, default=0) or 0) & 1)
+            vertices = [
+                (x, y, elevation) for x, y, _z in _points3_sequence(pairs, 10, 20, 30)
+            ]
+            points = _model3d.bulge_polyline_points(
+                vertices,
+                _bulges_sequence(pairs),
+                closed=closed,
+                extrusion=_extrusion_from_pairs(pairs),
+                curve_segments=segments,
+            )
+            collector.add_curve(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                points=points,
+                closed=closed,
+            )
+        elif kind == "POLYLINE":
+            flags = _first_int(pairs, 70, default=0) or 0
+            closed = bool(flags & 1)
+            path = _polyline_path_vertices(vertex_pairs)
+            if flags & _POLYLINE_3D:
+                points = [_point3_from_pairs(vertex, 10, 20, 30) for vertex in path]
+            else:
+                elevation = _first_float(pairs, 30, default=0.0) or 0.0
+                vertices = [
+                    (
+                        _required_float(vertex, 10),
+                        _required_float(vertex, 20),
+                        elevation,
+                    )
+                    for vertex in path
+                ]
+                bulges = [
+                    _first_float(vertex, 42, default=0.0) or 0.0 for vertex in path
+                ]
+                points = _model3d.bulge_polyline_points(
+                    vertices,
+                    bulges,
+                    closed=closed,
+                    extrusion=_extrusion_from_pairs(pairs),
+                    curve_segments=segments,
+                )
+            collector.add_curve(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                points=points,
+                closed=closed,
+            )
+        elif kind == "SPLINE":
+            controls = _points3_sequence(pairs, 10, 20, 30)
+            closed = bool((_first_int(pairs, 70, default=0) or 0) & 1)
+            if len(controls) >= 2:
+                points = _model3d.spline_points(
+                    controls,
+                    _first_int(pairs, 71, default=3) or 3,
+                    _all_floats(pairs, 40),
+                    _all_floats(pairs, 41),
+                    closed=closed,
+                    curve_segments=segments,
+                )
+            else:
+                points = _points3_sequence(pairs, 11, 21, 31)
+            collector.add_curve(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                points=points,
+                closed=closed,
+            )
+        elif kind == "LEADER":
+            collector.add_curve(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                points=_points3_sequence(pairs, 10, 20, 30),
+            )
+        elif kind in {"SOLID", "TRACE"}:
+            extrusion = _extrusion_from_pairs(pairs)
+            corners = []
+            for x_code, y_code, z_code in ((10, 20, 30), (11, 21, 31), (12, 22, 32), (13, 23, 33)):
+                if _first_float(pairs, x_code, default=None) is None:
+                    continue
+                corners.append(
+                    _model3d.ocs_to_wcs(
+                        _point3_from_pairs(pairs, x_code, y_code, z_code), extrusion
+                    )
+                )
+            collector.add_faces(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                kind=kind,
+                triangles=_model3d.solid_triangles(corners),
+            )
+        elif kind == "INSERT":
+            collector.add_insert(
+                scope,
+                entity=entity,
+                source_id=source_id,
+                block=str(entity.get("block") or _first_string(pairs, 2) or ""),
+                insert=_point3_from_pairs(pairs, 10, 20, 30),
+                extrusion=_extrusion_from_pairs(pairs),
+                scale=(
+                    _first_float(pairs, 41, default=1.0) or 1.0,
+                    _first_float(pairs, 42, default=1.0) or 1.0,
+                    _first_float(pairs, 43, default=1.0) or 1.0,
+                ),
+                rotation_deg=_first_float(pairs, 50, default=0.0) or 0.0,
+                columns=_first_int(pairs, 70, default=1) or 1,
+                rows=_first_int(pairs, 71, default=1) or 1,
+                column_spacing=_first_float(pairs, 44, default=0.0) or 0.0,
+                row_spacing=_first_float(pairs, 45, default=0.0) or 0.0,
+            )
+    except (KeyError, TypeError, ValueError, OverflowError, IndexError):
+        return
+
+
+def _collect_dxf_model3d_unconverted(
+    collector: _model3d.Model3DCollector,
+    scope: Any,
+    kind: str,
+    pairs: list[DXFPair],
+) -> None:
+    """3D records the IR has no entity for: 3DFACE, MESH, and the unreadable solids."""
+    source_id = _first_string(pairs, 5)
+    try:
+        if kind == "3DFACE":
+            corners = []
+            for x_code, y_code, z_code in ((10, 20, 30), (11, 21, 31), (12, 22, 32), (13, 23, 33)):
+                if _first_float(pairs, x_code, default=None) is None:
+                    continue
+                corners.append(_point3_from_pairs(pairs, x_code, y_code, z_code))
+            collector.add_faces(
+                scope,
+                entity=None,
+                source_id=source_id,
+                kind=kind,
+                triangles=_model3d.face3d_triangles(corners),
+            )
+        elif kind == "MESH":
+            collector.add_faces(
+                scope,
+                entity=None,
+                source_id=source_id,
+                kind=kind,
+                triangles=_mesh_triangles_from_pairs(pairs),
+            )
+        elif kind in _model3d.UNSUPPORTED_3D_KINDS:
+            collector.add_unsupported(kind)
+    except (KeyError, TypeError, ValueError, OverflowError, IndexError):
+        return
+
+
+def _mesh_triangles_from_pairs(pairs: list[DXFPair]) -> list[Any]:
+    """Faces of a MESH entity: 92 vertices, then 93 face-list values (90)."""
+    vertices: list[tuple[float, float, float]] = []
+    face_values: list[int] = []
+    vertex_count: int | None = None
+    face_list_size: int | None = None
+    current: list[float] | None = None
+    for code, value in pairs:
+        if code == 92 and vertex_count is None:
+            vertex_count = int(float(value))
+        elif code == 10 and vertex_count is not None and len(vertices) < vertex_count:
+            current = [_to_float(value), 0.0, 0.0]
+            vertices.append((current[0], 0.0, 0.0))
+        elif code == 20 and current is not None:
+            current[1] = _to_float(value)
+            vertices[-1] = (current[0], current[1], current[2])
+        elif code == 30 and current is not None:
+            current[2] = _to_float(value)
+            vertices[-1] = (current[0], current[1], current[2])
+        elif code == 93 and face_list_size is None:
+            face_list_size = int(float(value))
+        elif code == 90 and face_list_size is not None and len(face_values) < face_list_size:
+            face_values.append(int(float(value)))
+    faces: list[list[int]] = []
+    index = 0
+    while index < len(face_values):
+        count = face_values[index]
+        index += 1
+        if count <= 0:
+            break
+        faces.append([item + 1 for item in face_values[index : index + count]])
+        index += count
+    return _model3d.polyface_triangles(vertices, faces)
+
+
+def _collect_dxf_polyline_mesh(
+    collector: _model3d.Model3DCollector,
+    scope: Any,
+    pairs: list[DXFPair],
+    vertex_pairs: list[list[DXFPair]],
+    polyline_flags: int,
+) -> None:
+    """Polyface (flag 64) and polygon (flag 16) meshes stored as POLYLINE/VERTEX."""
+    source_id = _first_string(pairs, 5)
+    try:
+        if polyline_flags & _POLYLINE_POLYFACE_MESH:
+            vertices: list[tuple[float, float, float]] = []
+            faces: list[list[int]] = []
+            for vertex in vertex_pairs:
+                flags = _first_int(vertex, 70, default=0) or 0
+                if flags & 128 and not flags & 64:
+                    faces.append(
+                        [
+                            _first_int(vertex, code, default=0) or 0
+                            for code in (71, 72, 73, 74)
+                            if (_first_int(vertex, code, default=0) or 0) != 0
+                        ]
+                    )
+                else:
+                    vertices.append(_point3_from_pairs(vertex, 10, 20, 30))
+            triangles = _model3d.polyface_triangles(vertices, faces)
+            kind = "POLYLINE_PFACE"
+        else:
+            points = [_point3_from_pairs(vertex, 10, 20, 30) for vertex in vertex_pairs]
+            flags = _first_int(pairs, 70, default=0) or 0
+            triangles = _model3d.grid_triangles(
+                points,
+                _first_int(pairs, 71, default=0) or 0,
+                _first_int(pairs, 72, default=0) or 0,
+                closed_m=bool(flags & 1),
+                closed_n=bool(flags & 32),
+            )
+            kind = "POLYLINE_MESH"
+        collector.add_faces(
+            scope, entity=None, source_id=source_id, kind=kind, triangles=triangles
+        )
+    except (KeyError, TypeError, ValueError, OverflowError, IndexError):
+        return
 
 
 # Initial values of the dimension variables DIMTXT and DIMGAP.

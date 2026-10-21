@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.15.0
+
+- `ImportOptions(keep_3d=True)` (DWG and DXF): the importers hand back the
+  geometry they had before projecting to XY in `ImportResult.model3d`, a
+  dictionary outside the IR (`cad2d_ir.model3d`, side-channel version 1):
+  world-space polylines sampled from lines, arcs, circles, ellipses, polylines
+  (bulges expanded), splines, leaders and multilines (`curves`), triangles from
+  3DFACE, SOLID/TRACE, polyface and polygon meshes and DXF MESH (`faces`),
+  block references with their 3D placement matrix (`inserts`, MINSERT cells
+  expanded), the same lists per block definition (`blocks`), counts of 3D
+  entities nobody can read yet such as 3DSOLID/REGION/BODY/surfaces
+  (`unsupported`), and `stats` (`curves_total`, `curves_3d`, `elevations`,
+  `faces`, `inserts`, `unsupported`). Entries carry the IR entity id when an IR entity
+  exists and the source handle. `convert_file_to_ir`, `convert_dwg_file_to_ir`,
+  `convert_dxf_file_to_ir` and `convert_dxf_text_to_ir` accept `keep_3d`
+  (`DxfToIrResult.model3d`). The IR document and diagnostics are unchanged
+  with or without the option. Paper-space entities are not collected. DWG
+  circles, arcs and lightweight polylines stay in the XY plane at their
+  elevation until ezdwg exposes their extrusion.
+
+## 0.14.2
+
+- Version alignment release.
+
 ## 0.14.1
 
 - HP-GL adapter options: `label_mode="label"` emits one TEXT per label line

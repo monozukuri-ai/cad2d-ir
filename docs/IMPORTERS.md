@@ -472,6 +472,51 @@ kept so that a writer can put the entities back at their original scale:
 `SXF_PARTIAL_DRAWING_FLATTENED` (info) states how many partial drawings and
 entities were flattened this way.
 
+## 3D side channel (`keep_3d`)
+
+The IR is two-dimensional and the DWG/DXF importers project every entity to
+XY. `ImportOptions(keep_3d=True)` makes them also return, outside the IR
+document, what they had before projecting: `ImportResult.model3d` (and
+`DxfToIrResult.model3d` for the DXF-specific API). The IR document, its
+diagnostics and its statistics are byte-identical with or without the option.
+
+The dictionary (`cad2d_ir.model3d.SIDE_CHANNEL_VERSION == 1`) holds:
+
+- `curves`: `{"id", "layer", "source_id", "kind", "closed", "planar",
+  "points": [[x, y, z], ...]}` in world coordinates, sampled with
+  `ImportOptions.curve_segments` per full turn. Lines, arcs, circles,
+  ellipses, lightweight/2D/3D polylines (bulges expanded), splines (evaluated,
+  rational supported), leaders and multilines. OCS entities are mapped to
+  world space with the DXF arbitrary-axis algorithm.
+- `faces`: `{"id", "layer", "source_id", "kind", "triangles": [[[x, y, z] × 3],
+  ...]}` from 3DFACE, SOLID/TRACE, polyface meshes, polygon meshes and the
+  DXF MESH entity. Records the IR has no entity for carry `"id": null`.
+- `inserts`: `{"id", "layer", "source_id", "block", "matrix"}` with a 4×4
+  row-major world placement (`OCS · T(insert) · Rz(rotation) · S(scale) ·
+  T(-base_point)`); MINSERT arrays are expanded into one record per cell
+  (`"cell": [column, row]`).
+- `blocks`: the same three lists for every block definition, in block space,
+  plus `base_point`, under the IR block name.
+- `unsupported`: counts per source kind of 3D geometry no importer can read
+  (3DSOLID, REGION, BODY, surfaces, DWG MESH).
+- `stats`: `curves_total`, `curves_3d` (curves that do not lie in a plane
+  parallel to XY), `elevations` (distinct z levels of the ones that do),
+  `faces` (triangles), `inserts`, `unsupported`. `planar` on a curve means
+  "constant z". `cad2d_ir.model3d.has_3d_content` tells whether any of this
+  exceeds what the 2D drawing shows (non-planar curves, faces, unreadable
+  solids, or more than one elevation).
+
+Paper-space entities are not collected. Text, dimensions, hatches, images and
+points are not collected either. Known limits: ezdwg does not expose the
+extrusion of DWG circles, arcs and lightweight polylines, so those stay in the
+XY plane at their elevation; DWG `MESH` entities are not decoded by ezdwg and
+are not counted.
+
+The side channel is a transfer format for the importer's caller (a 3D viewer
+builds a mesh from it), not part of the IR schema, and its compatibility
+promise is weaker: fields may be added in minor releases, and the version
+number changes when the shape changes.
+
 ## Validation gates
 
 The implementation was exercised against the current local upstream corpora with strict parsing and IR schema validation:

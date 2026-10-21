@@ -99,6 +99,14 @@ forwards `limits` / `drawing_limits` to `inventor_kit.read_drawing_file`. A file
 whose segment major is not supported by `inventor-kit` raises `ImporterError`
 with a message starting `unsupported IDW profile`.
 
+### 3D side channel
+
+`convert_file_to_ir(path, keep_3d=True)`, `convert_dwg_file_to_ir(path, keep_3d=True)`,
+`convert_dxf_file_to_ir(path, keep_3d=True)` and `convert_dxf_text_to_ir(text, keep_3d=True)`
+return the pre-projection 3D geometry of DWG/DXF sources in `.model3d`
+(`ImportResult.model3d` / `DxfToIrResult.model3d`). See "3D side channel" in
+`IMPORTERS.md` for the dictionary layout.
+
 ## High-level DXF export API
 
 ### `convert_ir_to_dxf_text(document, *, validate=True, target_version="AC1024", curve_segments=96, generic_dimensions="explode")`
