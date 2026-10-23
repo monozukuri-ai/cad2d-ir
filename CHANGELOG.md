@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.15.1
+
+- JWW import: an entity whose own pen width is 0 (most Jw_cad entities) gets its
+  pen color's printed width from the file's pen table as `lineweight_mm`, in
+  model space and in block definitions. Jw_cad prints such entities at that
+  width, so every consumer of the IR (renderers, DXF/DWG/SXF writers) now sees
+  the widths without knowing the Jw_cad rule. `metadata.jww.pen_width` stays 0
+  so a JWW writer can leave the width to the pen table again; an explicit pen
+  width still wins. Pens without a width in millimetres (0, or dots without a
+  recorded dpi) add nothing. JWS symbols carry no pen table and are unchanged.
+  `JWW_PEN_TABLE_PRESERVED` reports the count in
+  `details.entities_with_pen_color_width`.
+
 ## 0.15.0
 
 - `ImportOptions(keep_3d=True)` (DWG and DXF): the importers hand back the

@@ -346,7 +346,8 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "info",
         "preserved_metadata",
         "JWW import",
-        "The printer pen table (line width per pen color) was kept in header.metadata.jww.pens.",
+        "The printer pen table (line width per pen color) was kept in header.metadata.jww.pens; "
+        "entities with pen width 0 take their pen color's width as lineweight_mm.",
     ),
     "JWW_DECODE_REPLACED": DiagnosticCode(
         "warning",

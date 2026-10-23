@@ -910,9 +910,13 @@ def test_jww_pen_table_is_kept_as_metadata_with_widths_in_mm() -> None:
         "color": "#FF0000",
         "point_radius_mm": 0.18,
     }
-    # the table does not become a per-entity width: only an explicit pen width does
+    # pen width 0 takes the pen color's width (Jw_cad prints it so); the source pen
+    # width stays 0 in metadata so a writer can leave it to the table again. An
+    # explicit pen width still wins.
     line = next(e for e in result.document["entities"] if e["kind"] == "LINE")
-    assert "lineweight_mm" not in line
+    pen_color = line["metadata"]["jww"]["pen_color"]
+    assert line["metadata"]["jww"]["pen_width"] == 0
+    assert line["lineweight_mm"] == pens["printer"][str(pen_color)]["width_mm"]
     circle = next(e for e in result.document["entities"] if e["kind"] == "CIRCLE")
     assert circle["lineweight_mm"] == 0.2
     diagnostics = [d for d in result.diagnostics if d.code == "JWW_PEN_TABLE_PRESERVED"]
@@ -922,6 +926,19 @@ def test_jww_pen_table_is_kept_as_metadata_with_widths_in_mm() -> None:
         "unit": "hundredth_mm",
         "printer_dpi": None,
         "widths_in_mm": 10 + 257,
+        "entities_with_pen_color_width": sum(
+            1
+            for e in [
+                *result.document["entities"],
+                *(
+                    child
+                    for block in result.document["tables"].get("blocks", {}).values()
+                    for child in block["entities"]
+                ),
+            ]
+            if e.get("metadata", {}).get("jww", {}).get("pen_width") == 0
+            and "lineweight_mm" in e
+        ),
     }
     validate_ir(result.document)
 
@@ -963,6 +980,7 @@ def test_jww_pen_widths_in_dots_use_the_recorded_dpi() -> None:
         "unit": "dot",
         "printer_dpi": None,
         "widths_in_mm": 0,
+        "entities_with_pen_color_width": 0,
     }
 
 

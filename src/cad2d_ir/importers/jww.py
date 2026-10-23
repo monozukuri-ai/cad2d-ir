@@ -296,6 +296,23 @@ def _pen_table(header: Mapping[str, Any]) -> dict[str, Any] | None:
     return table
 
 
+def _pen_widths_mm(table: Mapping[str, Any] | None) -> dict[int, float]:
+    """Printed width in millimetres per pen color number of a ``_pen_table``
+    (1..9 and the extended 100..356); pens without a width in mm are left out."""
+    widths: dict[int, float] = {}
+    if not table:
+        return widths
+    for section in ("printer", "extended"):
+        pens = table.get(section)
+        if not isinstance(pens, Mapping):
+            continue
+        for key, pen in pens.items():
+            mm = pen.get("width_mm") if isinstance(pen, Mapping) else None
+            if isinstance(mm, (int, float)) and not isinstance(mm, bool) and mm > 0:
+                widths[int(key)] = float(mm)
+    return widths
+
+
 def _used_linetype_table(
     table: Mapping[str, dict[str, Any]], used: set[str]
 ) -> dict[str, dict[str, Any]]:
@@ -330,6 +347,11 @@ class _ConversionContext:
     # JWS: the scale denominator of each layer group, kept on the layers created on
     # demand (a symbol has no layer table)
     group_scales: list[float] | None = None
+    # Printed width in mm per pen color number, from the file's pen table. Jw_cad
+    # prints an entity whose own pen width is 0 (the usual case) at its pen color's
+    # width, so such entities get that width as lineweight_mm.
+    pen_widths: dict[int, float] = field(default_factory=dict)
+    pen_width_entities: int = 0
 
     @property
     def label(self) -> str:
@@ -481,6 +503,7 @@ def _jw_document_to_ir(
     block_defs = _mapping_sequence(jw_document.get("block_defs", []), "block_defs")
     block_names = _build_block_names(block_defs)
     linetype_names, linetype_table, linetypes_from_file = _document_line_types(header)
+    pen_table = None if is_symbol else _pen_table(header)
     context = _ConversionContext(
         options=import_options,
         layers=layers,
@@ -489,6 +512,7 @@ def _jw_document_to_ir(
         linetype_names=linetype_names,
         source_format=source_format,
         group_scales=_symbol_group_scales(header) if is_symbol else None,
+        pen_widths=_pen_widths_mm(pen_table),
     )
 
     context.images = _embedded_images(jw_document)
@@ -545,7 +569,6 @@ def _jw_document_to_ir(
             # "default": they are the Jw_cad defaults.
             "line_type_settings": "file" if linetypes_from_file else "default",
         }
-        pen_table = _pen_table(header)
         if pen_table is not None:
             format_metadata["pens"] = pen_table
     if metadata_settings:
@@ -599,14 +622,16 @@ def _jw_document_to_ir(
                 severity="info",
                 message=(
                     "Preserved the printer pen table (line width per pen color) as "
-                    "header.metadata.jww.pens; entities with pen width 0 print at "
-                    "their pen color's width."
+                    "header.metadata.jww.pens; "
+                    f"{context.pen_width_entities} entities with pen width 0 took "
+                    "their pen color's width as lineweight_mm."
                 ),
                 action="preserved_metadata",
                 details={
                     "unit": pen_table["unit"],
                     "printer_dpi": pen_table["printer_dpi"],
                     "widths_in_mm": resolved,
+                    "entities_with_pen_color_width": context.pen_width_entities,
                 },
             )
         )
@@ -983,6 +1008,14 @@ def _entity_common(
         }
     if pen_width > 0:
         common["lineweight_mm"] = min(pen_width, 211) / 100.0
+    else:
+        # The usual case: Jw_cad prints the entity at its pen color's width.
+        # metadata.jww.pen_width stays 0, so a JWW writer can leave the width to the
+        # pen table again.
+        by_pen = context.pen_widths.get(int(base.get("pen_color", 0)))
+        if by_pen is not None:
+            common["lineweight_mm"] = by_pen
+            context.pen_width_entities += 1
     custom_color = source_entity.get("color")
     if isinstance(custom_color, int):
         common["color"] = f"#{custom_color & 0xFFFFFF:06X}"
