@@ -981,6 +981,38 @@ def _text_entity(handle: int, **dxf: Any) -> _Entity:
     )
 
 
+def test_dwg_texts_keep_their_text_style_and_its_fonts() -> None:
+    # A Japanese DWG draws text with a TrueType file or an SHX big font; with
+    # every text on STANDARD (txt) AutoCAD showed it as "?" after conversion.
+    document = _Document(
+        [
+            _text_entity(1, style_handle=0x30),
+            _text_entity(2, style_handle=0x11),
+            _text_entity(3, style_handle=0x99),
+        ]
+    )
+    ir = dwg_document_to_ir(
+        document,
+        layer_names_by_handle={16: "0"},
+        text_styles_by_handle={
+            0x11: ("Standard", {"font": "txt", "big_font": "extfont2.shx"}),
+            0x30: ("JP", {"font": "msgothic.ttc"}),
+        },
+    ).document
+    validate_ir(ir, strict_jsonschema=True)
+
+    # A style the table does not have falls back to the file's own Standard.
+    assert [entity["style"] for entity in ir["entities"]] == [
+        "JP",
+        "Standard",
+        "Standard",
+    ]
+    assert ir["tables"]["text_styles"] == {
+        "Standard": {"font": "txt", "big_font": "extfont2.shx"},
+        "JP": {"font": "msgothic.ttc"},
+    }
+
+
 def test_dwg_justified_text_is_anchored_at_its_alignment_point() -> None:
     document = _Document(
         [

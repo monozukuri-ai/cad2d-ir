@@ -54,6 +54,11 @@ Package `0.10.5` adds:
 
 - `layouts` (see "Layouts")
 
+Package `0.15.2` adds:
+
+- `tables.text_styles.*.big_font` and `tables.text_styles.*.family` (see
+  "Text style fonts")
+
 Documents without them are unchanged. Documents that use them still pass the
 default validator of earlier packages, but not their `strict_jsonschema=True`
 mode, because the document, `header`, layer and linetype definitions and
@@ -176,6 +181,22 @@ templates for new references and are left out, except for constant definitions,
 which every reference shows: those are a `TEXT` of the block with their value.
 A definition outside of a block is displayed by its tag and becomes a `TEXT`
 with the tag as its text.
+
+## Text style fonts
+
+`tables.text_styles.*.font` is what the source names the font by: a Windows face
+name for Jw_cad, SXF, EXB, IDW, MI and PDF (`ＭＳ ゴシック`, `Arial`), a font file
+or a bare SHX name for DXF and DWG (`msgothic.ttc`, `MS PGothic.ttf`, `txt`).
+Both importers add `big_font`, the SHX big font that draws Japanese and Chinese
+text in an SHX style (`extfont2.shx`, `bigfont.shx`; DXF group 4). The DXF
+importer also adds `family` from the `ACAD` xdata of the style, the TrueType
+family AutoCAD 2000 and later keep beside the file (`MS PGothic`); a style with
+an empty group 3 and only the family keeps just `family`.
+
+`cad2d_ir.fonts` maps between the two. The DXF writer passes `font` and
+`family` through `style_font()`, so a face name becomes a font file AutoCAD can
+find and the family goes to the xdata; SHX names and `big_font` pass through.
+Writers for formats that name fonts by face use `face_name()`.
 
 ## Linetype patterns
 

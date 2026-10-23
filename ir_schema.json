@@ -294,6 +294,8 @@
       "additionalProperties": false,
       "properties": {
         "font": { "type": "string" },
+        "big_font": { "type": "string" },
+        "family": { "type": "string" },
         "height": { "type": "number", "minimum": 0 },
         "width_factor": { "type": "number", "exclusiveMinimum": 0 },
         "oblique_deg": { "type": "number" }

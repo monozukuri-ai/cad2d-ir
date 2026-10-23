@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.15.2
+
+- DXF export: a text style names the font *file* AutoCAD looks for. Jw_cad,
+  SXF and most other sources name a Windows face (`ＭＳ ゴシック`), which used
+  to go into group 3 unchanged; AutoCAD read it as a missing SHX font,
+  substituted one and showed Japanese text as `?`. The new `cad2d_ir.fonts`
+  maps faces, families, PostScript names and font files of the fonts Windows
+  and Office ship (`msgothic.ttc`, `HGRGM.TTC`, `arial.ttf`, ...). R2010 output
+  also keeps the TrueType family in the style's `ACAD` xdata (with an `APPID`
+  table), so AutoCAD picks `MS PGothic` rather than the first face of
+  `msgothic.ttc`. An unknown face keeps its name as the family and gets a file
+  that draws its script (`msgothic.ttc` for Japanese). SHX fonts pass through;
+  `STANDARD` becomes `txt`.
+- DXF import: text styles keep the SHX big font (group 4) as `big_font` and the
+  TrueType family of the `ACAD` xdata as `family`; the DXF writer writes both
+  back. A big font such as `extfont2.shx` is what draws Japanese text in an SHX
+  style, and it used to be dropped on the way through the IR.
+- DWG import: texts keep their text style. The style table is read with
+  `ezdwg.raw.decode_write_tables` (font file and big font per style), and TEXT,
+  ATTRIB and MTEXT refer to their style by name; before, every text was put on
+  `STANDARD` with no font, so a DWG drawn in `msgothic.ttc` or with
+  `extfont2.shx` lost its fonts on the way to DWG or DXF. A style missing from
+  the table falls back to the file's `Standard`. `dwg_document_to_ir` takes
+  the table as `text_styles_by_handle`.
+- `TextStyleDef` gains the optional `big_font` and `family` (IR version
+  unchanged). `cad2d_ir.fonts.face_name()` gives writers that name fonts by
+  face (JWW, SXF) the face for a font file or family.
+
 ## 0.15.1
 
 - JWW import: an entity whose own pen width is 0 (most Jw_cad entities) gets its

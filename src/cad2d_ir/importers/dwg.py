@@ -70,6 +70,8 @@ class _ConversionContext:
     layer_names: dict[int, str]
     layers: dict[str, dict[str, Any]]
     linetypes: dict[str, dict[str, Any]] = field(default_factory=dict)
+    text_style_names: dict[int, str] = field(default_factory=dict)
+    default_text_style: str = "STANDARD"
     diagnostics: list[ImportDiagnostic] = field(default_factory=list)
     converted_counts: Counter[str] = field(default_factory=Counter)
     skipped_counts: Counter[str] = field(default_factory=Counter)
@@ -93,6 +95,13 @@ class _ConversionContext:
         entity_id = f"DWG_E{self.next_entity_number:08d}"
         self.next_entity_number += 1
         return entity_id
+
+    def text_style(self, handle: Any) -> str:
+        """The name of the text style a ``style_handle`` refers to."""
+        try:
+            return self.text_style_names[int(handle)]
+        except (KeyError, TypeError, ValueError):
+            return self.default_text_style
 
 
 _MODEL3D_SKIP = object()
@@ -137,6 +146,7 @@ def convert_dwg_file_to_ir(
             linetypes_by_handle=linetypes,
             layer_linetypes_by_handle=layer_linetypes,
             layer_states_by_handle=_read_dwg_layer_states(raw, decode_path),
+            text_styles_by_handle=_read_dwg_text_styles(raw, decode_path),
             options=options,
         )
     finally:
@@ -233,6 +243,41 @@ def _read_dwg_linetypes(
     return linetypes, layer_linetypes
 
 
+def _read_dwg_text_styles(
+    raw: Any, decode_path: str
+) -> dict[int, tuple[str, dict[str, Any]]]:
+    """Text styles by handle: ``(name, {"font": ..., "big_font": ...})``.
+
+    The font is the file the style names (``msgothic.ttc``, ``txt``) and the big
+    font the SHX that draws Japanese or Chinese text in an SHX style
+    (``extfont2.shx``). Empty with an ``ezdwg`` that has no table decoder.
+    """
+    decode_write_tables = getattr(raw, "decode_write_tables", None)
+    if not callable(decode_write_tables):
+        return {}
+    try:
+        rows = decode_write_tables(decode_path)
+    except Exception:
+        return {}
+    styles: dict[int, tuple[str, dict[str, Any]]] = {}
+    for row in rows:
+        # Shape files (linetype symbols) are STYLE records without a name.
+        if row.get("kind") != "STYLE" or row.get("shape"):
+            continue
+        name = str(row.get("name") or "").strip()
+        if not name:
+            continue
+        definition: dict[str, Any] = {}
+        font = str(row.get("font") or "").strip()
+        if font:
+            definition["font"] = font
+        big_font = str(row.get("bigfont") or "").strip()
+        if big_font:
+            definition["big_font"] = big_font
+        styles[int(row["handle"])] = (name, definition)
+    return styles
+
+
 def _read_dwg_layer_states(raw: Any, decode_path: str) -> dict[int, dict[str, Any]]:
     """State of every layer by handle (``ezdwg`` >= 0.12.11); empty with an older one.
 
@@ -298,6 +343,7 @@ def dwg_document_to_ir(
     linetypes_by_handle: Mapping[int, tuple[str, str, Sequence[float]]] | None = None,
     layer_linetypes_by_handle: Mapping[int, int] | None = None,
     layer_states_by_handle: Mapping[int, Mapping[str, Any]] | None = None,
+    text_styles_by_handle: Mapping[int, tuple[str, Mapping[str, Any]]] | None = None,
     options: ImportOptions | None = None,
 ) -> ImportResult:
     """Convert an ``ezdwg.Document``-compatible object directly to IR.
@@ -308,7 +354,9 @@ def dwg_document_to_ir(
     dashes)`` and ``layer_linetypes_by_handle`` a layer handle to its linetype handle.
     ``layer_states_by_handle`` maps a layer handle to its state: ``frozen``,
     ``off``, ``locked``, ``plot`` (booleans) and ``lineweight`` (hundredths of a
-    millimetre, negative for the default weight).
+    millimetre, negative for the default weight). ``text_styles_by_handle`` maps a
+    text style handle to its name and its ``font`` and ``big_font``; texts whose
+    style is not in it use ``STANDARD``.
     """
     import_options = options or ImportOptions()
     layer_names, layers = _build_layers(
@@ -322,11 +370,22 @@ def dwg_document_to_ir(
         linetype_name = linetype_names.get(int(linetype_handle))
         if layer_name is not None and linetype_name not in (None, "BYLAYER", "BYBLOCK"):
             layers[layer_name]["linetype"] = linetype_name
+    text_styles: dict[str, dict[str, Any]] = {}
+    text_style_names: dict[int, str] = {}
+    for style_handle, (style_name, definition) in (text_styles_by_handle or {}).items():
+        text_style_names[int(style_handle)] = style_name
+        text_styles.setdefault(style_name, dict(definition))
+    default_text_style = next(
+        (name for name in text_styles if name.upper() == "STANDARD"), "STANDARD"
+    )
+    text_styles.setdefault(default_text_style, {"font": "STANDARD"})
     context = _ConversionContext(
         options=import_options,
         layer_names=layer_names,
         layers=layers,
         linetypes=linetypes,
+        text_style_names=text_style_names,
+        default_text_style=default_text_style,
         model3d=(
             Model3DCollector(curve_segments=import_options.curve_segments)
             if import_options.keep_3d
@@ -437,7 +496,7 @@ def dwg_document_to_ir(
     tables: dict[str, Any] = {
         "layers": context.layers,
         "linetypes": context.linetypes,
-        "text_styles": {"STANDARD": {"font": "STANDARD"}},
+        "text_styles": text_styles,
     }
     if blocks:
         tables["blocks"] = blocks
@@ -1241,7 +1300,7 @@ def _text_fields(
         "height": _positive(dxf.get("height", 0.0), "text height"),
         "rotation": float(dxf.get("rotation", 0.0)),
         "text": str(dxf.get("text", "")),
-        "style": "STANDARD",
+        "style": context.text_style(dxf.get("style_handle")),
         "halign": halign,
         "valign": valign,
     }
@@ -1339,7 +1398,7 @@ def _convert_mtext(
         "height": _positive(dxf.get("char_height", 0.0), "MTEXT height"),
         "rotation": float(dxf.get("rotation", 0.0)),
         "text": str(dxf.get("text", "")),
-        "style": "STANDARD",
+        "style": context.text_style(dxf.get("style_handle")),
         "attach": _mtext_attachment(int(dxf.get("attachment_point", 1))),
     }
     width = float(dxf.get("rect_width", 0.0))
@@ -1386,7 +1445,7 @@ def _convert_tolerance(
         context.exploded_tolerances += 1
     for entity in entities:
         if entity["kind"] == "TEXT":
-            entity["style"] = "STANDARD"
+            entity["style"] = context.default_text_style
     return entities
 
 

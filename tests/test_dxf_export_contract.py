@@ -338,7 +338,10 @@ def test_tables_roundtrip_layer_linetype_and_text_style() -> None:
         "plot": True,
     }
     assert tables["linetypes"]["DASHED"]["pattern_mm"] == pytest.approx([1.0, -0.5])
-    assert tables["text_styles"]["NOTES"]["font"] == "Arial"
+    # The face name is written as the file AutoCAD looks for, with the family
+    # in the style's xdata.
+    assert tables["text_styles"]["NOTES"]["font"] == "arial.ttf"
+    assert tables["text_styles"]["NOTES"]["family"] == "Arial"
     assert tables["text_styles"]["NOTES"]["width_factor"] == pytest.approx(0.8)
 
 

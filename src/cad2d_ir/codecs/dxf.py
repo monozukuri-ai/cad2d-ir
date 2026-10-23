@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any, Iterable, Literal
 from cad2d_ir import model3d as _model3d
 from cad2d_ir.constants import CURRENT_IR_VERSION
 from cad2d_ir.diagnostics import ExportAction, ExportDiagnostic
+from cad2d_ir.fonts import style_font
 from cad2d_ir.layouts import (
     is_active_paper_space_block_name,
     is_paper_space_block_name,
@@ -75,6 +76,7 @@ _TABLE_RECORD_SUBCLASSES = {
     "LTYPE": "AcDbLinetypeTableRecord",
     "LAYER": "AcDbLayerTableRecord",
     "STYLE": "AcDbTextStyleTableRecord",
+    "APPID": "AcDbRegAppTableRecord",
 }
 _DIMENSION_SUBCLASSES = {
     0: "AcDbRotatedDimension",
@@ -1677,6 +1679,12 @@ def _style_from_table_pairs(pairs: list[DXFPair]) -> dict[str, Any]:
     font = _first_string(pairs, 3)
     if font:
         result["font"] = font
+    big_font = _first_string(pairs, 4)
+    if big_font:
+        result["big_font"] = big_font
+    family = _acad_xdata_string(pairs)
+    if family:
+        result["family"] = family
     height = _first_float(pairs, 40, default=None)
     if height is not None:
         result["height"] = height
@@ -1687,6 +1695,17 @@ def _style_from_table_pairs(pairs: list[DXFPair]) -> dict[str, Any]:
     if oblique is not None:
         result["oblique_deg"] = oblique
     return result
+
+
+def _acad_xdata_string(pairs: list[DXFPair]) -> str | None:
+    """The first string of a record's ``ACAD`` xdata (a text style's TrueType family)."""
+    in_acad = False
+    for code, value in pairs:
+        if code == 1001:
+            in_acad = value.strip().upper() == "ACAD"
+        elif in_acad and code == 1000:
+            return value.strip() or None
+    return None
 
 
 def _entities_to_ir(
@@ -5760,9 +5779,11 @@ def _tables_to_pairs(
     pairs.append((0, "ENDTAB"))
 
     styles = tables["text_styles"]
+    uses_xdata = False
     pairs.extend([(0, "TABLE"), (2, "STYLE"), (70, str(len(styles)))])
     for name in sorted(styles, key=str.casefold):
         definition = styles[name]
+        font = style_font(definition.get("font"), definition.get("family"))
         pairs.extend(
             [
                 (0, "STYLE"),
@@ -5773,11 +5794,23 @@ def _tables_to_pairs(
                 (50, _num(definition.get("oblique_deg", 0.0))),
                 (71, "0"),
                 (42, "0"),
-                (3, str(definition.get("font", "txt"))),
-                (4, ""),
+                (3, font.file),
+                (4, str(definition.get("big_font", ""))),
             ]
         )
-    pairs.extend([(0, "ENDTAB"), (0, "ENDSEC")])
+        if font.family and target_version == "AC1024":
+            # AutoCAD finds the face inside a .ttc and fonts it has no file
+            # for by this family.
+            pairs.extend([(1001, "ACAD"), (1000, font.family), (1071, str(font.flags))])
+            uses_xdata = True
+    pairs.append((0, "ENDTAB"))
+    if uses_xdata:
+        # Xdata names a registered application.
+        pairs.extend(
+            [(0, "TABLE"), (2, "APPID"), (70, "1")]
+            + [(0, "APPID"), (2, "ACAD"), (70, "0"), (0, "ENDTAB")]
+        )
+    pairs.append((0, "ENDSEC"))
     return pairs
 
 
