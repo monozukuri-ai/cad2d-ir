@@ -228,19 +228,24 @@ saved views (see [the ICD adapter](IMPORTERS.md#icad-sx-adapter)).
 |---|---|---|---|
 | `ICD_2D_UNITS_ASSUMED_MM` | info | assumed | iCAD SX stores view-local coordinates in millimetres; the sheet was composed in millimetres. |
 | `ICD_2D_VIEW_PLACED` | info | normalized | 2D views were placed on the sheet by their saved placement records (origin and scale); `details.views` lists them. |
-| `ICD_2D_PLACEMENT_MISSING` | warning | approximated | A 2D view has no placement record in the 2D global view; it was placed at the sheet origin with the scale of its header. |
+| `ICD_2D_PLACEMENT_MISSING` | warning | approximated | A 2D view has no placement record in the 2D global view; it keeps its own coordinates with the scale of its header (`details.layout` = `kept`), or, when the saved extents of several such views overlap, they are laid out side by side (`tiled`). |
 | `ICD_2D_REGISTERED_PART` | info | normalized | The file is a registered part (a 2D library symbol); its view was read as the drawing at scale 1. |
 | `ICD_2D_SCALE_APPLIED` | info | normalized | The sheet was divided by the dominant view scale so the drawing is at real size; the denominator is `header.metadata.icd.paper_scale`. |
 | `ICD_2D_MIXED_SCALES` | warning | approximated | Views drawn at a scale other than the dominant one keep their place on the sheet but are not at real size; `details.scales` lists the other scales. |
 | `ICD_2D_SHEET_DETECTED` | info | detected | The paper was taken from the extent of the 2D global view (an ISO A size, or the smallest one fitted around the frame) or from the geometry bounds; it is `header.metadata.icd.sheet`. |
 | `ICD_2D_NO_VIEWS` | warning | skipped | The file has no 2D view (a 3D model only); the document is empty. |
-| `ICD_2D_TYPE_UNSUPPORTED` | warning | skipped | Saved records of types icadkit does not decode (symbols, projection controls, legacy text layouts) were skipped; `details.types` counts them per raw type. |
+| `ICD_2D_TYPE_UNSUPPORTED` | warning | skipped | Saved records of types icadkit does not decode (legacy dimension and text layouts, line information, motion records) were skipped; `details.types` counts them per raw type. |
 | `ICD_2D_ENTITY_INVALID` | warning | skipped | A saved entity with invalid or non-finite geometry was skipped. |
 | `ICD_2D_TEXT_UNPLACED` | warning | skipped | A text run has no saved line origin (rotated or unobserved layout) and was skipped. |
 | `ICD_2D_TEXT_LAYOUT_PARTIAL` | info | approximated | A text with a partially qualified layout uses its saved origin and default metrics. |
 | `ICD_2D_TEXT_VERTICAL_SPLIT` | info | approximated | Vertical writing was split into one `TEXT` per character stacked downwards. |
+| `ICD_2D_TEXT_PRIVATE_USE` | warning | approximated | Texts contain private-use characters (iCAD SX's own symbol glyphs, CP932 0xF0xx); they are kept as saved and most fonts show nothing for them. `details.characters` counts them. |
 | `ICD_2D_DIMENSION_FROM_SAVED` | info | flattened | Dimensions were rebuilt from the items iCAD SX saved (arrowheads as solid fills, dimension and extension lines, the value text) in a block referenced by `definition.block`; the construction semantics are not decoded. |
-| `ICD_2D_DIMENSION_PARTIAL` | warning | approximated | Angle, leader and unobserved dimension layouts keep their saved items only; the kind is `GENERIC`. |
+| `ICD_2D_DIMENSION_PARTIAL` | warning | approximated | Dimensions with an unobserved item layout keep their saved items only; the kind is `GENERIC`. |
+| `ICD_2D_CURVE_AS_POLYLINE` | info | approximated | Free curves were drawn as `LWPOLYLINE`s interpolated through the knots iCAD SX saved; the segment coefficients of the smooth curve are not decoded. |
+| `ICD_2D_LEADER_AS_LINES` | info | flattened | Leader notes were drawn as their text lines, a solid arrowhead and the leader lines; hidden alternative items were not drawn. |
+| `ICD_2D_SYMBOL_ITEMS` | info | flattened | Symbols were drawn from their saved items (point markers, lines, arcs) and text runs; the member lists of groups carry no geometry. |
+| `ICD_2D_ATTRIBUTE_RECORDS` | info | skipped | Attribute records (line information without framed items, motion verification) carry no drawing geometry and were not drawn; `details.count` counts them. |
 | `ICD_2D_HATCH_AS_LINES` | info | flattened | Hatches were converted to the parallel lines iCAD SX saved (`metadata.icd.hatch`); the boundary and pattern are not kept as a `HATCH`. |
 | `ICD_2D_LINE_WIDTH_ASSUMED` | info | assumed | Line width codes were mapped to provisional millimetre widths (`LINE_WIDTH_MM`: 2 = 0.25 mm, 3 = 0.35 mm, …). |
 | `ICD_2D_LINE_STYLE_UNKNOWN` | warning | approximated | Entities with an unobserved line style code were drawn as continuous lines; `details.codes` counts them. |

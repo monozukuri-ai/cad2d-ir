@@ -37,6 +37,7 @@ The 3D parts of the same file are not read here (see ``cad3d-ir-icad``).
 from __future__ import annotations
 
 import hashlib
+import itertools
 import math
 from collections import Counter
 from dataclasses import dataclass, field
@@ -262,7 +263,7 @@ def icad_document_to_ir(
             f"Failed to read the 2D entities of {source_name}: {exc}"
         ) from exc
 
-    frames, by_view, missing = _frames(views, drawing)
+    frames, by_view, missing, tiled = _frames(views, drawing)
     divisor, dominant, other_scales = _document_scale(frames, by_view)
     context = _Context(options=import_options, divisor=divisor)
     context.note(
@@ -291,10 +292,14 @@ def icad_document_to_ir(
         context.note(
             "ICD_2D_PLACEMENT_MISSING",
             "warning",
-            "A 2D view has no placement record; it was placed at the sheet origin "
+            "A 2D view has no placement record; the unplaced views overlapped in "
+            "their own coordinates and were laid out side by side by their saved "
+            "extents."
+            if tiled
+            else "A 2D view has no placement record; it keeps its own coordinates "
             "with the scale of its header.",
             action="approximated",
-            details={"views": [frame.name]},
+            details={"views": [frame.name], "layout": "tiled" if tiled else "kept"},
         )
         existing = context.notes["ICD_2D_PLACEMENT_MISSING"].details
         assert existing is not None
@@ -503,6 +508,11 @@ def icad_document_to_ir(
         "dimensions": context.counts["dimension"],
         "hatches": context.counts["hatch"],
         "texts": context.counts["text"],
+        "ellipses": context.counts["ellipse"],
+        "curves": context.counts["curve"],
+        "notes": context.counts["note"],
+        "symbols": context.counts["symbol"],
+        "attribute_records": context.counts["attribute"],
         "paper_scale": 1.0 / divisor,
     }
     source["metadata"] = {
@@ -520,15 +530,24 @@ def icad_document_to_ir(
 # Sheet composition
 
 
+def _boxes_overlap(
+    a: tuple[float, float, float, float], b: tuple[float, float, float, float]
+) -> bool:
+    # touching boxes (a view of horizontal lines has no height) count as overlap
+    return not (a[2] < b[0] or b[2] < a[0] or a[3] < b[1] or b[3] < a[1])
+
+
 def _frames(
     views: Any, drawing: Any
-) -> tuple[dict[str, _ViewFrame], dict[str, int], list[_ViewFrame]]:
-    """One frame per 2D view keyed by view id, entity counts and unplaced views."""
+) -> tuple[dict[str, _ViewFrame], dict[str, int], list[_ViewFrame], bool]:
+    """One frame per 2D view keyed by view id, entity counts, the unplaced views
+    and whether those were tiled."""
     counts: Counter[str] = Counter()
     for entity in drawing.entities:
         counts[entity.view_id] += 1
     frames: dict[str, _ViewFrame] = {}
     missing: list[_ViewFrame] = []
+    extents: dict[str, Any] = {}
     by_name: dict[str, int] = {}
     for view in views.views:
         kind = str(view.kind)
@@ -558,11 +577,52 @@ def _frames(
                 frame = _ViewFrame(name, kind, (0.0, 0.0), float(header_scale), False)
                 if counts[view.view_id]:
                     missing.append(frame)
+                    extents[view.view_id] = getattr(view, "extent", None)
         else:
             frame = _ViewFrame(name, kind, (0.0, 0.0), 1.0, kind == "2d_global")
         frames[view.view_id] = frame
         by_name[name] = counts[view.view_id]
-    return frames, by_name, missing
+    # Several views without a placement record keep their own coordinates
+    # (old drawings save the sheet layout there); only when their saved
+    # extents overlap are they laid out left to right by those extents
+    boxes: dict[str, tuple[float, float, float, float]] = {}
+    if len(missing) >= 2:
+        for view_id, frame in frames.items():
+            if frame not in missing:
+                continue
+            extent = extents.get(view_id)
+            box = (
+                getattr(extent, "min_x", None),
+                getattr(extent, "min_y", None),
+                getattr(extent, "max_x", None),
+                getattr(extent, "max_y", None),
+            )
+            if extent is None or any(v is None for v in box):
+                continue
+            values = tuple(float(v) * frame.scale for v in box)
+            if all(math.isfinite(v) for v in values):
+                boxes[view_id] = (values[0], values[1], values[2], values[3])
+    ids = list(boxes)
+    tiled = any(
+        _boxes_overlap(boxes[a], boxes[b])
+        for i, a in enumerate(ids)
+        for b in ids[i + 1 :]
+    )
+    if tiled:
+        cursor = 0.0
+        for view_id, frame in list(frames.items()):
+            box_scaled = boxes.get(view_id)
+            if frame not in missing or box_scaled is None:
+                continue
+            minx, miny, maxx, _maxy = box_scaled
+            width = max(maxx - minx, 0.0)
+            placed = _ViewFrame(
+                frame.name, frame.kind, (cursor - minx, -miny), frame.scale, False
+            )
+            frames[view_id] = placed
+            missing[missing.index(frame)] = placed
+            cursor += width + max(10.0, 0.1 * width)
+    return frames, by_name, missing, tiled
 
 
 def _document_scale(
@@ -733,9 +793,43 @@ def _convert_entity(entity: Any, frame: _ViewFrame, context: _Context) -> None:
         return
     if entity.text is not None:
         _convert_text(entity, entity.text, frame, context, None)
+        underline = getattr(entity.text, "underline", None)
+        if underline is not None:
+            # view labels ("A-A") are underlined: one LINE below the text
+            p1, p2 = (frame.point(p, context.divisor) for p in underline)
+            if math.dist(p1, p2) > _EPSILON:
+                context.entities.append(
+                    {
+                        **_common(entity, frame, context),
+                        "id": context.allocate_id(),
+                        "kind": "LINE",
+                        "p1": p1,
+                        "p2": p2,
+                    }
+                )
+                context.converted["LINE"] += 1
+        return
+    if getattr(entity, "curve", None) is not None:
+        _convert_curve(entity, frame, context)
+        return
+    if getattr(entity, "note", None) is not None:
+        _convert_note(entity, frame, context)
+        return
+    if getattr(entity, "symbol", None) is not None:
+        _convert_symbol(entity, frame, context)
         return
     primitive = entity.primitive
     if primitive is None:
+        if any(d.code == "drawing.attribute_record" for d in entity.diagnostics):
+            context.counts["attribute"] += 1
+            context.note(
+                "ICD_2D_ATTRIBUTE_RECORDS",
+                "info",
+                "Attribute records (line information, motion verification, 3D "
+                "projection frames) carry no drawing geometry and were not drawn.",
+                action="skipped",
+            )
+            return
         context.unsupported_types[str(entity.raw_type)] += 1
         return
     common = _common(entity, frame, context)
@@ -778,10 +872,250 @@ def _convert_entity(entity: Any, frame: _ViewFrame, context: _Context) -> None:
                 ),
             }
         )
+    elif kind == "vectors":
+        # two segments from a point (view-direction and section marks)
+        ends = [frame.point(p, context.divisor) for p in primitive.points]
+        base = {k: v for k, v in common.items() if k != "id"}
+        for end in ends[1:]:
+            if math.dist(ends[0], end) <= _EPSILON:
+                continue
+            context.entities.append(
+                {
+                    **base,
+                    "id": context.allocate_id(),
+                    "kind": "LINE",
+                    "p1": ends[0],
+                    "p2": end,
+                }
+            )
+            context.converted["LINE"] += 1
+        context.counts["vectors"] += 1
+        return
+    elif kind in ("ellipse", "elliptical_arc"):
+        context.entities.append(
+            {**common, **_ellipse_fields(primitive, frame, context)}
+        )
+        context.counts["ellipse"] += 1
     else:
         context.unsupported_types[str(entity.raw_type)] += 1
         return
     context.converted[context.entities[-1]["kind"]] += 1
+
+
+def _ellipse_fields(
+    primitive: Any, frame: _ViewFrame, context: _Context
+) -> dict[str, Any]:
+    """An ELLIPSE from the saved semi-axes, axis rotation and parametric angles
+    (the DXF convention). The major axis is the longer one; when the saved y
+    axis is longer, the axes are swapped and the parameters shift by a quarter
+    turn. Negative sweeps are written counter-clockwise from their end."""
+    a = _positive(frame.length(primitive.radius, context.divisor))
+    b = _positive(frame.length(primitive.minor_radius, context.divisor))
+    rotation = float(primitive.rotation or 0.0)
+    start = float(primitive.start_angle or 0.0)
+    sweep = float(primitive.sweep_angle or 0.0)
+    if not all(math.isfinite(v) for v in (rotation, start, sweep)):
+        raise ValueError("ellipse angles are not finite")
+    if b > a:
+        a, b = b, a
+        rotation += math.pi / 2
+        start -= math.pi / 2
+    if sweep < 0:
+        start, sweep = start + sweep, -sweep
+    if sweep >= _TAU - _EPSILON:
+        start, sweep = 0.0, _TAU
+    return {
+        "kind": "ELLIPSE",
+        "center": frame.point(primitive.center, context.divisor),
+        "major_axis": [a * math.cos(rotation), a * math.sin(rotation)],
+        "ratio": min(b / a, 1.0),
+        "start_param": start,
+        "end_param": start + sweep,
+    }
+
+
+_CURVE_SAMPLES = 6
+
+
+def _smooth_through(points: list[list[float]], samples: int) -> list[list[float]]:
+    """A C1 curve through ``points`` (centripetal Catmull-Rom, ``samples``
+    vertices per segment) as a polyline; the end segments use their chord
+    tangent."""
+    if len(points) < 3:
+        return points
+    out: list[list[float]] = [points[0]]
+    extended = [points[0]] + points + [points[-1]]
+    for i in range(1, len(extended) - 2):
+        p0, p1, p2, p3 = extended[i - 1], extended[i], extended[i + 1], extended[i + 2]
+        m1 = [(p2[0] - p0[0]) / 2.0, (p2[1] - p0[1]) / 2.0]
+        m2 = [(p3[0] - p1[0]) / 2.0, (p3[1] - p1[1]) / 2.0]
+        for k in range(1, samples + 1):
+            t = k / samples
+            h00 = 2 * t**3 - 3 * t**2 + 1
+            h10 = t**3 - 2 * t**2 + t
+            h01 = -2 * t**3 + 3 * t**2
+            h11 = t**3 - t**2
+            out.append(
+                [
+                    h00 * p1[0] + h10 * m1[0] + h01 * p2[0] + h11 * m2[0],
+                    h00 * p1[1] + h10 * m1[1] + h01 * p2[1] + h11 * m2[1],
+                ]
+            )
+    return out
+
+
+def _convert_curve(entity: Any, frame: _ViewFrame, context: _Context) -> None:
+    """A free curve as an LWPOLYLINE: a smooth interpolation through the saved
+    knots (iCAD's own segment coefficients are not decoded)."""
+    curve = entity.curve
+    knots = [frame.point(k, context.divisor) for k in curve.knots]
+    if len(knots) < 2:
+        context.counts["invalid"] += 1
+        return
+    common = _common(entity, frame, context)
+    vertices = _smooth_through(knots, _CURVE_SAMPLES)
+    context.entities.append(
+        {**common, "kind": "LWPOLYLINE", "vertices": vertices, "closed": False}
+    )
+    context.converted["LWPOLYLINE"] += 1
+    context.counts["curve"] += 1
+    context.note(
+        "ICD_2D_CURVE_AS_POLYLINE",
+        "info",
+        "Free curves were drawn as polylines interpolated through the knots iCAD SX "
+        "saved; the segment coefficients of the smooth curve are not decoded.",
+        action="approximated",
+    )
+
+
+def _convert_note(entity: Any, frame: _ViewFrame, context: _Context) -> None:
+    """A leader note as its text lines, a solid arrowhead and the leader lines."""
+    note = entity.note
+    common = _common(entity, frame, context)
+    for run in note.texts or ((note.text,) if note.text is not None else ()):
+        _convert_text(entity, run, frame, context, None, base=common)
+    base = {k: v for k, v in common.items() if k != "id"}
+    if note.arrow is not None:
+        context.entities.append(
+            {
+                **base,
+                "id": context.allocate_id(),
+                "kind": "HATCH",
+                "solid": True,
+                "loops": [
+                    {"vertices": [frame.point(p, context.divisor) for p in note.arrow]}
+                ],
+            }
+        )
+        context.converted["HATCH"] += 1
+    circle = getattr(note, "circle", None)
+    if circle is not None:
+        context.entities.append(
+            {
+                **base,
+                "id": context.allocate_id(),
+                "kind": "CIRCLE",
+                "center": frame.point(circle[0], context.divisor),
+                "radius": _positive(frame.length(circle[1], context.divisor)),
+            }
+        )
+        context.converted["CIRCLE"] += 1
+    path = [frame.point(p, context.divisor) for p in note.path]
+    for p1, p2 in itertools.pairwise(path):
+        if math.dist(p1, p2) <= _EPSILON:
+            continue
+        context.entities.append(
+            {**base, "id": context.allocate_id(), "kind": "LINE", "p1": p1, "p2": p2}
+        )
+        context.converted["LINE"] += 1
+    context.counts["note"] += 1
+    context.note(
+        "ICD_2D_LEADER_AS_LINES",
+        "info",
+        "Leader notes were drawn as their text, a solid arrowhead and the leader "
+        "lines (there is no LEADER entity); hidden alternative items were not drawn.",
+        action="flattened",
+    )
+
+
+def _convert_symbol(entity: Any, frame: _ViewFrame, context: _Context) -> None:
+    """A symbol record: its drawn point markers, lines, arcs and vectors, and its
+    text runs. Hidden items and the member lists of groups carry no geometry."""
+    symbol = entity.symbol
+    common = _common(entity, frame, context)
+    name = getattr(symbol, "name", None)
+    if name and "metadata" in common:
+        common["metadata"]["icd"]["symbol"] = name
+    base = {k: v for k, v in common.items() if k != "id"}
+    drawn = 0
+    for item in symbol.items:
+        if not item.raw_marker & 0x40:
+            continue
+        points = [frame.point(p, context.divisor) for p in item.points]
+        if item.kind == "point" and points:
+            context.entities.append(
+                {
+                    **base,
+                    "id": context.allocate_id(),
+                    "kind": "POINT",
+                    "position": points[0],
+                }
+            )
+        elif item.kind == "line" and len(points) >= 2:
+            context.entities.append(
+                {
+                    **base,
+                    "id": context.allocate_id(),
+                    "kind": "LINE",
+                    "p1": points[0],
+                    "p2": points[1],
+                }
+            )
+        elif item.kind == "arc" and item.radius:
+            context.entities.append(
+                {
+                    **base,
+                    "id": context.allocate_id(),
+                    **_arc_fields(
+                        points[0],
+                        frame.length(item.radius, context.divisor),
+                        item.start_angle,
+                        item.sweep_angle,
+                    ),
+                }
+            )
+        elif item.kind == "vectors" and len(points) >= 2:
+            # a point and the vectors from it (the strokes of a symbol)
+            for end in points[1:]:
+                if math.dist(points[0], end) <= _EPSILON:
+                    continue
+                context.entities.append(
+                    {
+                        **base,
+                        "id": context.allocate_id(),
+                        "kind": "LINE",
+                        "p1": points[0],
+                        "p2": end,
+                    }
+                )
+                context.converted["LINE"] += 1
+                drawn += 1
+            continue
+        else:
+            continue
+        context.converted[context.entities[-1]["kind"]] += 1
+        drawn += 1
+    for run in symbol.texts:
+        drawn += len(_convert_text(entity, run, frame, context, None, base=common))
+    context.counts["symbol"] += 1
+    if drawn:
+        context.note(
+            "ICD_2D_SYMBOL_ITEMS",
+            "info",
+            "Symbols were drawn from their saved items (point markers, lines, arcs) "
+            "and text runs; the member lists of groups carry no geometry.",
+            action="flattened",
+        )
 
 
 def _arc_fields(
@@ -821,6 +1155,10 @@ def _common(
     context.layers.setdefault(layer_name, {})
     result: dict[str, Any] = {"id": context.allocate_id(), "layer": layer_name}
     width = entity.line_width
+    if isinstance(width, int) and width > 8 and (width & 0x0F) in LINE_WIDTH_MM:
+        # Lines projected from the 3D model carry a flag bit (0x10) above the
+        # width index in V8 documents (18 = thin, 19 = thick).
+        width &= 0x0F
     if isinstance(width, int) and width in LINE_WIDTH_MM:
         result["lineweight_mm"] = LINE_WIDTH_MM[width]
         context.width_codes[width] += 1
@@ -959,6 +1297,32 @@ def _text_entity(
     rotation: float,
     width_factor: float | None,
 ) -> dict[str, Any]:
+    private = sum(1 for ch in text if 0xE000 <= ord(ch) <= 0xF8FF)
+    if private:
+        context.counts["private_use"] += private
+        context.note(
+            "ICD_2D_TEXT_PRIVATE_USE",
+            "warning",
+            "Texts contain characters of the private-use area (iCAD SX's own "
+            "symbol glyphs); they are kept as saved and most fonts show nothing "
+            "for them.",
+            action="approximated",
+            details={"characters": private},
+        )
+    return _text_entity_fields(
+        common, context, insert, height, text, rotation, width_factor
+    )
+
+
+def _text_entity_fields(
+    common: dict[str, Any],
+    context: _Context,
+    insert: list[float],
+    height: float,
+    text: str,
+    rotation: float,
+    width_factor: float | None,
+) -> dict[str, Any]:
     entity: dict[str, Any] = {
         **common,
         "id": context.allocate_id(),
@@ -987,6 +1351,10 @@ def _convert_dimension(entity: Any, frame: _ViewFrame, context: _Context) -> Non
     measured_points = [tuple(p) for p in measured] if measured else []
     for item in dimension.items:
         kind = item.kind
+        if not item.raw_marker & 0x40:
+            # hidden alternatives iCAD keeps (the measured circle, mirrored
+            # arrowheads, the second aux line of an angle) are not drawn
+            continue
         base = {"id": context.allocate_id(), "layer": common["layer"]}
         if "lineweight_mm" in common:
             base["lineweight_mm"] = common["lineweight_mm"]
@@ -1033,9 +1401,34 @@ def _convert_dimension(entity: Any, frame: _ViewFrame, context: _Context) -> Non
             entity, dimension.text, frame, context, block, base=common
         )
     dim_kind = DIMENSION_KINDS.get(str(dimension.kind), "GENERIC")
-    partial = dim_kind == "GENERIC" or dimension.layout_status != "complete"
+    leader = getattr(dimension, "leader", None)
+    chamfer = str(dimension.kind) == "chamfer"
+    if dim_kind == "ANGULAR":
+        interpreted = dimension.center is not None and len(measured_points) == 2
+    elif dim_kind in ("DIAMETER", "RADIAL"):
+        interpreted = dimension.center is not None
+    elif chamfer:
+        interpreted = dimension.line is not None
+    else:
+        interpreted = len(measured_points) == 2
+    partial = (dim_kind == "GENERIC" and not chamfer) or not interpreted
     location = None
-    if measured_points:
+    if dim_kind == "ANGULAR" and interpreted and dimension.radius:
+        # the arc point of a DXF angular dimension: the middle of the drawn arc
+        middle = (
+            float(dimension.arc_start or 0.0) + float(dimension.arc_sweep or 0.0) / 2
+        )
+        cx, cy = dimension.center
+        location = frame.point(
+            (
+                cx + float(dimension.radius) * math.cos(middle),
+                cy + float(dimension.radius) * math.sin(middle),
+            ),
+            context.divisor,
+        )
+    elif leader:
+        location = frame.point(leader[0], context.divisor)
+    elif measured_points:
         location = frame.point(measured_points[0], context.divisor)
     elif dimension.line_point is not None:
         location = frame.point(dimension.line_point, context.divisor)
@@ -1065,12 +1458,43 @@ def _convert_dimension(entity: Any, frame: _ViewFrame, context: _Context) -> Non
             "measured": [list(p) for p in measured_points],
         },
     }
-    if measured_points and len(measured_points) == 2:
+    if dim_kind == "ANGULAR" and interpreted:
+        # two lines through the vertex (DXF angular dimension): p1-p2 and p3-p4
+        vertex = frame.point(dimension.center, context.divisor)
+        leg1, leg2 = (frame.point(p, context.divisor) for p in measured_points)
+        definition["points"].update(
+            {"p1": vertex, "p2": leg1, "p3": vertex, "p4": leg2}
+        )
+        if dimension.value is not None and math.isfinite(float(dimension.value)):
+            definition["measurement"] = float(dimension.value)
+        else:
+            definition["measurement"] = math.degrees(float(dimension.arc_sweep or 0.0))
+        definition["source_geometry"]["arc"] = {
+            "radius": dimension.radius,
+            "start_angle": dimension.arc_start,
+            "sweep_angle": dimension.arc_sweep,
+        }
+    elif chamfer:
+        # the chamfer size of the text (C1), not a distance between points
+        if dimension.value is not None and math.isfinite(float(dimension.value)):
+            definition["measurement"] = float(dimension.value)
+    elif measured_points and len(measured_points) == 2:
         (x0, y0), (x1, y1) = measured_points
-        definition["measurement"] = math.hypot(x1 - x0, y1 - y0)
+        line = dimension.line
+        if line is not None and math.dist(line[0], line[1]) > _EPSILON:
+            # the saved value is the measured distance projected on the dimension
+            # line (horizontal and vertical dimensions measure a component)
+            (lx0, ly0), (lx1, ly1) = line
+            length = math.dist(line[0], line[1])
+            ux, uy = (lx1 - lx0) / length, (ly1 - ly0) / length
+            definition["measurement"] = abs((x1 - x0) * ux + (y1 - y0) * uy)
+        else:
+            definition["measurement"] = math.hypot(x1 - x0, y1 - y0)
     elif dimension.radius:
         factor = 2.0 if dim_kind == "DIAMETER" else 1.0
         definition["measurement"] = float(dimension.radius) * factor
+    if leader:
+        definition["source_geometry"]["leader"] = [list(p) for p in leader]
     if block:
         context.blocks[block_name] = {
             "base_point": [0.0, 0.0],
@@ -1095,8 +1519,8 @@ def _convert_dimension(entity: Any, frame: _ViewFrame, context: _Context) -> Non
         context.note(
             "ICD_2D_DIMENSION_PARTIAL",
             "warning",
-            "Angle, leader and unobserved dimension layouts keep their saved items "
-            "only (the kind is GENERIC).",
+            "Dimensions with an unobserved item layout keep their saved items only "
+            "(the kind is GENERIC).",
             action="approximated",
         )
 

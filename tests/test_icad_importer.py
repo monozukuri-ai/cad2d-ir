@@ -46,6 +46,9 @@ FIXTURE_SHA256 = {
     "model-only-v7l7.icd": (
         "5492af0ed997d425de0c283039771e271cb83ff8b1abd5c781fcb93dd2ee59aa"
     ),
+    "drawing-symbols-v8l3.icd": (
+        "fac8c5e45306408b23b29686d06048e1c1d38dea4a7883af63422368d1c42960"
+    ),
 }
 
 
@@ -173,12 +176,14 @@ def test_dimensions_become_blocks_with_arrowheads_lines_and_value_text() -> None
     assert diameter["definition"]["text"] == "２４"
     assert diameter["definition"]["measurement"] == pytest.approx(24.0)
     assert diameter["definition"]["source_geometry"]["kind"] == "diameter"
-    assert "ARC" in [
+    # the hidden copies of the measured circle are not drawn: arrowheads, the
+    # dimension line and the value text only
+    assert sorted(
         entity["kind"]
         for entity in document["tables"]["blocks"][diameter["definition"]["block"]][
             "entities"
         ]
-    ]
+    ) == ["HATCH", "HATCH", "LINE", "TEXT"]
 
 
 def test_hatches_become_their_saved_lines_and_the_dxf_round_trips() -> None:
@@ -281,3 +286,355 @@ def test_local_icad_drawings_import_and_validate() -> None:
             assert "Unqualified" in str(exc) or "Failed to read" in str(exc), path
             continue
         validate_ir(result.document)
+
+
+SYMBOLS = FIXTURES / "drawing-symbols-v8l3.icd"
+
+
+def test_ellipses_curves_notes_angles_and_symbols_are_mapped() -> None:
+    """The record types icadkit 0.3.9 decodes (2026-10-27): ellipses, free curves,
+    leader notes, angle dimensions and symbols. The view sits at (80, 60) on the
+    sheet at 1/2 and the IR is divided by that scale, so a view point (x, y) is
+    (x + 160, y + 120) and lengths are unchanged."""
+    result = convert_icad_file_to_ir(SYMBOLS)
+    document = result.document
+    validate_ir(document)
+    ellipses = _by_kind(document, "ELLIPSE")
+    assert len(ellipses) == 2
+    full = next(e for e in ellipses if e["end_param"] == pytest.approx(math.tau))
+    assert full["center"] == pytest.approx([200.0, 150.0])
+    assert full["ratio"] == pytest.approx(0.5)
+    assert full["major_axis"] == pytest.approx(
+        [12.0 * math.cos(math.radians(30)), 12.0 * math.sin(math.radians(30))]
+    )
+    half = next(e for e in ellipses if e is not full)
+    assert half["start_param"] == 0.0 and half["end_param"] == pytest.approx(math.pi)
+    assert half["major_axis"] == pytest.approx([10.0, 0.0])
+    assert half["ratio"] == pytest.approx(0.4)
+    (curve,) = _by_kind(document, "LWPOLYLINE")
+    # a smooth interpolation through the four knots: 1 + 6 vertices per segment
+    assert len(curve["vertices"]) == 19 and curve["closed"] is False
+    assert curve["vertices"][0] == [160.0, 200.0] and curve["vertices"][-1] == [
+        190.0,
+        200.0,
+    ]
+    assert curve["vertices"][6] == pytest.approx([170.0, 204.0])
+    assert curve["vertices"][12] == pytest.approx([180.0, 197.0])
+    assert max(abs(v[1] - 200.0) for v in curve["vertices"]) < 5.0
+    texts = {t["text"]: t for t in _by_kind(document, "TEXT")}
+    assert {"注記 1", "２行目", "Ｍ１"} <= set(texts)
+    assert texts["注記 1"]["height"] == pytest.approx(8.0)  # paper 4 mm at 1/2
+    hatches = [h for h in _by_kind(document, "HATCH") if h["solid"]]
+    arrow = next(h for h in hatches if h["loops"][0]["vertices"][1] == [210.0, 170.0])
+    assert len(arrow["loops"][0]["vertices"]) == 3
+    lines = _by_kind(document, "LINE")
+    assert any(
+        ln["p1"] == [210.0, 170.0] and ln["p2"] == [230.0, 190.0] for ln in lines
+    )
+    assert any(
+        ln["p1"] == [230.0, 190.0] and ln["p2"] == [260.0, 190.0] for ln in lines
+    )
+    (angle,) = [
+        d for d in _by_kind(document, "DIMENSION") if d["dim_kind"] == "ANGULAR"
+    ]
+    points = angle["definition"]["points"]
+    assert points["p1"] == points["p3"] == [160.0, 120.0]
+    assert points["p2"] == [190.0, 120.0] and points["p4"] == [180.0, 145.0]
+    expected = math.degrees(math.atan2(25.0, 20.0))
+    assert angle["definition"]["measurement"] == pytest.approx(expected)
+    assert angle["definition"]["text"] == "５１．３４０°"
+    block = document["tables"]["blocks"][angle["definition"]["block"]]
+    kinds = sorted(entity["kind"] for entity in block["entities"])
+    # two arrowheads, the drawn arc, the drawn aux line and the value text; the
+    # hidden arcs and the hidden second aux line are not drawn
+    assert kinds == ["ARC", "HATCH", "HATCH", "LINE", "TEXT"]
+    assert angle["definition"]["source_geometry"]["arc"]["radius"] == 15.0
+    marker = next(
+        p for p in _by_kind(document, "POINT") if p["position"] == [260.0, 130.0]
+    )
+    assert marker["metadata"]["icd"]["raw_type"] == 212
+    codes = {d.code for d in result.diagnostics}
+    assert {
+        "ICD_2D_CURVE_AS_POLYLINE",
+        "ICD_2D_LEADER_AS_LINES",
+        "ICD_2D_SYMBOL_ITEMS",
+        "ICD_2D_DIMENSION_FROM_SAVED",
+    } <= codes
+    assert "ICD_2D_DIMENSION_PARTIAL" not in codes
+    assert "ICD_2D_TYPE_UNSUPPORTED" not in codes
+    stats = result.statistics
+    assert stats["ellipses"] == 2 and stats["curves"] == 1 and stats["notes"] == 1
+    assert stats["symbols"] == 1 and stats["dimensions"] == 1
+    assert stats["skipped_entities"] == 0
+    # DXF round trip keeps the ellipses and the angular dimension
+    from cad2d_ir import convert_dxf_text_to_ir
+
+    text = convert_ir_to_dxf_text(document, target_version="AC1024").dxf_text
+    again = convert_dxf_text_to_ir(text).document
+    assert len(_by_kind(again, "ELLIPSE")) == 2
+    assert [d["dim_kind"] for d in _by_kind(again, "DIMENSION")] == ["ANGULAR"]
+
+
+def test_line_information_and_attribute_records(tmp_path: Path) -> None:
+    """P&ID line information (type 224) is drawn from its framed items; records
+    without items and motion-verification records are attribute records."""
+    import struct
+
+    import icadkit
+    from icadkit import DrawingWriter
+    from icadkit.write import _item
+
+    from cad2d_ir.importers.icad import icad_document_to_ir
+
+    def line_information(name: str, items: bytes) -> bytes:
+        header = bytearray(32)
+        header[4] = 1
+        header[12] = 0x40
+        header[14] = 7
+        header[15] = 224
+        struct.pack_into("<I", header, 16, 0x80000401)
+        header[24:32] = bytes.fromhex("080200fe00000001")
+        body = bytearray(name.encode("utf-16-le")) + b"\0" * (300 - 2 * len(name))
+        record = header + body + items
+        struct.pack_into("<I", record, 0, len(record))
+        return bytes(record)
+
+    writer = DrawingWriter(icadkit.read(SYMBOLS))
+    items = _item("<", 0x0100, 2, 1, (10.0, 10.0), point=True)
+    items += _item("<", 0x0244, 2, 1, (10.0, 10.0, 1.0, 0.0, 42.0))
+    items += _item("<", 0x0444, 2, 1, (10.0, 10.0, 0.5, 0.0, math.tau))
+    writer.add_raw_entity("XY", line_information("Line", items))
+    writer.add_raw_entity("XY", line_information("Cable", b""))
+    motion = bytearray(216)
+    motion[4] = 1
+    motion[12] = 0x40
+    motion[15] = 230
+    struct.pack_into("<I", motion, 16, 0x80000402)
+    motion[24:32] = bytes.fromhex("300000fd00000001")
+    struct.pack_into("<I", motion, 0, len(motion))
+    writer.add_raw_entity("XY", bytes(motion))
+    result = icad_document_to_ir(icadkit.read(writer.to_bytes()))
+    document = result.document
+    validate_ir(document)
+    lines = [ln for ln in _by_kind(document, "LINE") if ln["p1"] == [170.0, 130.0]]
+    assert lines and lines[0]["p2"] == [212.0, 130.0]
+    assert lines[0]["metadata"]["icd"]["symbol"] == "Line"
+    circles = [c for c in _by_kind(document, "CIRCLE") if c["center"] == [170.0, 130.0]]
+    assert circles and circles[0]["radius"] == pytest.approx(0.5)
+    codes = {d.code: d for d in result.diagnostics}
+    assert codes["ICD_2D_ATTRIBUTE_RECORDS"].details["count"] == 2
+    assert "ICD_2D_TYPE_UNSUPPORTED" not in codes
+    assert result.statistics["attribute_records"] == 2
+    assert result.statistics["symbols"] == 2  # the fixture's symbol and the line
+
+
+def test_chamfer_dimensions_and_balloons_from_legacy_layouts() -> None:
+    """Chamfer dimensions (type 29) keep the chamfer size as the measurement of
+    a GENERIC dimension without a partial note; balloons (type 34) draw their
+    circle, arrowhead, leader and number."""
+    import struct
+
+    import icadkit
+    from icadkit import DrawingWriter
+    from icadkit.write import _item, _run
+
+    from cad2d_ir.importers.icad import icad_document_to_ir
+
+    def header(
+        record_type: int, kind_byte: int, blocks: int, entity_id: int
+    ) -> bytearray:
+        head = bytearray(32)
+        head[4] = 1
+        head[12] = 0x40
+        head[14] = kind_byte
+        head[15] = record_type
+        struct.pack_into("<I", head, 16, entity_id)
+        struct.pack_into("<H", head, 24, 16 + blocks)
+        head[27] = 0xFD
+        head[28:32] = b"\0\0\0\x01"
+        return head
+
+    def block(number: int, length: int, doubles: dict[int, float]) -> bytes:
+        body = bytearray(length)
+        body[0:4] = bytes([0xFF, number, 1, length])
+        for at, value in doubles.items():
+            struct.pack_into("<d", body, at, value)
+        return bytes(body)
+
+    blocks = block(6, 80, {48: 1.5}) + block(4, 48, {24: 1.5, 40: 0.2618})
+    half = 0.4
+    items = _run("<", "Ｃ１．５", (18.0, -9.0), 4.0, 2, 1)
+    items += _item("<", 0x0344, 3, 1, (1.5, -10.0 - half, -1.5, half, 0.0, 2 * half))
+    items += _item("<", 0x0300, 3, 1, (38.5, -10.0 + half, 1.5, -half, 0.0, -2 * half))
+    items += _item("<", 0x0244, 3, 1, (0.0, -10.0, 1.0, 0.0, 40.0))
+    items += _item("<", 0x0100, 3, 1, (20.0, -10.0), point=True)
+    items += _item("<", 0x0100, 3, 1, (20.0, -9.0), point=True)
+    items += _item("<", 0x0300, 3, 1, (0.0, 0.0, 0.0, -10.0, 0.0, -12.8))
+    items += _item("<", 0x0300, 3, 1, (0.0, 0.0, 0.0, -10.0, 0.0, -12.8))
+    items += _item("<", 0x0100, 3, 1, (0.0, 0.0), point=True)
+    items += _item("<", 0x0100, 3, 1, (0.0, 0.0), point=True)
+    items += _item("<", 0x0200, 3, 1, (0.0, -10.0, 1.0, 0.0, 40.0))
+    chamfer = header(29, 11, len(blocks), 0x80000701) + b"\0" * 8 + blocks + items
+    struct.pack_into("<I", chamfer, 0, len(chamfer))
+
+    note_blocks = (
+        block(9, 48, {}) + block(11, 48, {}) + block(4, 48, {24: 1.5, 40: 0.2618})
+    )
+    note_items = _run("<", "３", (32.0, 31.0), 4.0, 2, 1, flags=0xF1)
+    note_items += _item("<", 0x0344, 3, 1, (12.0, 11.0, -2.0, -1.0, -1.0, 1.0))
+    note_items += _item("<", 0x0344, 3, 1, (10.0, 10.0, 20.0, 20.0))
+    note_items += _item("<", 0x0444, 3, 1, (34.0, 33.0, 5.0, 0.0, math.tau))
+    balloon = (
+        header(34, 4, len(note_blocks), 0x80000702)
+        + b"\0" * 8
+        + note_blocks
+        + note_items
+    )
+    struct.pack_into("<I", balloon, 0, len(balloon))
+
+    writer = DrawingWriter(icadkit.read(SYMBOLS))
+    writer.add_raw_entity("XY", bytes(chamfer))
+    writer.add_raw_entity("XY", bytes(balloon))
+    result = icad_document_to_ir(icadkit.read(writer.to_bytes()))
+    document = result.document
+    validate_ir(document)
+    generic = [d for d in _by_kind(document, "DIMENSION") if d["dim_kind"] == "GENERIC"]
+    assert len(generic) == 1 and generic[0]["definition"]["text"] == "Ｃ１．５"
+    assert generic[0]["definition"]["measurement"] == pytest.approx(1.5)
+    assert generic[0]["definition"]["source_geometry"]["kind"] == "chamfer"
+    block_entities = document["tables"]["blocks"][generic[0]["definition"]["block"]][
+        "entities"
+    ]
+    # one drawn arrowhead, the dimension line and the text; hidden items are not drawn
+    assert sorted(e["kind"] for e in block_entities) == ["HATCH", "LINE", "TEXT"]
+    circles = [c for c in _by_kind(document, "CIRCLE") if c["center"] == [194.0, 153.0]]
+    assert circles and circles[0]["radius"] == pytest.approx(5.0)
+    assert any(t["text"] == "３" for t in _by_kind(document, "TEXT"))
+    codes = {d.code for d in result.diagnostics}
+    assert "ICD_2D_LEADER_AS_LINES" in codes and "ICD_2D_DIMENSION_PARTIAL" not in codes
+
+
+def test_unplaced_views_are_laid_out_side_by_side_and_private_use_is_counted() -> None:
+    """Two 2D views without a placement record no longer overlap at the
+    origin, vector primitives (type 12) draw two segments and private-use
+    characters are counted."""
+    import struct
+
+    import icadkit
+    from icadkit import DrawingWriter, Line2D, Text2D
+
+    from cad2d_ir.importers.icad import icad_document_to_ir
+
+    writer = DrawingWriter(icadkit.read(SYMBOLS))
+    writer.add_view("V1", scale=1.0, origin=(0.0, 0.0))
+    writer.add_view("V2", scale=1.0, origin=(0.0, 0.0))
+    writer.add_entities(
+        "V1", [Line2D((0.0, 0.0), (50.0, 0.0)), Text2D("", (10.0, 5.0), 4.0)]
+    )
+    writer.add_entities("V2", [Line2D((0.0, 0.0), (30.0, 0.0))])
+    vectors = bytearray(80)
+    struct.pack_into("<I", vectors, 0, 80)
+    vectors[4] = 1
+    vectors[12] = 0x40
+    vectors[14] = 1
+    vectors[15] = 12
+    struct.pack_into("<I", vectors, 16, 0x80000901)
+    struct.pack_into("<H", vectors, 24, 56)
+    vectors[26:32] = bytes([0x44, 3, 3, 0x11, 0, 0])
+    struct.pack_into("<6d", vectors, 32, 5.0, 5.0, 2.0, 0.0, 0.0, 2.0)
+    writer.add_raw_entity("XY", bytes(vectors))
+    document_bytes = writer.to_bytes()
+    doc = icadkit.read(document_bytes)
+    # drop the placement records of V1 and V2 so that they are "missing"
+    import dataclasses
+
+    views = doc.read_views()
+    assert all(v.placement is not None for v in views.views if v.kind == "2d_view")
+    container = doc.container()
+    # the 2D global view's placement list lives in its V/W record; remove the
+    # records that name V1 and V2 by blanking their name bytes
+    data = bytearray(document_bytes)
+    for name in (b"V1", b"V2"):
+        padded = name.ljust(8, b" ")
+        at = data.find(padded)
+        while at >= 0:
+            data[at : at + 8] = b"Z9".ljust(8, b" ")
+            at = data.find(padded, at + 8)
+    doc = icadkit.read(bytes(data))
+    unplaced = [
+        v for v in doc.read_views().views if v.kind == "2d_view" and v.placement is None
+    ]
+    assert len(unplaced) >= 2
+    result = icad_document_to_ir(doc)
+    document = result.document
+    validate_ir(document)
+    lines = _by_kind(document, "LINE")
+    starts = sorted(
+        {tuple(ln["p1"]) for ln in lines if ln["p1"][1] == 0.0 and ln["p2"][1] == 0.0}
+    )
+    # the two unplaced lines start at different x: laid out side by side
+    xs = sorted({s[0] for s in starts})
+    assert len(xs) >= 2 and xs[1] - xs[0] >= 50.0
+    codes = {d.code: d for d in result.diagnostics}
+    assert codes["ICD_2D_PLACEMENT_MISSING"].details["layout"] == "tiled"
+    assert codes["ICD_2D_TEXT_PRIVATE_USE"].details["characters"] == 1
+    assert any(t["text"] == "" for t in _by_kind(document, "TEXT"))
+    segments = [ln for ln in lines if ln["p1"] == [165.0, 125.0]]
+    assert sorted(ln["p2"] for ln in segments) == [[165.0, 127.0], [167.0, 125.0]]
+    assert dataclasses is not None and container is not None
+
+
+def test_unplaced_views_that_do_not_overlap_keep_their_coordinates() -> None:
+    """Views without a placement record whose saved extents do not overlap
+    (old drawings keep the sheet layout in the view coordinates) stay where
+    they are, and an underlined view label draws its underline."""
+    import struct
+
+    import icadkit
+    from icadkit import DrawingWriter, Line2D, Text2D
+    from icadkit.write import EntityStyle, _encode_text, _item
+
+    from cad2d_ir.importers.icad import icad_document_to_ir
+
+    writer = DrawingWriter(icadkit.read(SYMBOLS))
+    writer.add_view("V1", scale=1.0, origin=(0.0, 0.0))
+    writer.add_view("V2", scale=1.0, origin=(0.0, 0.0))
+    writer.add_entities("V1", [Line2D((0.0, 0.0), (50.0, 0.0))])
+    writer.add_entities("V2", [Line2D((200.0, 0.0), (230.0, 0.0))])
+    record, _ = _encode_text(
+        "<", Text2D("A-A", (10.0, 5.0), 4.0), EntityStyle(), 0x80000905, 1.0
+    )
+    label = bytearray(record) + _item("<", 0x0244, 2, 1, (10.0, 3.0, 1.0, 0.0, 12.0))
+    struct.pack_into("<I", label, 0, len(label))
+    writer.add_raw_entity("XY", bytes(label))
+    data = bytearray(writer.to_bytes())
+    for name in (b"V1", b"V2"):
+        padded = name.ljust(8, b" ")
+        at = data.find(padded)
+        while at >= 0:
+            data[at : at + 8] = b"Z9".ljust(8, b" ")
+            at = data.find(padded, at + 8)
+    doc = icadkit.read(bytes(data))
+    assert (
+        len(
+            [
+                v
+                for v in doc.read_views().views
+                if v.kind == "2d_view" and v.placement is None
+            ]
+        )
+        >= 2
+    )
+    result = icad_document_to_ir(doc)
+    document = result.document
+    validate_ir(document)
+    lines = _by_kind(document, "LINE")
+    # the sheet is divided by the dominant scale (XY at 1/2): raw x doubles
+    assert any(ln["p1"] == [0.0, 0.0] and ln["p2"] == [100.0, 0.0] for ln in lines)
+    assert any(ln["p1"] == [400.0, 0.0] and ln["p2"] == [460.0, 0.0] for ln in lines)
+    codes = {d.code: d for d in result.diagnostics}
+    assert codes["ICD_2D_PLACEMENT_MISSING"].details["layout"] == "kept"
+    assert any(t["text"] == "A-A" for t in _by_kind(document, "TEXT"))
+    assert any(
+        ln["p1"] == [170.0, 123.0] and ln["p2"] == [182.0, 123.0] for ln in lines
+    )

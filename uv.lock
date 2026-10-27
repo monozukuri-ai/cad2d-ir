@@ -20,7 +20,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.15.2"
+version = "0.16.1"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
@@ -52,6 +52,9 @@ exb = [
 ]
 hpgl = [
     { name = "ezhpgl" },
+]
+icad = [
+    { name = "icadkit" },
 ]
 idw = [
     { name = "inventor-kit", marker = "python_full_version >= '3.11'" },
@@ -95,12 +98,13 @@ requires-dist = [
     { name = "ezmi2d", marker = "extra == 'mi'", specifier = ">=0.2,<0.3" },
     { name = "ezsxf", marker = "extra == 'all'", specifier = ">=0.2,<0.4" },
     { name = "ezsxf", marker = "extra == 'sxf'", specifier = ">=0.2,<0.4" },
+    { name = "icadkit", marker = "extra == 'icad'", specifier = ">=0.3.11,<0.4" },
     { name = "inventor-kit", marker = "python_full_version >= '3.11' and extra == 'idw'", specifier = ">=0.6,<0.7" },
     { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "pypdfium2", marker = "extra == 'all'", specifier = ">=4.30,<6" },
     { name = "pypdfium2", marker = "extra == 'pdf'", specifier = ">=4.30,<6" },
 ]
-provides-extras = ["dwg", "dgn", "dwf", "exb", "hpgl", "idw", "jww", "mi", "pdf", "sxf", "all"]
+provides-extras = ["dwg", "dgn", "dwf", "exb", "hpgl", "icad", "idw", "jww", "mi", "pdf", "sxf", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -360,6 +364,17 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/8f/b2/0a402948d8729712b18f71631629c63e187a3feffb90e0de77897cf8c2e4/ezsxf-0.3.4-cp39-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7105f2ae4f4b42849be45d76d91c588d31d001e50b749f5eed374892f4394a36", size = 1287682, upload-time = "2026-10-11T09:08:26.478Z" },
     { url = "https://files.pythonhosted.org/packages/8d/7a/3a74f848e9448cfcf4ae0b2a689a22fe1cbb2d9bb707c7b80269f79835b1/ezsxf-0.3.4-cp39-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:395ea78c24455e861ffd0aa16b8c097bd4f47906d5123f262f0293aecf9fbd71", size = 1324108, upload-time = "2026-10-11T09:08:28.166Z" },
     { url = "https://files.pythonhosted.org/packages/b1/d6/c5ef8f1594058704b55aebd9b46e2e2b29ca1e2c5ac64a197b909540c204/ezsxf-0.3.4-cp39-abi3-win_amd64.whl", hash = "sha256:68482a6eee53ca07a3341877253bdc8b131546c72328e17aebe0f48320f1f4ac", size = 1168958, upload-time = "2026-10-11T09:08:30.199Z" },
+]
+
+[[package]]
+name = "icadkit"
+version = "0.3.11"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/6e/bbad5b4ad83306f89bf3a71f43d10618846a1ed2113431f740509bac0354/icadkit-0.3.11.tar.gz", hash = "sha256:5ab1752df4d3456278ea080396aa8fe82349d4c526d7d348f2a2a3fa99099b4c", size = 513848, upload-time = "2026-10-27T08:36:38.02Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/86/2d/1b4d8a72a8e331ce605abd9c925f2ede4999935731464209f6050592a802/icadkit-0.3.11-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:b47cac47c666e9d2d6da622931f636e692695f0b6b295d72e03ce026b89e71b5", size = 940841, upload-time = "2026-10-27T08:36:32.802Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/9e/973d523e884d2208725cafe658c13f355d39a6a5849c0ea50de5dc22cef6/icadkit-0.3.11-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:07e0d189e2203381242bd49287559f4a3925b8993f0f5f9a452443865d8010da", size = 1028842, upload-time = "2026-10-27T08:36:34.535Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/7b/956347fca99bb5e7c83be413ef8a92eb7ea69347113ea88a449517d96af3/icadkit-0.3.11-cp310-abi3-win_amd64.whl", hash = "sha256:f306fc6a4bc14f8813eb412bd5970ac53e13811d78ce8dfcf59dc77a52d97874", size = 849717, upload-time = "2026-10-27T08:36:36.519Z" },
 ]
 
 [[package]]

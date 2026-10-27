@@ -23,7 +23,7 @@ The registry in `cad2d_ir.importers.registry` currently dispatches:
 | DWF | `.dwf`, `.dwfx` | implemented (2D) | `ezdwf>=0.0.1,<0.1` |
 | MI | `.mi`, `.bi` | implemented (verified typed subset) | `ezmi2d>=0.2,<0.3` |
 | SXF | `.sxf`, `.sfc`, `.p21` | implemented | `ezsxf>=0.2,<0.4` |
-| ICD (iCAD SX) | `.icd` | implemented (2D drawing area) | `icadkit>=0.3.9,<0.4` |
+| ICD (iCAD SX) | `.icd` | implemented (2D drawing area) | `icadkit>=0.3.10,<0.4` |
 
 ## JWW vertical slice
 
@@ -560,7 +560,7 @@ source metadata, clipping/fill/text losses, page selection and resource limits.
 ## iCAD SX adapter
 
 `convert_icad_file_to_ir` / `icad_document_to_ir` read the 2D drawing area of
-an iCAD SX file (`.icd`) through `icadkit` (`cad2d-ir[icad]`, 0.3.9 or later
+an iCAD SX file (`.icd`) through `icadkit` (`cad2d-ir[icad]`, 0.3.10 or later
 for the view placement records). The file must carry the `MOD0` … `MOD1`
 signature (IEC 61850 and IronCAD also use `.icd`); versions whose view layout
 icadkit has not qualified (V8L4 and later, V3L6) raise `ImporterError`
@@ -569,13 +569,20 @@ icadkit has not qualified (V8L4 and later, V3L6) raise `ImporterError`
 
 | iCAD SX | IR | Notes |
 | --- | --- | --- |
-| `2d_view` placed by its record in the 2D global view | sheet composition | view-local mm × placement scale + placement origin (`ICD_2D_VIEW_PLACED`); a view without a record sits at the origin with its header scale (`ICD_2D_PLACEMENT_MISSING`) |
+| `2d_view` placed by its record in the 2D global view | sheet composition | view-local mm × placement scale + placement origin (`ICD_2D_VIEW_PLACED`); a view without a record keeps its own coordinates with its header scale; several such views are laid out side by side by their saved extents only when those overlap (`ICD_2D_PLACEMENT_MISSING`, `details.layout` = `kept` / `tiled`) |
+| vectors (type 12), surface-texture strokes (type 28) | `LINE`s | the segments from the saved point (view-direction marks, the strokes of a symbol) |
+| underlined text (type 21 with a line item) | `TEXT` + `LINE` | the underline of view labels ("A-A", "Z矢視図") |
 | the sheet | real-size millimetres | the sheet is divided by the dominant view scale (the one with most entities), `header.metadata.icd.paper_scale` (`ICD_2D_SCALE_APPLIED`); other scales keep their place but are not at real size (`ICD_2D_MIXED_SCALES`); the paper from the global view's extent or the geometry bounds is `header.metadata.icd.sheet` (`ICD_2D_SHEET_DETECTED`) |
 | point / line / circle / arc | `POINT` / `LINE` / `CIRCLE` / `ARC` | arcs with a negative sweep are reversed to counter-clockwise; a full sweep becomes a `CIRCLE` |
-| text | one `TEXT` per line | placed at the saved line origin (bottom-left of the first cell), height × view scale, `width_factor` from the character pitch, style `ICD`; vertical writing is one `TEXT` per character (`ICD_2D_TEXT_VERTICAL_SPLIT`) |
-| dimension (length, diameter, radius; angle and leader partially) | `DIMENSION` with `definition.block` | the saved arrowheads (solid `HATCH` triangles), dimension and extension lines, arcs and the value text go into a `*ICD_D<n>` block; `definition.text`, `measurement` (from the measured points or the radius) and `source_geometry` keep the saved fields (`ICD_2D_DIMENSION_FROM_SAVED`, `ICD_2D_DIMENSION_PARTIAL`) |
+| ellipse / elliptical arc (types 88, 89) | `ELLIPSE` | the saved semi-axes, axis rotation and parametric angles (the DXF convention); the longer axis becomes `major_axis`, negative sweeps are reversed |
+| free curve (type 16) | `LWPOLYLINE` | a smooth interpolation (Catmull-Rom, six vertices per segment) through the saved knots (`ICD_2D_CURVE_AS_POLYLINE`); the segment coefficients of the smooth curve are not decoded |
+| leader note (types 22, 34, 44) | `TEXT` per line, a solid `HATCH` arrowhead, `LINE`s, the balloon `CIRCLE` | the leader from the arrowhead tip to the elbow and the shelf (`ICD_2D_LEADER_AS_LINES`); balloons (type 34) add their circle; hidden alternative items are not drawn |
+| symbol (type 212) | `POINT` / `LINE` / `ARC` / `TEXT` | the drawn items and text runs of the record (`ICD_2D_SYMBOL_ITEMS`); the member lists of groups carry no geometry |
+| line information (type 224: P&ID and circuit lines, junction and connection marks, symbol instances) | `LINE` / `CIRCLE` / `ARC` / `TEXT` | the drawn items of the record, with the saved name in `metadata.icd.symbol`; records without framed items and motion-verification records (230–234) are counted as attribute records (`ICD_2D_ATTRIBUTE_RECORDS`) |
+| text | one `TEXT` per line | placed at the saved line origin (bottom-left of the first cell), height × view scale, `width_factor` from the character pitch, style `ICD`; vertical writing is one `TEXT` per character (`ICD_2D_TEXT_VERTICAL_SPLIT`). Legacy CP932 runs (big-endian documents, V7L2–V7L5) read the same way |
+| dimension (length, angle, diameter, radius, including the leader variant; chamfer dimensions as `GENERIC` with the chamfer size as `measurement`) | `DIMENSION` with `definition.block` | the drawn items (the saved arrowheads as solid `HATCH` triangles, dimension and extension lines, the dimension arc) and the value text go into a `*ICD_D<n>` block; hidden items (the measured circle, mirrored arrowheads, the second aux line of an angle) are not drawn. `definition.text`, `measurement` (the measured length, the angle in degrees or the radius / diameter) and `source_geometry` keep the saved fields; angle dimensions carry the two legs through the vertex as `p1`–`p2` and `p3`–`p4` and the arc point as `location` (`ICD_2D_DIMENSION_FROM_SAVED`, `ICD_2D_DIMENSION_PARTIAL` for unobserved layouts) |
 | hatch | `LINE`s with `metadata.icd.hatch` | the parallel lines iCAD SX saved (`ICD_2D_HATCH_AS_LINES`); the boundary is not re-emitted |
-| layer / line width / line style / colour | layer `"<n>"`, `lineweight_mm`, `linetype` | width codes map to provisional ISO widths (`ICD_2D_LINE_WIDTH_ASSUMED`), style 2 / 3 / 4 to `DASHED` / `CENTER` / `PHANTOM` (`ICD_2D_LINE_STYLE_UNKNOWN` otherwise); palette indices stay in `metadata.icd` (`ICD_2D_COLOR_PALETTE`) |
+| layer / line width / line style / colour | layer `"<n>"`, `lineweight_mm`, `linetype` | width codes map to provisional ISO widths (`ICD_2D_LINE_WIDTH_ASSUMED`; the flag bit `0x10` that V8 projected lines carry above the index is masked), style 2 / 3 / 4 to `DASHED` / `CENTER` / `PHANTOM` (`ICD_2D_LINE_STYLE_UNKNOWN` otherwise); palette indices stay in `metadata.icd` (`ICD_2D_COLOR_PALETTE`) |
 | records icadkit does not decode | skipped | `ICD_2D_TYPE_UNSUPPORTED` with the count per raw type |
 
 Entity ids are `ICD_E…`; `source` keeps the saved entity id, raw type, view

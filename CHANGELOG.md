@@ -2,7 +2,7 @@
 
 ## 0.16.0
 
-- New ICD importer (`cad2d-ir[icad]`, backed by `icadkit` 0.3.9): reads the 2D
+- New ICD importer (`cad2d-ir[icad]`, backed by `icadkit` 0.3.10): reads the 2D
   drawing area of an iCAD SX file (`convert_icad_file_to_ir`,
   `icad_document_to_ir`, `--format icd`, suffix detection). Every 2D view is
   placed on the sheet by its saved placement record (origin and scale) and the
@@ -17,6 +17,38 @@
   counted (`ICD_2D_*` diagnostics, see docs/DIAGNOSTICS.md). The extra is kept
   out of `all` because icadkit ships no Linux aarch64 wheel. `source.format`
   and `EntitySource.format` accept `icd` (IR version unchanged).
+- ICD importer: the record types icadkit 0.3.10 decodes are mapped too.
+  Ellipses and elliptical arcs become `ELLIPSE`, free curves `LWPOLYLINE`s
+  through their knots (`ICD_2D_CURVE_AS_POLYLINE`), leader notes their text,
+  a solid arrowhead and the leader lines (`ICD_2D_LEADER_AS_LINES`), symbols
+  their drawn point markers, lines, arcs and text runs
+  (`ICD_2D_SYMBOL_ITEMS`). Angle dimensions are `ANGULAR` with the legs
+  through the vertex and the angle as `measurement`; the leader variant of
+  diameter and radius dimensions is complete. Dimension blocks draw only the
+  items iCAD marks as drawn (no hidden measured circles or mirrored
+  arrowheads), and the `0x10` flag of projected lines no longer hides the
+  width index.
+- ICD importer: legacy documents (big-endian V1L9–V7L1 and little-endian
+  V7L2–V7L5) now yield their texts and dimensions (icadkit decodes their
+  CP932 runs), free curves are interpolated smoothly through the knots,
+  line-information records of P&ID and circuit drawings (type 224) are
+  drawn from their framed items with the saved name in
+  `metadata.icd.symbol`, and records without drawing geometry (motion
+  verification, line information without items) are counted as attribute
+  records (`ICD_2D_ATTRIBUTE_RECORDS`) rather than unsupported types.
+- ICD importer: chamfer dimensions (type 29) are `GENERIC` dimensions with
+  the chamfer size as `measurement` (no partial note), balloons (type 34)
+  draw their circle, and the linear `measurement` is the measured distance
+  projected on the dimension line, as iCAD SX saves it.
+- ICD importer: 2D views without a placement record keep their own
+  coordinates (old drawings save the sheet layout there) and are laid out
+  side by side only when their saved extents overlap (`details.layout` of
+  `ICD_2D_PLACEMENT_MISSING`), underlined view labels draw their underline
+  as a `LINE`, 3D projection frames (type 211) count as attribute records,
+  vector primitives (type 12) and
+  the strokes of surface-texture symbols (type 28) are drawn as segments,
+  and private-use characters in texts (iCAD SX's own symbol glyphs) are
+  counted (`ICD_2D_TEXT_PRIVATE_USE`).
 
 ## 0.15.2
 

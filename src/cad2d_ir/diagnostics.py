@@ -60,7 +60,7 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "warning",
         "approximated",
         "ICD import",
-        "A 2D view has no placement record in the 2D global view; it was placed at the sheet origin with the scale of its header.",
+        "A 2D view has no placement record in the 2D global view; it was placed at the sheet origin with the scale of its header (several such views are laid out side by side).",
     ),
     "ICD_2D_REGISTERED_PART": DiagnosticCode(
         "info",
@@ -96,7 +96,7 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "warning",
         "skipped",
         "ICD import",
-        "Saved records of types icadkit does not decode (symbols, projection controls, legacy text layouts) were skipped; `details.types` counts them per raw type.",
+        "Saved records of types icadkit does not decode (legacy dimension and text layouts, line information, motion records) were skipped; `details.types` counts them per raw type.",
     ),
     "ICD_2D_ENTITY_INVALID": DiagnosticCode(
         "warning",
@@ -122,6 +122,12 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "ICD import",
         "Vertical writing was split into one `TEXT` per character stacked downwards.",
     ),
+    "ICD_2D_TEXT_PRIVATE_USE": DiagnosticCode(
+        "warning",
+        "approximated",
+        "ICD import",
+        "Texts contain private-use characters (iCAD SX's own symbol glyphs, CP932 0xF0xx); they are kept as saved and most fonts show nothing for them. `details.characters` counts them.",
+    ),
     "ICD_2D_DIMENSION_FROM_SAVED": DiagnosticCode(
         "info",
         "flattened",
@@ -132,7 +138,31 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "warning",
         "approximated",
         "ICD import",
-        "Angle, leader and unobserved dimension layouts keep their saved items only; the kind is `GENERIC`.",
+        "Dimensions with an unobserved item layout keep their saved items only; the kind is `GENERIC`.",
+    ),
+    "ICD_2D_CURVE_AS_POLYLINE": DiagnosticCode(
+        "info",
+        "approximated",
+        "ICD import",
+        "Free curves were drawn as `LWPOLYLINE`s interpolated through the knots iCAD SX saved; the segment coefficients of the smooth curve are not decoded.",
+    ),
+    "ICD_2D_LEADER_AS_LINES": DiagnosticCode(
+        "info",
+        "flattened",
+        "ICD import",
+        "Leader notes were drawn as their text lines, a solid arrowhead and the leader lines; hidden alternative items were not drawn.",
+    ),
+    "ICD_2D_SYMBOL_ITEMS": DiagnosticCode(
+        "info",
+        "flattened",
+        "ICD import",
+        "Symbols were drawn from their saved items (point markers, lines, arcs) and text runs; the member lists of groups carry no geometry.",
+    ),
+    "ICD_2D_ATTRIBUTE_RECORDS": DiagnosticCode(
+        "info",
+        "skipped",
+        "ICD import",
+        "Attribute records (line information without framed items, motion verification) carry no drawing geometry and were not drawn; `details.count` counts them.",
     ),
     "ICD_2D_HATCH_AS_LINES": DiagnosticCode(
         "info",
