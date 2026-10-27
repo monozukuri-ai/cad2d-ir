@@ -218,3 +218,30 @@ Use `cad2d_ir.diagnostics.ALL_CODES` for exhaustive CI checks and
 | `HPGL_TEXT_CLIP_APPROXIMATED` | warning | approximated | In label mode a label line crossing its clip is kept whole; IR TEXT has no clip. |
 | `HPGL_TEXT_CLIP_OMITTED` | warning | skipped | A glyph not wholly inside its clip envelope is omitted; original label bytes remain in layout metadata. |
 | `HPGL_TEXT_ENCODING_GUESSED` | warning | approximated | In label mode label bytes outside Roman-8 (0x80-0x9F) were decoded as Shift_JIS (cp932); the original bytes remain in layout metadata. |
+
+## iCAD SX diagnostics
+
+`cad2d-ir[icad]` composes the 2D drawing area of an iCAD SX file from the
+saved views (see [the ICD adapter](IMPORTERS.md#icad-sx-adapter)).
+
+| Code | Severity | Action | Condition |
+|---|---|---|---|
+| `ICD_2D_UNITS_ASSUMED_MM` | info | assumed | iCAD SX stores view-local coordinates in millimetres; the sheet was composed in millimetres. |
+| `ICD_2D_VIEW_PLACED` | info | normalized | 2D views were placed on the sheet by their saved placement records (origin and scale); `details.views` lists them. |
+| `ICD_2D_PLACEMENT_MISSING` | warning | approximated | A 2D view has no placement record in the 2D global view; it was placed at the sheet origin with the scale of its header. |
+| `ICD_2D_REGISTERED_PART` | info | normalized | The file is a registered part (a 2D library symbol); its view was read as the drawing at scale 1. |
+| `ICD_2D_SCALE_APPLIED` | info | normalized | The sheet was divided by the dominant view scale so the drawing is at real size; the denominator is `header.metadata.icd.paper_scale`. |
+| `ICD_2D_MIXED_SCALES` | warning | approximated | Views drawn at a scale other than the dominant one keep their place on the sheet but are not at real size; `details.scales` lists the other scales. |
+| `ICD_2D_SHEET_DETECTED` | info | detected | The paper was taken from the extent of the 2D global view (an ISO A size, or the smallest one fitted around the frame) or from the geometry bounds; it is `header.metadata.icd.sheet`. |
+| `ICD_2D_NO_VIEWS` | warning | skipped | The file has no 2D view (a 3D model only); the document is empty. |
+| `ICD_2D_TYPE_UNSUPPORTED` | warning | skipped | Saved records of types icadkit does not decode (symbols, projection controls, legacy text layouts) were skipped; `details.types` counts them per raw type. |
+| `ICD_2D_ENTITY_INVALID` | warning | skipped | A saved entity with invalid or non-finite geometry was skipped. |
+| `ICD_2D_TEXT_UNPLACED` | warning | skipped | A text run has no saved line origin (rotated or unobserved layout) and was skipped. |
+| `ICD_2D_TEXT_LAYOUT_PARTIAL` | info | approximated | A text with a partially qualified layout uses its saved origin and default metrics. |
+| `ICD_2D_TEXT_VERTICAL_SPLIT` | info | approximated | Vertical writing was split into one `TEXT` per character stacked downwards. |
+| `ICD_2D_DIMENSION_FROM_SAVED` | info | flattened | Dimensions were rebuilt from the items iCAD SX saved (arrowheads as solid fills, dimension and extension lines, the value text) in a block referenced by `definition.block`; the construction semantics are not decoded. |
+| `ICD_2D_DIMENSION_PARTIAL` | warning | approximated | Angle, leader and unobserved dimension layouts keep their saved items only; the kind is `GENERIC`. |
+| `ICD_2D_HATCH_AS_LINES` | info | flattened | Hatches were converted to the parallel lines iCAD SX saved (`metadata.icd.hatch`); the boundary and pattern are not kept as a `HATCH`. |
+| `ICD_2D_LINE_WIDTH_ASSUMED` | info | assumed | Line width codes were mapped to provisional millimetre widths (`LINE_WIDTH_MM`: 2 = 0.25 mm, 3 = 0.35 mm, …). |
+| `ICD_2D_LINE_STYLE_UNKNOWN` | warning | approximated | Entities with an unobserved line style code were drawn as continuous lines; `details.codes` counts them. |
+| `ICD_2D_COLOR_PALETTE` | info | skipped | Colours are iCAD SX palette indices (kept in `metadata.icd.color_index`) and were not mapped to RGB. |

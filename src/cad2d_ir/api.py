@@ -511,6 +511,37 @@ def convert_hpgl_file_to_ir(
     )
 
 
+def convert_icad_file_to_ir(
+    path: str | Path,
+    *,
+    ir_version: str = CURRENT_IR_VERSION,
+    validate: bool = True,
+    strict: bool = True,
+    curve_segments: int = 96,
+    entity_provenance: bool = True,
+) -> ImportResult:
+    """Convert the 2D drawing area of an iCAD SX file (.icd) directly to IR.
+
+    Requires the ``icad`` extra (``icadkit`` 0.3.9 or later). Every 2D view is
+    placed on the sheet by its saved placement record and the sheet is divided
+    by the dominant view scale, so the coordinates are real-size millimetres;
+    the scale and the paper are in ``header.metadata.icd``. The 3D parts of the
+    same file are not read (see ``cad3d-ir-icad``).
+    """
+    from cad2d_ir.importers.icad import convert_icad_file_to_ir as import_icad
+
+    return import_icad(
+        path,
+        options=ImportOptions(
+            ir_version=ir_version,
+            validate=validate,
+            strict=strict,
+            curve_segments=curve_segments,
+            entity_provenance=entity_provenance,
+        ),
+    )
+
+
 def convert_idw_file_to_ir(
     path: str | Path,
     *,

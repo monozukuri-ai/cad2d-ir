@@ -633,6 +633,7 @@ def _validate_source(source: Any, path: str) -> None:
         "dwf",
         "exb",
         "hpgl",
+        "icd",
         "idw",
         "jww",
         "jwc",

@@ -23,6 +23,7 @@ The registry in `cad2d_ir.importers.registry` currently dispatches:
 | DWF | `.dwf`, `.dwfx` | implemented (2D) | `ezdwf>=0.0.1,<0.1` |
 | MI | `.mi`, `.bi` | implemented (verified typed subset) | `ezmi2d>=0.2,<0.3` |
 | SXF | `.sxf`, `.sfc`, `.p21` | implemented | `ezsxf>=0.2,<0.4` |
+| ICD (iCAD SX) | `.icd` | implemented (2D drawing area) | `icadkit>=0.3.9,<0.4` |
 
 ## JWW vertical slice
 
@@ -555,3 +556,30 @@ Register the suffix and dispatch branch only after the adapter passes those gate
 `cad2d-ir[hpgl]` maps the `ezhpgl` Rust plot model to separate paper-space
 layouts in mm. See [the HP-GL contract](HPGL.md) for supported geometry,
 source metadata, clipping/fill/text losses, page selection and resource limits.
+
+## iCAD SX adapter
+
+`convert_icad_file_to_ir` / `icad_document_to_ir` read the 2D drawing area of
+an iCAD SX file (`.icd`) through `icadkit` (`cad2d-ir[icad]`, 0.3.9 or later
+for the view placement records). The file must carry the `MOD0` … `MOD1`
+signature (IEC 61850 and IronCAD also use `.icd`); versions whose view layout
+icadkit has not qualified (V8L4 and later, V3L6) raise `ImporterError`
+("Unqualified iCAD SX version …"). The 3D parts of the same file are read by
+`cad3d-ir-icad`, not here.
+
+| iCAD SX | IR | Notes |
+| --- | --- | --- |
+| `2d_view` placed by its record in the 2D global view | sheet composition | view-local mm × placement scale + placement origin (`ICD_2D_VIEW_PLACED`); a view without a record sits at the origin with its header scale (`ICD_2D_PLACEMENT_MISSING`) |
+| the sheet | real-size millimetres | the sheet is divided by the dominant view scale (the one with most entities), `header.metadata.icd.paper_scale` (`ICD_2D_SCALE_APPLIED`); other scales keep their place but are not at real size (`ICD_2D_MIXED_SCALES`); the paper from the global view's extent or the geometry bounds is `header.metadata.icd.sheet` (`ICD_2D_SHEET_DETECTED`) |
+| point / line / circle / arc | `POINT` / `LINE` / `CIRCLE` / `ARC` | arcs with a negative sweep are reversed to counter-clockwise; a full sweep becomes a `CIRCLE` |
+| text | one `TEXT` per line | placed at the saved line origin (bottom-left of the first cell), height × view scale, `width_factor` from the character pitch, style `ICD`; vertical writing is one `TEXT` per character (`ICD_2D_TEXT_VERTICAL_SPLIT`) |
+| dimension (length, diameter, radius; angle and leader partially) | `DIMENSION` with `definition.block` | the saved arrowheads (solid `HATCH` triangles), dimension and extension lines, arcs and the value text go into a `*ICD_D<n>` block; `definition.text`, `measurement` (from the measured points or the radius) and `source_geometry` keep the saved fields (`ICD_2D_DIMENSION_FROM_SAVED`, `ICD_2D_DIMENSION_PARTIAL`) |
+| hatch | `LINE`s with `metadata.icd.hatch` | the parallel lines iCAD SX saved (`ICD_2D_HATCH_AS_LINES`); the boundary is not re-emitted |
+| layer / line width / line style / colour | layer `"<n>"`, `lineweight_mm`, `linetype` | width codes map to provisional ISO widths (`ICD_2D_LINE_WIDTH_ASSUMED`), style 2 / 3 / 4 to `DASHED` / `CENTER` / `PHANTOM` (`ICD_2D_LINE_STYLE_UNKNOWN` otherwise); palette indices stay in `metadata.icd` (`ICD_2D_COLOR_PALETTE`) |
+| records icadkit does not decode | skipped | `ICD_2D_TYPE_UNSUPPORTED` with the count per raw type |
+
+Entity ids are `ICD_E…`; `source` keeps the saved entity id, raw type, view
+and byte range and `metadata.icd` the raw attribute codes when
+`entity_provenance` is on. The fixtures in `tests/data/icad` are written with
+icadkit's `DrawingWriter`; iCAD SX-authored drawings are run from a local
+directory through `CAD2D_IR_ICAD_FIXTURES`.

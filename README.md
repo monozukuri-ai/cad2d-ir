@@ -6,7 +6,7 @@ for 2D CAD data.
 It provides:
 
 - a canonical JSON Schema for 2D CAD geometry and tables;
-- native DXF, DWG, DGN, DWF/DWFx, EXB, HP-GL/PLT, IDW, JWW, JWS, MI/BI, SXF, and vector PDF import paths;
+- native DXF, DWG, DGN, DWF/DWFx, EXB, HP-GL/PLT, ICD (iCAD SX), IDW, JWW, JWS, MI/BI, SXF, and vector PDF import paths;
 - DXF R12 (`AC1009`) and R2010 (`AC1024`) export;
 - structured import/export diagnostics;
 - deterministic IR-entity to DXF-handle correspondence.
@@ -71,6 +71,7 @@ Import adapters:
 | DWF/DWFx 2D | normalized `ezdwf` sheet model | `cad2d-ir[dwf]` |
 | EXB (CAXA CAD / 电子图板) | stored-entity model from `ezexb` | `cad2d-ir[exb]` |
 | HP-GL / HP-GL/2 / bounded PCL/PJL | Rust plot model from `ezhpgl` | `cad2d-ir[hpgl]` |
+| ICD (iCAD SX 2D drawing area) | saved views and entities from `icadkit` | `cad2d-ir[icad]` |
 | IDW (Autodesk Inventor drawing) | saved-display model from `inventor-kit` | `cad2d-ir[idw]` |
 | JWW | native `ezjww` model | `cad2d-ir[jww]` |
 | JWS (Jw_cad registered symbol) | native `ezjww` model (0.7 or later) | `cad2d-ir[jww]` |
@@ -91,7 +92,7 @@ cad2d-ir validate examples/ir/minimal.json
 cad2d-ir dxf2ir drawing.dxf -o drawing.json --pretty
 cad2d-ir dxf2ir drawing.dxf --encoding cp932 -o drawing.json
 
-# Auto-detected DXF/DWG/DGN/DWF/DWFx/EXB/HP-GL/IDW/JWW/JWS/MI/BI/PDF/SFC/P21 -> IR
+# Auto-detected DXF/DWG/DGN/DWF/DWFx/EXB/HP-GL/ICD/IDW/JWW/JWS/MI/BI/PDF/SFC/P21 -> IR
 cad2d-ir import drawing.JWW -o drawing.json --pretty
 cad2d-ir import drawing.dwg -o drawing.json --pretty
 cad2d-ir import drawing.dgn -o drawing.json --pretty

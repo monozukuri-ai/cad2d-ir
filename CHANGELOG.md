@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.16.0
+
+- New ICD importer (`cad2d-ir[icad]`, backed by `icadkit` 0.3.9): reads the 2D
+  drawing area of an iCAD SX file (`convert_icad_file_to_ir`,
+  `icad_document_to_ir`, `--format icd`, suffix detection). Every 2D view is
+  placed on the sheet by its saved placement record (origin and scale) and the
+  sheet is divided by the dominant view scale, so the IR is at real size with
+  the scale and the paper in `header.metadata.icd` (`ICD_2D_VIEW_PLACED`,
+  `ICD_2D_SCALE_APPLIED`, `ICD_2D_SHEET_DETECTED`). Points, lines, circles
+  and arcs map one to one; texts keep their line origins (vertical writing is
+  split per character); dimensions become `DIMENSION` entities with the saved
+  arrowheads, lines and value text in a `*ICD_D<n>` block; hatches become their
+  saved lines. Line width and style codes map to provisional widths and dash
+  patterns, palette colours stay in metadata, and undecoded record types are
+  counted (`ICD_2D_*` diagnostics, see docs/DIAGNOSTICS.md). The extra is kept
+  out of `all` because icadkit ships no Linux aarch64 wheel. `source.format`
+  and `EntitySource.format` accept `icd` (IR version unchanged).
+
 ## 0.15.2
 
 - DXF export: a text style names the font *file* AutoCAD looks for. Jw_cad,

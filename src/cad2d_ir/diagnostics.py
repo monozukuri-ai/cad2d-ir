@@ -44,6 +44,120 @@ class DiagnosticCode:
 
 
 DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
+    "ICD_2D_UNITS_ASSUMED_MM": DiagnosticCode(
+        "info",
+        "assumed",
+        "ICD import",
+        "iCAD SX stores view-local coordinates in millimetres; the sheet was composed in millimetres.",
+    ),
+    "ICD_2D_VIEW_PLACED": DiagnosticCode(
+        "info",
+        "normalized",
+        "ICD import",
+        "2D views were placed on the sheet by their saved placement records (origin and scale); `details.views` lists them.",
+    ),
+    "ICD_2D_PLACEMENT_MISSING": DiagnosticCode(
+        "warning",
+        "approximated",
+        "ICD import",
+        "A 2D view has no placement record in the 2D global view; it was placed at the sheet origin with the scale of its header.",
+    ),
+    "ICD_2D_REGISTERED_PART": DiagnosticCode(
+        "info",
+        "normalized",
+        "ICD import",
+        "The file is a registered part (a 2D library symbol); its view was read as the drawing at scale 1.",
+    ),
+    "ICD_2D_SCALE_APPLIED": DiagnosticCode(
+        "info",
+        "normalized",
+        "ICD import",
+        "The sheet was divided by the dominant view scale so the drawing is at real size; the denominator is `header.metadata.icd.paper_scale`.",
+    ),
+    "ICD_2D_MIXED_SCALES": DiagnosticCode(
+        "warning",
+        "approximated",
+        "ICD import",
+        "Views drawn at a scale other than the dominant one keep their place on the sheet but are not at real size; `details.scales` lists the other scales.",
+    ),
+    "ICD_2D_SHEET_DETECTED": DiagnosticCode(
+        "info",
+        "detected",
+        "ICD import",
+        "The paper was taken from the extent of the 2D global view (an ISO A size, or the smallest one fitted around the frame) or from the geometry bounds; it is `header.metadata.icd.sheet`.",
+    ),
+    "ICD_2D_NO_VIEWS": DiagnosticCode(
+        "warning",
+        "skipped",
+        "ICD import",
+        "The file has no 2D view (a 3D model only); the document is empty.",
+    ),
+    "ICD_2D_TYPE_UNSUPPORTED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "ICD import",
+        "Saved records of types icadkit does not decode (symbols, projection controls, legacy text layouts) were skipped; `details.types` counts them per raw type.",
+    ),
+    "ICD_2D_ENTITY_INVALID": DiagnosticCode(
+        "warning",
+        "skipped",
+        "ICD import",
+        "A saved entity with invalid or non-finite geometry was skipped.",
+    ),
+    "ICD_2D_TEXT_UNPLACED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "ICD import",
+        "A text run has no saved line origin (rotated or unobserved layout) and was skipped.",
+    ),
+    "ICD_2D_TEXT_LAYOUT_PARTIAL": DiagnosticCode(
+        "info",
+        "approximated",
+        "ICD import",
+        "A text with a partially qualified layout uses its saved origin and default metrics.",
+    ),
+    "ICD_2D_TEXT_VERTICAL_SPLIT": DiagnosticCode(
+        "info",
+        "approximated",
+        "ICD import",
+        "Vertical writing was split into one `TEXT` per character stacked downwards.",
+    ),
+    "ICD_2D_DIMENSION_FROM_SAVED": DiagnosticCode(
+        "info",
+        "flattened",
+        "ICD import",
+        "Dimensions were rebuilt from the items iCAD SX saved (arrowheads as solid fills, dimension and extension lines, the value text) in a block referenced by `definition.block`; the construction semantics are not decoded.",
+    ),
+    "ICD_2D_DIMENSION_PARTIAL": DiagnosticCode(
+        "warning",
+        "approximated",
+        "ICD import",
+        "Angle, leader and unobserved dimension layouts keep their saved items only; the kind is `GENERIC`.",
+    ),
+    "ICD_2D_HATCH_AS_LINES": DiagnosticCode(
+        "info",
+        "flattened",
+        "ICD import",
+        "Hatches were converted to the parallel lines iCAD SX saved (`metadata.icd.hatch`); the boundary and pattern are not kept as a `HATCH`.",
+    ),
+    "ICD_2D_LINE_WIDTH_ASSUMED": DiagnosticCode(
+        "info",
+        "assumed",
+        "ICD import",
+        "Line width codes were mapped to provisional millimetre widths (`LINE_WIDTH_MM`: 2 = 0.25 mm, 3 = 0.35 mm, …).",
+    ),
+    "ICD_2D_LINE_STYLE_UNKNOWN": DiagnosticCode(
+        "warning",
+        "approximated",
+        "ICD import",
+        "Entities with an unobserved line style code were drawn as continuous lines; `details.codes` counts them.",
+    ),
+    "ICD_2D_COLOR_PALETTE": DiagnosticCode(
+        "info",
+        "skipped",
+        "ICD import",
+        "Colours are iCAD SX palette indices (kept in `metadata.icd.color_index`) and were not mapped to RGB.",
+    ),
     "HPGL_SOURCE_DIAGNOSTIC": DiagnosticCode(
         "warning",
         "source_action",

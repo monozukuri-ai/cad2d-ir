@@ -1,6 +1,6 @@
 [project]
 name = "cad2d-ir"
-version = "0.15.2"
+version = "0.16.0"
 description = "Intermediate representation (IR) and importers for 2D CAD formats"
 readme = "README.md"
 license = "MIT"
@@ -9,7 +9,7 @@ authors = [
     { name = "neka-nat", email = "nekanat.stock@gmail.com" }
 ]
 requires-python = ">=3.10"
-keywords = ["cad", "dxf", "dwg", "dgn", "dwf", "exb", "caxa", "idw", "inventor", "jww", "jws", "mi", "pdf", "sxf", "geometry", "2d", "intermediate-representation"]
+keywords = ["cad", "dxf", "dwg", "dgn", "dwf", "exb", "caxa", "icd", "icad", "idw", "inventor", "jww", "jws", "mi", "pdf", "sxf", "geometry", "2d", "intermediate-representation"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
@@ -33,6 +33,9 @@ dgn = ["ezdgn>=0.3,<0.4"]
 dwf = ["ezdwf>=0.0.1,<0.1"]
 exb = ["ezexb>=0.2,<0.3"]
 hpgl = ["ezhpgl>=0.1.0a2,<0.2"]
+# icadkit ships wheels for Linux x86_64, Windows and macOS arm64 only; it is kept
+# out of `all` so that `cad2d-ir[all]` still installs on Linux aarch64.
+icad = ["icadkit>=0.3.9,<0.4"]
 # inventor-kit needs Python 3.11+; it is deliberately not part of `all` because it
 # declares cq-acis (CadQuery/OCCT) for IPT/IAM geometry, which the IDW path does not use.
 idw = ["inventor-kit>=0.6,<0.7; python_version >= '3.11'"]
