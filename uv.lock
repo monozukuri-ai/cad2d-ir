@@ -20,7 +20,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.16.1"
+version = "0.16.2"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
@@ -88,8 +88,8 @@ requires-dist = [
     { name = "ezdwf", marker = "extra == 'dwf'", specifier = ">=0.0.1,<0.1" },
     { name = "ezdwg", marker = "extra == 'all'", specifier = ">=0.11,<1" },
     { name = "ezdwg", marker = "extra == 'dwg'", specifier = ">=0.11,<1" },
-    { name = "ezexb", marker = "extra == 'all'", specifier = ">=0.2,<0.3" },
-    { name = "ezexb", marker = "extra == 'exb'", specifier = ">=0.2,<0.3" },
+    { name = "ezexb", marker = "extra == 'all'", specifier = ">=0.3,<0.4" },
+    { name = "ezexb", marker = "extra == 'exb'", specifier = ">=0.3,<0.4" },
     { name = "ezhpgl", marker = "extra == 'all'", specifier = ">=0.1.0a2,<0.2" },
     { name = "ezhpgl", marker = "extra == 'hpgl'", specifier = ">=0.1.0a2,<0.2" },
     { name = "ezjww", marker = "extra == 'all'", specifier = ">=0.2.6,<0.8" },
@@ -99,7 +99,7 @@ requires-dist = [
     { name = "ezsxf", marker = "extra == 'all'", specifier = ">=0.2,<0.4" },
     { name = "ezsxf", marker = "extra == 'sxf'", specifier = ">=0.2,<0.4" },
     { name = "icadkit", marker = "extra == 'icad'", specifier = ">=0.3.11,<0.4" },
-    { name = "inventor-kit", marker = "python_full_version >= '3.11' and extra == 'idw'", specifier = ">=0.6,<0.7" },
+    { name = "inventor-kit", marker = "python_full_version >= '3.11' and extra == 'idw'", specifier = ">=0.9.1,<0.10" },
     { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "pypdfium2", marker = "extra == 'all'", specifier = ">=4.30,<6" },
     { name = "pypdfium2", marker = "extra == 'pdf'", specifier = ">=4.30,<6" },
@@ -306,15 +306,15 @@ wheels = [
 
 [[package]]
 name = "ezexb"
-version = "0.2.0"
+version = "0.3.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b7/2d/4e9059231db073b42379bdde1dd4c5d43b106b9f2b8053c3bda00def00f8/ezexb-0.2.0.tar.gz", hash = "sha256:69c19015bc4fe0e9a9566f1f647fd760683a98c8b1c58c37a0fa962bd57d4e39", size = 189654, upload-time = "2026-10-19T12:12:44.923Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e2/3f/172b2fed54b5df16330908e109dd7fca967eec41d86ef9b139d76e634a7b/ezexb-0.3.0.tar.gz", hash = "sha256:ff1897398ae536a419df188a4b16684605d45b268c1bfa89550c5ff8013100fd", size = 198242, upload-time = "2026-10-28T05:53:28.28Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/93/d3/aedf4ffc2ee0276fab52998fc2ce1a746f8e5d1d90f2f9a65cccb89f3fd5/ezexb-0.2.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:eb615918be13b6e7c8c4677c3d628c2b491d0788d00721fdd715b4c213345985", size = 627280, upload-time = "2026-10-19T12:12:36.588Z" },
-    { url = "https://files.pythonhosted.org/packages/0e/8f/27f83c0388b7f179b47429c50902bd14ba804d8d8677a93e282b015fff8c/ezexb-0.2.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:8d146774bbee477f2c234716b3cd39228bd1ef57a441f0eb78a89d7521d6709c", size = 615987, upload-time = "2026-10-19T12:12:38.231Z" },
-    { url = "https://files.pythonhosted.org/packages/e6/2f/52ddbf7968a199040c94240bcd41bcf91171e5114774bbae1b85a7285338/ezexb-0.2.0-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:d9ec70cec0e5d978a831a278d492cee92141eaed8ee8dda2f7fad5f67bd69608", size = 654043, upload-time = "2026-10-19T12:12:40.049Z" },
-    { url = "https://files.pythonhosted.org/packages/c0/0e/51b3e5ed7b9d060d8d8d7ccaebaf0bee3f2599cd500a8354a31933212e76/ezexb-0.2.0-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:1a9fe10624a0d9011f0c4f2f66c850244fc06489436b02bcd30c6bcc14a6db95", size = 661025, upload-time = "2026-10-19T12:12:41.501Z" },
-    { url = "https://files.pythonhosted.org/packages/ff/f9/60a54fc7aad08fcc178f477ef6d6c9a7f5fcabc839bb14449d758a0fa337/ezexb-0.2.0-cp310-abi3-win_amd64.whl", hash = "sha256:99e626901f6c39e880872344f59facdaa86937e3549e7f2a2f1e278279808fad", size = 540376, upload-time = "2026-10-19T12:12:43.463Z" },
+    { url = "https://files.pythonhosted.org/packages/8b/12/68d301258ba23dbf3506a14562a54a93bb9200c6eb9f4132708aaed09c8b/ezexb-0.3.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:38b0b2718100dfbdba754f4672bae2c0a50684e359ef595f8c18e907638b5e29", size = 634674, upload-time = "2026-10-28T05:53:21.403Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/0a/ce9963d08c2657bcd5a29f781007f6e3d802f8afedd2411cccae640729dc/ezexb-0.3.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:8187c97bbe1d19e28ea0a95cc42f4e21ebc4d6558eefb1459e0973b3651a4c9a", size = 623398, upload-time = "2026-10-28T05:53:22.878Z" },
+    { url = "https://files.pythonhosted.org/packages/9f/09/4bef7e3993847594928b0df0f2862796f9a25cd7e7ac360980df64fd7f9f/ezexb-0.3.0-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:58879e3bc2c8b93a57945c8f73484471e2a2b6e18a38d71c734dcfb22cadf6b4", size = 660163, upload-time = "2026-10-28T05:53:24.248Z" },
+    { url = "https://files.pythonhosted.org/packages/64/d1/716705361d25191c989d7a2a85d02181197e045f59cdf551950630e1e538/ezexb-0.3.0-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:bbb75b4e7c89a922286c5b26f3f89a7755d2adf13290623a3d2fc8cf5513762b", size = 668000, upload-time = "2026-10-28T05:53:25.635Z" },
+    { url = "https://files.pythonhosted.org/packages/dd/15/e85015cbdccbb2149544800eaa2c65126d41c19aed6779b56e4ac95cb70f/ezexb-0.3.0-cp310-abi3-win_amd64.whl", hash = "sha256:833c06fee7f594e79f8a255e5ff90c23874cc0759a44ecc7cb44189eb21cd0a3", size = 547566, upload-time = "2026-10-28T05:53:26.984Z" },
 ]
 
 [[package]]
@@ -388,14 +388,15 @@ wheels = [
 
 [[package]]
 name = "inventor-kit"
-version = "0.6.0"
+version = "0.9.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ab/13/bc1278f3d597a7973a78958472a60904c00619a4200ec9872f84ed8737c1/inventor_kit-0.6.0.tar.gz", hash = "sha256:d1b70e4fd3afc9740c70d83977e585980c23e7606afc420af5e96dcdb7241c41", size = 895927, upload-time = "2026-09-25T14:08:55.616Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/db/f9/5faa8071b17c67ef2b41afeff8a35ec08115004fea0ec6dc41fa2a976071/inventor_kit-0.9.1.tar.gz", hash = "sha256:6740e654f3157aac984300caeda5b140a9ae4717c0e84425a3b1adc634cafe11", size = 1295512, upload-time = "2026-10-28T05:57:37.346Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/fd/8e/bdef1ca0fa9923b2ba1bd9cc2fd93c01734021bdb1dbb7279e72e87efa97/inventor_kit-0.6.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:3cf556ae159e6f15b1ae054ca48247e51a52fa72f30408a8b8a55f6e08d82274", size = 1822595, upload-time = "2026-09-25T14:08:48.337Z" },
-    { url = "https://files.pythonhosted.org/packages/13/0d/ec9244a49942271a0545d59288991ee87c045fc0f385fb6c405d318ece00/inventor_kit-0.6.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:b8d05044b469f26766b3f6d8650919bddea9b441869cb7d3114138e3d338b195", size = 1758826, upload-time = "2026-09-25T14:08:50.5Z" },
-    { url = "https://files.pythonhosted.org/packages/7b/e8/f5175de89aa0ca50c5a9ff0f26510d13bfb725ea89db8edc86fe6277c2c5/inventor_kit-0.6.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ebb995ecfd8f86637720a0bd67feb7233cd98310861f6e581d8bc382d9742b80", size = 1950326, upload-time = "2026-09-25T14:08:52.103Z" },
-    { url = "https://files.pythonhosted.org/packages/d9/99/36e2f682ce8ac45b889d462d431d53c2ef27c6cf80401dff9a5e727a66d2/inventor_kit-0.6.0-cp310-abi3-win_amd64.whl", hash = "sha256:881a38241879fbced5293b2f54291214237a6dfe59321054091a9c7fd8414fd4", size = 1704323, upload-time = "2026-09-25T14:08:54.109Z" },
+    { url = "https://files.pythonhosted.org/packages/15/75/65640c7cf910b33816d94f4984c591cda1a9f6f934342381a8d481348192/inventor_kit-0.9.1-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:161651514a7a1f9b8d19d63f87db64fac2a5defb4e908168ed855b58339f743f", size = 2718463, upload-time = "2026-10-28T05:57:27.543Z" },
+    { url = "https://files.pythonhosted.org/packages/98/17/670db4b9f0f25df5aed45e7dac6628601584036854fa5c729c6a8de3dc07/inventor_kit-0.9.1-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:52acaafe3a2a7260ee8d90e857965e4beb017ef3da901baa2e54663931e608ea", size = 2628127, upload-time = "2026-10-28T05:57:29.609Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/4a/5a3f7a456399042c9113c77a698e8386e8da1e120798f9503b90047ecc2d/inventor_kit-0.9.1-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b34602f487a98a767f2ba89e3603b1c5c0d34952b8a08f64805e6aa19e0e6d11", size = 2743103, upload-time = "2026-10-28T05:57:31.851Z" },
+    { url = "https://files.pythonhosted.org/packages/62/40/8b5d48e0127276b875b4ed994b59a99273ed8cf59c78157ed399d4542f6d/inventor_kit-0.9.1-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:b4e0f26d6f66368039eee31f388804f78da82e4fbc35fa2165d36407bda28e78", size = 2869649, upload-time = "2026-10-28T05:57:33.882Z" },
+    { url = "https://files.pythonhosted.org/packages/93/46/fe1204de807f85b4b36136b6dad5d381cadd2356bbb73856b4aeaa96d02d/inventor_kit-0.9.1-cp310-abi3-win_amd64.whl", hash = "sha256:1cccbf0f47cc6ff32bbe92297d91f056a313c7d6d8468b403a782fbb3b06b1b1", size = 2591235, upload-time = "2026-10-28T05:57:35.425Z" },
 ]
 
 [[package]]

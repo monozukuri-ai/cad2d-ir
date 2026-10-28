@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.16.2
+
+- EXB importer: requires `ezexb` 0.3, which reads every CAXA product build of
+  majors 10–18 with the rules of its major version (production drawings came
+  from eleven builds outside the verified set). A build outside that set is
+  reported as `EXB_PRODUCT_BUILD_UNVERIFIED` (info, `details.product_build`)
+  and no longer counts as a partial read; `EXB_PARTIAL_READ` stays for
+  drawings with records that could not be decoded.
+- IDW importer: the `idw` extra requires `inventor-kit` 0.9.1, which frames the
+  production generations without native captures (segment majors 15–18, 21, 22,
+  27 and 30) as candidate profiles and keeps sheets displayable where the field
+  checks used to fail closed (43 of 51 failed production drawings now read).
+
 ## 0.16.0
 
 - New ICD importer (`cad2d-ir[icad]`, backed by `icadkit` 0.3.10): reads the 2D

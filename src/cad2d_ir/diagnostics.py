@@ -558,6 +558,12 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "EXB import",
         "Dimensions were rebuilt from the display records CAXA cached (lines, arcs, arrow fills, text) in a block referenced by `definition.block`; the stored value and text are kept, the construction, associativity and tolerance semantics are not decoded.",
     ),
+    "EXB_PRODUCT_BUILD_UNVERIFIED": DiagnosticCode(
+        "info",
+        "assumed",
+        "EXB import",
+        "The CAXA product build was not verified against a native sample; `ezexb` read the stored entities with the rules of its major version (`details.product_build`).",
+    ),
     "EXB_TEXT_ALIGNMENT_ASSUMED": DiagnosticCode(
         "info",
         "assumed",

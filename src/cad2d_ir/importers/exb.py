@@ -1436,7 +1436,36 @@ def _append_summary_diagnostics(
                 details=dict(paper),
             )
         )
-    if not report.complete:
+    # ezexb 0.3 reads product builds it has not verified against a native sample with the
+    # rules of their major version and reports ``unverified_product_build``; that alone turns
+    # ``report.complete`` off, which is not a partial read (no record was skipped)
+    unverified_build = next(
+        (d for d in report.diagnostics if d.code == "unverified_product_build"), None
+    )
+    if unverified_build is not None:
+        diagnostics.append(
+            ImportDiagnostic(
+                code="EXB_PRODUCT_BUILD_UNVERIFIED",
+                severity="info",
+                message=str(unverified_build.message),
+                action="assumed",
+                details={"product_build": str(document.file_info.product_build.value)},
+            )
+        )
+    only_unverified_build = (
+        unverified_build is not None
+        and int(report.unsupported_entity_count) == 0
+        and all(
+            d.code
+            in (
+                "unverified_product_build",
+                "unsupported_dimension_semantics",
+                "unsupported_dimension_presentation",
+            )
+            for d in report.diagnostics
+        )
+    )
+    if not report.complete and not only_unverified_build:
         diagnostics.append(
             ImportDiagnostic(
                 code="EXB_PARTIAL_READ",

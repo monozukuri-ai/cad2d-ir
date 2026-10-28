@@ -379,3 +379,45 @@ def test_real_drawings_convert_validate_and_export() -> None:
         f"converted {converted} EXB files, {unsupported_builds} unsupported builds, "
         f"{dimensions_with_blocks} dimensions with cached presentation"
     )
+
+
+def test_unverified_product_build_is_an_info_not_a_partial_read(monkeypatch) -> None:
+    """ezexb 0.3 reads builds outside its verified set with the major's rules and flags them;
+    that must not look like a partial read unless records were actually skipped."""
+    import dataclasses
+
+    real_read = ezexb.read
+    template = real_read(
+        str(FIXTURES / "document-partial.exb"), strict=False
+    ).report.diagnostics[0]
+
+    def read_unverified(path, *args, **kwargs):
+        document = real_read(path, *args, **kwargs)
+        note = dataclasses.replace(
+            template,
+            code="unverified_product_build",
+            message="Product build 12.5.0.5302 was not verified against a native sample.",
+        )
+        report = dataclasses.replace(
+            document.report,
+            complete=False,
+            diagnostics=[*document.report.diagnostics, note],
+        )
+        return dataclasses.replace(document, report=report)
+
+    monkeypatch.setattr(ezexb, "read", read_unverified)
+    result = convert_exb_file_to_ir(FIXTURES / "document-10.exb")
+    codes = _codes(result)
+    assert codes["EXB_PRODUCT_BUILD_UNVERIFIED"] == 1
+    assert "EXB_PARTIAL_READ" not in codes
+    info = next(
+        d for d in result.diagnostics if d.code == "EXB_PRODUCT_BUILD_UNVERIFIED"
+    )
+    assert info.severity == "info" and info.action == "assumed"
+    assert info.details["product_build"]
+    assert result.document["source"]["metadata"]["exb"]["complete"] is False
+    # Records that could not be decoded still make it a partial read
+    result = convert_exb_file_to_ir(FIXTURES / "document-partial.exb")
+    codes = _codes(result)
+    assert codes["EXB_PRODUCT_BUILD_UNVERIFIED"] == 1
+    assert codes["EXB_PARTIAL_READ"] == 1
