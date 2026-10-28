@@ -74,6 +74,7 @@ sxf = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "packaging" },
     { name = "pytest" },
     { name = "pytest-cov" },
     { name = "ruff" },
@@ -108,6 +109,7 @@ provides-extras = ["dwg", "dgn", "dwf", "exb", "hpgl", "icad", "idw", "jww", "mi
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "packaging", specifier = ">=26.3" },
     { name = "pytest", specifier = ">=8.4.1" },
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "ruff", specifier = ">=0.8.0" },

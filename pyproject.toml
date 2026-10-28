@@ -67,6 +67,7 @@ override-dependencies = ["cq-acis; python_full_version < '0'"]
 
 [dependency-groups]
 dev = [
+    "packaging>=26.3",
     "pytest>=8.4.1",
     "pytest-cov>=6.0.0",
     "ruff>=0.8.0",
