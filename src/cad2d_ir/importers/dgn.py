@@ -494,10 +494,12 @@ def _convert_text(
     common: dict[str, Any],
     context: _ConversionContext,
 ) -> dict[str, Any]:
-    raw = _unpack_wide_text(bytes(getattr(source_entity, "text_bytes")))
+    text_bytes = bytes(getattr(source_entity, "text_bytes"))
+    raw = _unpack_wide_text(text_bytes)
     selected_encoding = context.text_encoding
+    utf16_text = _utf16_text(text_bytes)
     try:
-        text = raw.decode(selected_encoding)
+        text = utf16_text if utf16_text is not None else raw.decode(selected_encoding)
     except (LookupError, UnicodeDecodeError) as exc:
         if context.options.strict:
             raise ValueError(
@@ -887,13 +889,47 @@ def _dgn_text_samples(source_entities: Iterable[Any]) -> tuple[bytes, ...]:
         if _kind(source_entity) != "TEXT":
             continue
         try:
-            samples.append(
-                _unpack_wide_text(bytes(getattr(source_entity, "text_bytes")))
-            )
+            text_bytes = bytes(getattr(source_entity, "text_bytes"))
         except (AttributeError, TypeError, ValueError):
             # Leave malformed text handling to the normal per-entity conversion path.
             continue
+        if _utf16_text(text_bytes) is not None:
+            continue  # stored as UTF-16: no code page to probe
+        samples.append(_unpack_wide_text(text_bytes))
     return tuple(samples)
+
+
+_UTF16_BOMS = {b"\xff\xfe": "utf-16-le", b"\xfe\xff": "utf-16-be"}
+
+
+def _utf16_text(raw: bytes) -> str | None:
+    """Text stored as UTF-16 behind a byte order mark, or ``None``.
+
+    V8 drawings from some producers store a string as ``FF FE`` + UTF-16LE
+    (production files in Latvian, Czech and English, 2026). Decoding those bytes
+    with a code page keeps the mark as ``ÿþ`` and a NUL after every character,
+    which downstream writers reject. The payload must decode cleanly (even
+    length apart from a trailing NUL, no lone surrogates) and contain no control
+    characters other than tab and line ends; a code page string that merely
+    begins with those two bytes, or the ``FF FE`` + code-page word + 8-bit text
+    layout of V8 name linkages, fails that test and keeps the code page path.
+    """
+    encoding = _UTF16_BOMS.get(raw[:2])
+    if encoding is None:
+        return None
+    body = raw[2:]
+    if len(body) % 2:
+        if body[-1:] != b"\x00":
+            return None
+        body = body[:-1]
+    try:
+        text = body.decode(encoding)
+    except UnicodeDecodeError:
+        return None
+    text = text.rstrip("\x00")
+    if any(ch < " " and ch not in "\t\n\r" for ch in text) or "\ufffd" in text:
+        return None
+    return text
 
 
 _WIDE_TEXT_MARKER = b"\xff\xfd"

@@ -19,6 +19,7 @@ from cad2d_ir.importers.dgn import (
     _UNIT_MAP,
     _convert_ellipse,
     _unique_block_name,
+    _utf16_text,
     _without_repeated_closure,
 )
 from cad2d_ir.schema import validate_ir
@@ -371,6 +372,16 @@ def _convert_element(
 def _convert_text(element: Any, context: _V8ConversionContext) -> dict[str, Any]:
     data = element.data
     text = data.text
+    encoding = data.encoding
+    if data.text_bytes is not None and str(encoding or "").startswith("windows-1252"):
+        # ezdgn < 0.3.1 decoded "FF FE" + UTF-16 text through windows-1252, which keeps
+        # the mark as "ÿþ" and a NUL after every character (V8 production drawings in
+        # Latvian, Czech and English, 2026-10)
+        raw = bytes(data.text_bytes)
+        utf16 = _utf16_text(raw)
+        if utf16 is not None:
+            text = utf16
+            encoding = "utf-16-le" if raw[:2] == b"\xff\xfe" else "utf-16-be"
     if text is None:
         raise ValueError("TEXT has no decoded string")
     if data.origin is None:
@@ -382,8 +393,8 @@ def _convert_text(element: Any, context: _V8ConversionContext) -> dict[str, Any]
     halign, valign = _TEXT_ALIGNMENTS.get(justification, ("left", "baseline"))
     style_name = f"DGN_FONT_{font_id}"
     context.text_styles.setdefault(style_name, {"font": style_name, "height": height})
-    if data.encoding:
-        context.text_encodings.add(str(data.encoding))
+    if encoding:
+        context.text_encodings.add(str(encoding))
 
     common = _element_common(element, context)
     metadata = common["metadata"]["dgn"]
@@ -392,7 +403,7 @@ def _convert_text(element: Any, context: _V8ConversionContext) -> dict[str, Any]
             "font_id": font_id,
             "justification": justification,
             "editable_fields": int(data.editable_fields or 0),
-            "text_encoding": data.encoding,
+            "text_encoding": encoding,
         }
     )
     if data.text_bytes is not None:

@@ -475,3 +475,41 @@ def test_shared_cell_definitions_become_blocks_and_instances_affine_inserts() ->
     ]
     assert len(unresolved) == 1
     validate_ir(result.document, strict_jsonschema=True)
+
+
+def test_dgn_utf16_text_with_a_byte_order_mark_is_decoded() -> None:
+    # 本番の V8 実ファイル(ラトビア語・チェコ語・英語の 3 件、2026-10-22〜27): 文字列が FF FE +
+    # UTF-16LE で入っていた。コードページで読むと "ÿþP\x00\x01\x01r\x00…" になり、DWG 書き出しが
+    # 「text is not representable in DWG codepage 30」で落ちていた
+    latvian = b"\xff\xfe" + "Pārskata plāns".encode("utf-16-le")
+    czech = (
+        b"\xff\xfe" + "Čerpací šachta".encode("utf-16-le") + b"\x00"
+    )  # 末尾 NUL 付き
+    drawing = _Drawing(
+        (
+            _text_entity(1, b"1FL"),
+            _text_entity(2, latvian),
+            _text_entity(3, czech),
+            _text_entity(4, "寸法".encode("cp932")),
+        ),
+        {},
+    )
+
+    result = dgn_drawing_to_ir(drawing)
+
+    texts = [e["text"] for e in result.document["entities"] if e["kind"] == "TEXT"]
+    assert texts == ["1FL", "Pārskata plāns", "Čerpací šachta", "寸法"]
+    # UTF-16 の文字列はコードページの推定に使わない(cp932 のまま)
+    assert result.statistics["encoding_source"] == "cp932-probe"
+    assert "DGN_TEXT_DECODE_REPLACED" not in {d.code for d in result.diagnostics}
+
+
+def test_dgn_bytes_that_merely_start_with_ff_fe_stay_on_the_code_page_path() -> None:
+    from cad2d_ir.importers.dgn import _utf16_text
+
+    # ezdgn の名前リンケージの約束(FF FE + コードページ語 + 8 ビット文字)や奇数長は UTF-16 ではない
+    assert _utf16_text(b"\xff\xfe\xe4\x04ABC") is None
+    assert _utf16_text(b"\xff\xfeAB\x07\x00") is None  # 制御文字(BEL)を含む
+    assert _utf16_text(b"\xff\xfe") == ""
+    assert _utf16_text(b"\xfe\xff" + "Plan".encode("utf-16-be")) == "Plan"
+    assert _utf16_text(b"plain") is None

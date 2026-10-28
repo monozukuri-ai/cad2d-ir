@@ -554,3 +554,51 @@ def test_v8_fixture_level_table_names_the_default_level() -> None:
     layer = result.document["tables"]["layers"]["DGN_LEVEL_64"]
     assert layer["metadata"]["dgn"]["name"] == "Default"
     assert layer["metadata"]["dgn"]["line_weight"] == 0
+
+
+def test_v8_text_stored_as_utf16_behind_a_byte_order_mark_is_decoded() -> None:
+    # ezdgn 0.3.0 は "FF FE" + UTF-16LE の文字列(本番の V8 実ファイル 3 件、2026-10-22〜27)を
+    # windows-1252 で読み、"ÿþP\x00\x01\x01r\x00…" にしていた。cad2d-ir 側でも生のバイト列から
+    # 救う(0.3.1 は ezdgn 自身が utf-16-le として読む)
+    raw = b"\xff\xfe" + "Pārskata plāns".encode("utf-16-le")
+    text = _element(
+        "TEXT",
+        4,
+        17,
+        index=0,
+        text=raw.decode("cp1252", errors="replace"),
+        text_bytes=raw,
+        encoding="windows-1252",
+        origin=_point(1.0, 2.0),
+        height_master=2.0,
+        width_master=1.5,
+        font_id=3,
+        justification=8,
+        rotation_degrees=0.0,
+        editable_fields=0,
+    )
+    result = dgn_v8_document_to_ir(_document(_Model((text,))))
+
+    (entity,) = [e for e in result.document["entities"] if e["kind"] == "TEXT"]
+    assert entity["text"] == "Pārskata plāns"
+    assert entity["metadata"]["dgn"]["text_encoding"] == "utf-16-le"
+    assert result.statistics["text_encodings"] == ["utf-16-le"]
+    # 0.3.1 以降の ezdgn が既に utf-16-le として読んだものはそのまま
+    decoded = _element(
+        "TEXT",
+        5,
+        17,
+        index=0,
+        text="Pārskata plāns",
+        text_bytes=raw,
+        encoding="utf-16-le",
+        origin=_point(1.0, 2.0),
+        height_master=2.0,
+        width_master=1.5,
+        font_id=3,
+        justification=8,
+        rotation_degrees=0.0,
+        editable_fields=0,
+    )
+    result = dgn_v8_document_to_ir(_document(_Model((decoded,))))
+    assert result.document["entities"][0]["text"] == "Pārskata plāns"

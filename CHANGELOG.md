@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.16.3
+
+- DGN importer: text stored as UTF-16 behind a byte order mark (`FF FE` +
+  UTF-16LE, seen in V8 production drawings in Latvian, Czech and English) is
+  decoded as such instead of through the drawing's code page, which kept the
+  mark as `ÿþ` and a NUL after every character (the DWG writer then rejected
+  the text). Such strings do not take part in the code page probe.
+- iCAD SX importer: the `icad` extra requires `icadkit` 0.3.12, which reads
+  leader notes whose drawn leader has more than three points and keeps one
+  undecodable record from failing the whole drawing.
+
 ## 0.16.2
 
 - EXB importer: requires `ezexb` 0.3, which reads every CAXA product build of
