@@ -251,3 +251,31 @@ saved views (see [the ICD adapter](IMPORTERS.md#icad-sx-adapter)).
 | `ICD_2D_LINE_WIDTH_ASSUMED` | info | assumed | Line width codes were mapped to provisional millimetre widths (`LINE_WIDTH_MM`: 2 = 0.25 mm, 3 = 0.35 mm, …). |
 | `ICD_2D_LINE_STYLE_UNKNOWN` | warning | approximated | Entities with an unobserved line style code were drawn as continuous lines; `details.codes` counts them. |
 | `ICD_2D_COLOR_PALETTE` | info | skipped | Colours are iCAD SX palette indices (kept in `metadata.icd.color_index`) and were not mapped to RGB. |
+
+## eDrawings diagnostics
+
+`cad2d-ir[edrawings]` composes the sheets of an eDrawings drawing (`.edrw`) from
+the stored segment tree (see [the eDrawings adapter](IMPORTERS.md#edrawings-adapter)).
+
+| Code | Severity | Action | Condition |
+|---|---|---|---|
+| `EDRW_UNITS_FROM_PROFILE` | info | normalized | The stored unit came from edrawings-kit's drawing-plane profile (the root `length` option and the header unit words); the sheet was composed in millimetres (`details.stored_unit`, `details.mm_per_unit`). |
+| `EDRW_UNITS_FROM_SHEET` | info | normalized | The writer stored a sheet size (`fit width` / `fit height`), which eDrawings writers give in metres; coordinates were read as metres. |
+| `EDRW_UNITS_ASSUMED` | warning | assumed | Neither the plane profile nor a sheet size declares the stored unit; the unit (metres, inches or millimetres) whose scaled extent best fills a standard paper was assumed (`details.stored_unit`). |
+| `EDRW_SHEET_DETECTED` | info | detected | The paper of the main sheet was taken from the writer's sheet size (orientation and origin from the drawn frame) or fitted as the smallest standard paper around the geometry; it is `header.metadata.edrw.sheet` (`details.source`). |
+| `EDRW_SHEETS_AS_LAYOUTS` | info | preserved | The drawing has several sheets; the first drawing sheet is the model space and the others are kept as `layouts` with their own paper (`details.sheets`). |
+| `EDRW_MODEL_SHEET_SKIPPED` | info | skipped | The writer's `Model` sheet (the DXF model space the DXF/DWG Reader keeps beside the layouts) was not drawn because the file has layout sheets. |
+| `EDRW_VIEW_PLACED` | info | normalized | Drawing views were placed on the sheet by their stored modelling matrices (scale and offset of the `2dmodel` segment); `details.views` lists them. |
+| `EDRW_SCALE_APPLIED` | info | normalized | The sheet was divided by the dominant view scale so the drawing is at real size; the denominator is `header.metadata.edrw.paper_scale`. |
+| `EDRW_MIXED_SCALES` | warning | approximated | Views drawn at a scale other than the dominant one keep their place on the sheet but are not at real size; `details.scales` lists the other scales. |
+| `EDRW_VIEW_3D_SKIPPED` | info | skipped | Elements of the projected 3D models (`3dmodel` subtrees of the views) are not part of the 2D sheet and were not drawn; `details.count` counts them. |
+| `EDRW_HIDDEN_SKIPPED` | info | skipped | Elements hidden in eDrawings (visibility off inside the sheet: hole markers, view names, reference paths) were not drawn; `details.count` counts them. |
+| `EDRW_DIMENSION_AS_LINES` | info | flattened | Dimensions and annotations are the lines, arrowheads and text eDrawings saved; the drawing has no editable `DIMENSION` entities. |
+| `EDRW_TEXT_AS_GEOMETRY` | info | preserved | Text the writer stroked into line work (`textasgeom` segments, the DXF/DWG Reader's default) stays `LWPOLYLINE`s; it is not searchable text. `details.count` counts the strokes. |
+| `EDRW_TEXT_HEIGHT_ASSUMED` | info | assumed | Texts without a stored font size, or with a size in an unsupported unit, are drawn 2.5 mm high on paper. |
+| `EDRW_TEXT_ANCHOR_ASSUMED` | info | approximated | Text anchors were read with the convention eDrawings' writers use (`center_right` = the text lies to the right of the point, on its baseline), checked against the source DXF of the DXF/DWG Reader; the stored anchor is `metadata.edrw.anchor`. |
+| `EDRW_POLYGON_AS_HATCH` | info | normalized | Polygons whose faces are shown (`filled` segments: arrowheads, filled glyphs) are solid `HATCH`es; outlined polygons are closed `LWPOLYLINE`s. `details.count` counts the hatches. |
+| `EDRW_LINE_WIDTH_ASSUMED` | info | assumed | Relative line weights above the default were mapped to millimetre widths (2 = 0.5 mm, …, capped at 1 mm). |
+| `EDRW_ELEMENT_UNSUPPORTED` | info | skipped | Elements of kinds the importer does not draw (images, meshes, splines) were skipped; `details.kinds` lists them. |
+| `EDRW_ENTITY_INVALID` | warning | skipped | An element with invalid or non-finite geometry (a circle through collinear points, a line without two points) was skipped. |
+| `EDRW_NO_GEOMETRY` | error | skipped | No 2D sheet geometry could be read (an old eDrawings stream edrawings-kit does not decode, or a file without sheets); the document is empty. |

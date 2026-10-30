@@ -80,6 +80,7 @@ def build_parser() -> argparse.ArgumentParser:
             "dwg",
             "dgn",
             "dwf",
+            "edrw",
             "exb",
             "hpgl",
             "icd",

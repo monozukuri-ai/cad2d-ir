@@ -542,6 +542,38 @@ def convert_icad_file_to_ir(
     )
 
 
+def convert_edrw_file_to_ir(
+    path: str | Path,
+    *,
+    ir_version: str = CURRENT_IR_VERSION,
+    validate: bool = True,
+    strict: bool = True,
+    curve_segments: int = 96,
+    entity_provenance: bool = True,
+) -> ImportResult:
+    """Convert an eDrawings drawing (.edrw) directly to IR.
+
+    Requires the ``edrawings`` extra (``edrawings-kit`` 0.2 or later). The sheets
+    of the drawing are composed in paper millimetres from the stored segment tree
+    and modelling matrices; the first drawing sheet is the model space, further
+    sheets are ``layouts``, and the drawing is divided by the dominant view scale
+    so the main view is at real size (``header.metadata.edrw``). The 3D models the
+    views project are not drawn.
+    """
+    from cad2d_ir.importers.edrawings import convert_edrw_file_to_ir as import_edrw
+
+    return import_edrw(
+        path,
+        options=ImportOptions(
+            ir_version=ir_version,
+            validate=validate,
+            strict=strict,
+            curve_segments=curve_segments,
+            entity_provenance=entity_provenance,
+        ),
+    )
+
+
 def convert_idw_file_to_ir(
     path: str | Path,
     *,

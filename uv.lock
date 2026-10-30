@@ -20,7 +20,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.16.2"
+version = "0.17.0"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
@@ -46,6 +46,9 @@ dwf = [
 ]
 dwg = [
     { name = "ezdwg" },
+]
+edrawings = [
+    { name = "edrawings-kit" },
 ]
 exb = [
     { name = "ezexb" },
@@ -83,6 +86,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "edrawings-kit", marker = "extra == 'edrawings'", specifier = ">=0.2,<0.3" },
     { name = "ezdgn", marker = "extra == 'all'", specifier = ">=0.3,<0.4" },
     { name = "ezdgn", marker = "extra == 'dgn'", specifier = ">=0.3,<0.4" },
     { name = "ezdwf", marker = "extra == 'all'", specifier = ">=0.0.1,<0.1" },
@@ -99,13 +103,13 @@ requires-dist = [
     { name = "ezmi2d", marker = "extra == 'mi'", specifier = ">=0.2,<0.3" },
     { name = "ezsxf", marker = "extra == 'all'", specifier = ">=0.2,<0.4" },
     { name = "ezsxf", marker = "extra == 'sxf'", specifier = ">=0.2,<0.4" },
-    { name = "icadkit", marker = "extra == 'icad'", specifier = ">=0.3.11,<0.4" },
+    { name = "icadkit", marker = "extra == 'icad'", specifier = ">=0.3.12,<0.4" },
     { name = "inventor-kit", marker = "python_full_version >= '3.11' and extra == 'idw'", specifier = ">=0.9.1,<0.10" },
     { name = "jsonschema", specifier = ">=4.23.0" },
     { name = "pypdfium2", marker = "extra == 'all'", specifier = ">=4.30,<6" },
     { name = "pypdfium2", marker = "extra == 'pdf'", specifier = ">=4.30,<6" },
 ]
-provides-extras = ["dwg", "dgn", "dwf", "exb", "hpgl", "icad", "idw", "jww", "mi", "pdf", "sxf", "all"]
+provides-extras = ["dwg", "dgn", "dwf", "edrawings", "exb", "hpgl", "icad", "idw", "jww", "mi", "pdf", "sxf", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -259,6 +263,17 @@ toml = [
 ]
 
 [[package]]
+name = "edrawings-kit"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/9c/81/07e3a5496738a6fc56bdcc9807e21092f8090705aea6520f2d8dd4b2f184/edrawings_kit-0.2.0.tar.gz", hash = "sha256:f120c229610c98aa65b5e12f35405022af37d68777adcd5c230f920319d003f3", size = 372905, upload-time = "2026-10-30T05:16:41.839Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/45/10/1630a760957186707d9364f3aba7e0519728790ff58d8a0abed42e4d0c3c/edrawings_kit-0.2.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:9f4c5912dff4d7f5a69c0397241df6bd467dee5135d7ff4704e8fa032db4f56f", size = 1311326, upload-time = "2026-10-30T05:16:36.791Z" },
+    { url = "https://files.pythonhosted.org/packages/b8/96/0c8854f265bfc98cf8983763a6d35839d7627416695000ac57806895e911/edrawings_kit-0.2.0-cp310-abi3-manylinux_2_34_x86_64.whl", hash = "sha256:80e9afd40b70b1e4a8ed0b0c3eea1b054e5e3f14cb79c48f40201d1127719f2f", size = 1403262, upload-time = "2026-10-30T05:16:38.519Z" },
+    { url = "https://files.pythonhosted.org/packages/48/08/af65c0af52c9b4807b1fd94a47f65a5cb559fd512f0d3f7dea98a51ed827/edrawings_kit-0.2.0-cp310-abi3-win_amd64.whl", hash = "sha256:f8cef70beacd19b19e86c9bfa2cb5beed1a19ded21e09d54722128662b5ce2a3", size = 1151129, upload-time = "2026-10-30T05:16:40.256Z" },
+]
+
+[[package]]
 name = "exceptiongroup"
 version = "1.3.1"
 source = { registry = "https://pypi.org/simple" }
@@ -370,13 +385,13 @@ wheels = [
 
 [[package]]
 name = "icadkit"
-version = "0.3.11"
+version = "0.3.12"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/cc/6e/bbad5b4ad83306f89bf3a71f43d10618846a1ed2113431f740509bac0354/icadkit-0.3.11.tar.gz", hash = "sha256:5ab1752df4d3456278ea080396aa8fe82349d4c526d7d348f2a2a3fa99099b4c", size = 513848, upload-time = "2026-10-27T08:36:38.02Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e0/bb/68b85286edfaa2dcc0f8ed53eee9ad1daa30d97a4c50a9e31cc25049c80b/icadkit-0.3.12.tar.gz", hash = "sha256:072627aa554db191101af12ef2ed07599ad837b9a7cc3ac89ebcaba01798a57e", size = 515209, upload-time = "2026-10-28T06:56:08.832Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/86/2d/1b4d8a72a8e331ce605abd9c925f2ede4999935731464209f6050592a802/icadkit-0.3.11-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:b47cac47c666e9d2d6da622931f636e692695f0b6b295d72e03ce026b89e71b5", size = 940841, upload-time = "2026-10-27T08:36:32.802Z" },
-    { url = "https://files.pythonhosted.org/packages/b0/9e/973d523e884d2208725cafe658c13f355d39a6a5849c0ea50de5dc22cef6/icadkit-0.3.11-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:07e0d189e2203381242bd49287559f4a3925b8993f0f5f9a452443865d8010da", size = 1028842, upload-time = "2026-10-27T08:36:34.535Z" },
-    { url = "https://files.pythonhosted.org/packages/e3/7b/956347fca99bb5e7c83be413ef8a92eb7ea69347113ea88a449517d96af3/icadkit-0.3.11-cp310-abi3-win_amd64.whl", hash = "sha256:f306fc6a4bc14f8813eb412bd5970ac53e13811d78ce8dfcf59dc77a52d97874", size = 849717, upload-time = "2026-10-27T08:36:36.519Z" },
+    { url = "https://files.pythonhosted.org/packages/96/02/5598d0c246bcbac134fb16e50c6a226b86419e67c33d687723d4f533cbef/icadkit-0.3.12-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:68afcd66b348ec60775f2c5d9ccb47e931ffc5a1ba20ee59620220024a23b418", size = 941075, upload-time = "2026-10-28T06:56:03.885Z" },
+    { url = "https://files.pythonhosted.org/packages/08/5e/c83f0a776728a928ef03c02dcf97f650c282745ef2cb4e89c5dd2e16cd23/icadkit-0.3.12-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:ae0e24f033f0ce3d3e574e321016120e99884d8fa0156cf2cd653c2911ce75fd", size = 1029212, upload-time = "2026-10-28T06:56:05.633Z" },
+    { url = "https://files.pythonhosted.org/packages/44/a5/54d737ab6470929f57807592067ef0738cae185d31d5ad5a45faf16b9b6e/icadkit-0.3.12-cp310-abi3-win_amd64.whl", hash = "sha256:1b05526d4e69ac937f51f541091963ffd09f3b3eda6be2f52e28ccece4802452", size = 850157, upload-time = "2026-10-28T06:56:07.126Z" },
 ]
 
 [[package]]

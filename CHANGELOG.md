@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.17.0
+
+- New EDRW importer (`cad2d-ir[edrawings]`, backed by `edrawings-kit` 0.2):
+  reads the drawing sheets of an eDrawings file (`convert_edrw_file_to_ir`,
+  `edrawings_document_to_ir`, `--format edrw`, suffix detection). Each sheet is
+  composed from the stored segment tree and modelling matrices; the first
+  drawing sheet is the model space and further sheets are `layouts` with their
+  own paper (`EDRW_SHEETS_AS_LAYOUTS`), and the sheet is divided by the
+  dominant view scale so the IR is at real size (`EDRW_VIEW_PLACED`,
+  `EDRW_SCALE_APPLIED`, `header.metadata.edrw`). Lines, polylines, circles,
+  arcs, markers and texts map one to one; filled polygons (arrowheads, glyphs)
+  become solid hatches and outlined ones closed polylines; text the writer
+  stroked into line work stays geometry (`EDRW_TEXT_AS_GEOMETRY`); dimensions
+  are the lines and text eDrawings saved. Units come from edrawings-kit's
+  drawing-plane profile, the writer's sheet size or a paper fit
+  (`EDRW_UNITS_*`); visibility is evaluated inside the sheet, as eDrawings
+  shows it; the projected 3D models are skipped. The `edrw` source format is
+  added to the schema.
+
 ## 0.16.3
 
 - DGN importer: text stored as UTF-16 behind a byte order mark (`FF FE` +

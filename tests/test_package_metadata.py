@@ -20,6 +20,7 @@ ADAPTER_PACKAGES = {
     "dwg": "ezdwg",
     "dgn": "ezdgn",
     "dwf": "ezdwf",
+    "edrawings": "edrawings-kit",
     "exb": "ezexb",
     "hpgl": "ezhpgl",
     "icad": "icadkit",
@@ -30,7 +31,7 @@ ADAPTER_PACKAGES = {
     "sxf": "ezsxf",
 }
 # These adapters require explicit opt-in for licensing/dependency or platform reasons.
-EXPLICIT_EXTRAS = {"idw", "icad"}
+EXPLICIT_EXTRAS = {"idw", "icad", "edrawings"}
 
 
 @pytest.fixture(scope="module")

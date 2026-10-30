@@ -8,6 +8,7 @@ from cad2d_ir.api import (
     convert_dwg_file_to_ir,
     convert_dxf_file_to_ir,
     convert_dxf_text_to_ir,
+    convert_edrw_file_to_ir,
     convert_exb_file_to_ir,
     convert_file_to_ir,
     convert_hpgl_file_to_ir,
@@ -49,7 +50,7 @@ from cad2d_ir.importers import (
 )
 from cad2d_ir.schema import IRValidationError, load_schema, validate_ir
 
-__version__ = "0.16.3"
+__version__ = "0.17.0"
 
 __all__ = [
     "__version__",
@@ -74,6 +75,7 @@ __all__ = [
     "convert_dwf_file_to_ir",
     "convert_dxf_file_to_ir",
     "convert_dxf_text_to_ir",
+    "convert_edrw_file_to_ir",
     "convert_exb_file_to_ir",
     "convert_file_to_ir",
     "convert_hpgl_file_to_ir",

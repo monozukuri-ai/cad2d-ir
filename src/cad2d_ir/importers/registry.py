@@ -20,6 +20,7 @@ _SUFFIX_TO_FORMAT = {
     ".dgn": "dgn",
     ".dwf": "dwf",
     ".dwfx": "dwf",
+    ".edrw": "edrw",
     ".exb": "exb",
     ".idw": "idw",
     ".hpgl": "hpgl",
@@ -160,6 +161,11 @@ def import_file(
         from cad2d_ir.importers.icad import convert_icad_file_to_ir
 
         return convert_icad_file_to_ir(source_path, options=import_options)
+
+    if normalized_format == "edrw":
+        from cad2d_ir.importers.edrawings import convert_edrw_file_to_ir
+
+        return convert_edrw_file_to_ir(source_path, options=import_options)
 
     if normalized_format == "idw":
         from cad2d_ir.importers.idw import convert_idw_file_to_ir

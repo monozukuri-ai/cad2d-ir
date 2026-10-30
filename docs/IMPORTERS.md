@@ -590,3 +590,44 @@ and byte range and `metadata.icd` the raw attribute codes when
 `entity_provenance` is on. The fixtures in `tests/data/icad` are written with
 icadkit's `DrawingWriter`; iCAD SX-authored drawings are run from a local
 directory through `CAD2D_IR_ICAD_FIXTURES`.
+
+## eDrawings adapter
+
+`convert_edrw_file_to_ir` / `edrawings_document_to_ir` read an eDrawings
+drawing (`.edrw`) through `edrawings-kit` (`cad2d-ir[edrawings]`, 0.2 or later).
+The file must be an eDrawings container: a HOOPS Stream File (`;; HSF V…`), a
+ZIP whose first entry is `eModel`, or the prefixed ZIP of older writers
+(`is_edrw_signature`); anything else raises `ImporterError`. The parts and
+assemblies of the same family (`.eprt`, `.easm`) are read by
+`cad3d-ir-edrawings`, not here. Only the 2D sheet is drawn: the `3dmodel`
+subtrees that hold the models the views project are skipped
+(`EDRW_VIEW_3D_SKIPPED`).
+
+| eDrawings | IR | Notes |
+| --- | --- | --- |
+| `sheetN` segments under the root | model space + `layouts` | the first sheet with 2D geometry is the model space, further sheets are `layouts` with their own paper (`EDRW_SHEETS_AS_LAYOUTS`); the `Model` sheet the DXF/DWG Reader keeps beside the layouts is skipped when layouts exist (`EDRW_MODEL_SHEET_SKIPPED`). Sheet names come from the `name` option |
+| `viewN` / `borderviewN` → `2dmodel` | sheet composition | points go through the chain of modelling matrices (row vectors, `p · M_node · … · M_root`); the `2dmodel` matrix of a SOLIDWORKS view carries its scale and offset (`EDRW_VIEW_PLACED`), the DXF/DWG Reader stores sheet coordinates directly |
+| stored unit | millimetres | the drawing-plane profile of edrawings-kit (`EDRW_UNITS_FROM_PROFILE`), else the writer's `fit width` / `fit height` (metres, `EDRW_UNITS_FROM_SHEET`), else the unit whose extent best fills a standard paper (`EDRW_UNITS_ASSUMED`); `header.metadata.edrw.units` |
+| the sheet | real-size millimetres | the sheet is divided by the dominant view scale (most entities), `header.metadata.edrw.paper_scale` (`EDRW_SCALE_APPLIED`, `EDRW_MIXED_SCALES` for other scales); the paper is the writer's sheet size with the orientation and origin of the drawn frame, or the smallest standard paper (ISO/JIS for millimetre drawings, ANSI/Arch for inch drawings) around the geometry, `header.metadata.edrw.sheet` (`EDRW_SHEET_DETECTED`) |
+| visibility | shown / hidden | evaluated inside the sheet: writers save sheets other than the shown one (the DXF/DWG Reader: all of them) with everything off and eDrawings turns the shown sheet on; segments switched off inside the sheet (hole markers, view names, reference paths) are not drawn (`EDRW_HIDDEN_SKIPPED`) |
+| line, polyline, poly_polyline | `LINE`, `LWPOLYLINE` | one `LWPOLYLINE` per part of a poly_polyline; the writer's 1 µm gap marks (lines shorter than 0.005 mm) are dropped |
+| polygon | solid `HATCH` / closed `LWPOLYLINE` | filled when a segment inside the sheet turns faces on (`filled`: arrowheads, filled glyphs), otherwise an outline (`EDRW_POLYGON_AS_HATCH`) |
+| circle, circular_arc (three points) | `CIRCLE`, `ARC` | the circle through the three points; arcs run counter-clockwise from the first to the third point |
+| marker | `POINT` | |
+| text | `TEXT` | height from the `text_font` record in force (world-space sizes × the view scale; points × 25.4/72), else 2.5 mm (`EDRW_TEXT_HEIGHT_ASSUMED`); the anchor is read with the convention eDrawings' writers use (`center_right` = the text lies to the right of the point, on its baseline; checked against the source DXF of the DXF/DWG Reader) and kept in `metadata.edrw.anchor` (`EDRW_TEXT_ANCHOR_ASSUMED`); style `EDRW`, font name in `metadata.edrw.font` |
+| `textasgeom` segments | `LWPOLYLINE`s | text the writer stroked into line work (the DXF/DWG Reader's default) stays geometry (`EDRW_TEXT_AS_GEOMETRY`) |
+| dimensions | lines, arrowheads, text | eDrawings saves annotations as drawn; there are no editable `DIMENSION`s (`EDRW_DIMENSION_AS_LINES`) |
+| colour / weight / layer | `color`, `lineweight_mm`, `layer` | from the segment name (`c<COLORREF>t<thickness>` of the DXF/DWG Reader, `color<aci>thickness<n>` of old writers) or the colour record of the geometry kind; white and black are colour 7; relative line weights above 1 map to millimetres (`EDRW_LINE_WIDTH_ASSUMED`); layers from the `layername` option (`layer-1` is layer `0`) |
+| images, meshes, other kinds | skipped | `EDRW_ELEMENT_UNSUPPORTED` |
+
+Entity ids are `EDRW_E…`; `source` keeps the kit's primitive and record ids and
+the sheet when `entity_provenance` is on. `source.version` names the HSF version
+and the writer (`eDrawings (HSF 19.10, DXF/DWG Reader AddIn (34.4.1.0003))`);
+`header.metadata.edrw` has the units, the paper, every sheet with its role and
+views, and the view scales. Streams edrawings-kit does not decode (eDrawings
+2008-era HSF 10.x) yield an empty document with `EDRW_NO_GEOMETRY`.
+
+The fixtures in `tests/data/edrw` are edrawings-kit's self-authored drawings
+(project-authored DXFs exported by eDrawings 2026 SP4.1); eDrawings-authored
+corpus files are run from a local directory through `CAD2D_IR_EDRW_FIXTURES`.
+
