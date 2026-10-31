@@ -458,3 +458,64 @@ def test_image_entities_are_skipped_for_r12_with_a_dedicated_diagnostic() -> Non
     assert "\nLINE\n" in result.dxf_text
     image_entry = next(entry for entry in result.entity_map if entry["ir_id"] == "I1")
     assert image_entry["reason_code"] == "DXF_IMAGE_SKIPPED"
+
+
+def _jww_dimension_document(sxf_mode: int | None, *, angle: float = 0.0) -> dict:
+    geometry = {
+        "line": {"start_x": 0, "start_y": 5, "end_x": 10, "end_y": 5},
+        "text": {
+            "start_x": 4,
+            "start_y": 6,
+            "size_y": 2.5,
+            "angle": angle,
+            "content": "10",
+        },
+        # Saved stale coordinates, far outside the drawing
+        "aux_lines": [
+            {"start_x": -600, "start_y": 1000, "end_x": -600, "end_y": 1000},
+            {"start_x": -600, "start_y": 1000, "end_x": -600, "end_y": 1000},
+        ],
+        "aux_points": [{"x": -600, "y": 1000}] * 4,
+    }
+    if sxf_mode is not None:
+        geometry["sxf_mode"] = sxf_mode
+    return {
+        "format": "cad2d-ir",
+        "version": "0.2.0",
+        "header": {"units": "mm", "angle_unit": "deg", "coord_space": "world"},
+        "entities": [
+            {
+                "id": "D1",
+                "kind": "DIMENSION",
+                "dim_kind": "GENERIC",
+                "definition": {"text": "10", "source_geometry": geometry},
+            }
+        ],
+    }
+
+
+def test_auxiliaries_of_a_non_sxf_jww_dimension_are_not_written() -> None:
+    """Mode 0 keeps zeros or stale coordinates in the auxiliary slots."""
+    result = convert_ir_to_dxf_text(_jww_dimension_document(0))
+    reparsed = dxf_to_ir(result.dxf_text, validate=True)
+    assert [entity["kind"] for entity in reparsed["entities"]] == ["LINE", "TEXT"]
+    assert reparsed["entities"][0]["p1"] == pytest.approx([0.0, 5.0])
+    assert "-600.0" not in result.dxf_text
+
+
+@pytest.mark.parametrize("sxf_mode", [1, None])
+def test_auxiliaries_of_other_jww_dimensions_are_written(sxf_mode: int | None) -> None:
+    """SXF mode uses them; a file older than version 4.20 has no mode to go by."""
+    result = convert_ir_to_dxf_text(_jww_dimension_document(sxf_mode))
+    kinds = [entity["kind"] for entity in dxf_to_ir(result.dxf_text)["entities"]]
+    assert kinds.count("POINT") == 4
+    assert kinds.count("LINE") == 2
+
+
+@pytest.mark.parametrize("angle", [90.0, 45.0, 0.0])
+def test_generic_dimension_text_angle_is_in_degrees(angle: float) -> None:
+    result = convert_ir_to_dxf_text(_jww_dimension_document(0, angle=angle))
+    text = next(
+        e for e in dxf_to_ir(result.dxf_text)["entities"] if e["kind"] == "TEXT"
+    )
+    assert text.get("rotation", 0.0) == pytest.approx(angle)

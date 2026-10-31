@@ -772,10 +772,12 @@ def _build_layers(
             candidate = raw_name.strip() or fallback
             unique_name = _unique_name(candidate, fallback, layers)
             layer_names[(group_index, layer_index)] = unique_name
+            # State 0 hides the layer, and a group in state 0 hides all of its layers
+            hidden = int(layer.get("state", 2)) == 0 or int(group.get("state", 2)) == 0
             layers[unique_name] = {
                 "color": (group_index * 16 + layer_index) % 255 + 1,
                 "linetype": "CONTINUOUS",
-                "plot": int(layer.get("state", 0)) != 0,
+                "plot": not hidden,
                 "metadata": {
                     "jww": {
                         "layer_group": group_index,
@@ -790,6 +792,8 @@ def _build_layers(
                     }
                 },
             }
+            if hidden:
+                layers[unique_name]["visible"] = False
     return layers, layer_names
 
 

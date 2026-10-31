@@ -4,7 +4,7 @@ import math
 
 import pytest
 
-from cad2d_ir import convert_ir_to_dxf_text
+from cad2d_ir import convert_ir_to_dxf_text, dxf_to_ir
 from cad2d_ir.importers import ImportOptions
 from cad2d_ir.importers.jww import jww_document_to_ir
 from cad2d_ir.schema import validate_ir
@@ -347,7 +347,8 @@ def test_jww_generic_dimension_is_visible_in_dxf_and_mapped_one_to_many() -> Non
         entry for entry in exported.entity_map if entry["ir_id"] == dimension["id"]
     ]
 
-    assert [entry["dxf_type"] for entry in mapped] == ["LINE", "TEXT", "POINT"]
+    # sxf_mode 0: the auxiliary lines and points are unused storage and are not written
+    assert [entry["dxf_type"] for entry in mapped] == ["LINE", "TEXT"]
     assert all(entry["handle"] is not None for entry in mapped)
     assert any(
         diagnostic.code == "DXF_GENERIC_DIMENSION_EXPLODED"
@@ -999,3 +1000,53 @@ def test_jww_without_a_pen_table_has_no_pens_metadata() -> None:
     document["header"]["pens"] = {**_pens_header(), "extended_printer": None}
     metadata, _ = _pens_of(document)
     assert "extended" not in metadata["pens"] and len(metadata["pens"]["printer"]) == 10
+
+
+def _layer_states_document() -> dict:
+    document = _document()
+    document["header"]["layer_groups"] = [
+        {
+            "state": 3,
+            "write_layer": 3,
+            "scale": 1.0,
+            "protect": 0,
+            "name": "shown",
+            "layers": [
+                {"state": state, "protect": 0, "name": f"L{state}"}
+                for state in (0, 1, 2, 3)
+            ],
+        },
+        {
+            "state": 0,
+            "write_layer": 0,
+            "scale": 1.0,
+            "protect": 0,
+            "name": "hidden",
+            "layers": [{"state": 2, "protect": 0, "name": "in hidden group"}],
+        },
+    ]
+    document["entities"] = []
+    return document
+
+
+def test_hidden_jww_layers_are_not_visible() -> None:
+    """Layer state 0 and group state 0 hide the content in Jw_cad."""
+    layers = jww_document_to_ir(_layer_states_document()).document["tables"]["layers"]
+    assert layers["L0"]["visible"] is False
+    assert layers["L0"]["plot"] is False
+    assert layers["in hidden group"]["visible"] is False
+    assert layers["in hidden group"]["plot"] is False
+    for name in ("L1", "L2", "L3"):
+        assert "visible" not in layers[name]
+        assert layers[name]["plot"] is True
+    # The raw states stay available to a JWW writer
+    assert layers["L0"]["metadata"]["jww"]["state"] == 0
+    assert layers["in hidden group"]["metadata"]["jww"]["group_state"] == 0
+
+
+def test_hidden_jww_layer_stays_off_in_dxf() -> None:
+    document = jww_document_to_ir(_layer_states_document()).document
+    dxf_text = convert_ir_to_dxf_text(document).dxf_text
+    layers = dxf_to_ir(dxf_text)["tables"]["layers"]
+    assert layers["L0"]["visible"] is False
+    assert layers["L2"].get("visible") is not False

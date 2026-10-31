@@ -6847,9 +6847,13 @@ def _generic_dimension_components(
 
     source_geometry = definition.get("source_geometry")
     if isinstance(source_geometry, dict):
+        # A JWW dimension's auxiliary slots only mean something in SXF mode. In mode 0
+        # they are unused storage holding zeros or stale coordinates, which would come
+        # out as stray points and zero-length lines.
+        unused_auxiliaries = source_geometry.get("sxf_mode") == 0
         add_source_line(source_geometry.get("line"))
         aux_lines = source_geometry.get("aux_lines")
-        if isinstance(aux_lines, list):
+        if not unused_auxiliaries and isinstance(aux_lines, list):
             for value in aux_lines:
                 add_source_line(value)
 
@@ -6870,9 +6874,10 @@ def _generic_dimension_components(
                 "height": height,
                 "text": text_value,
             }
+            # JWW text angles are already in degrees (Jw_cad's m_degKakudo)
             angle = text_geometry.get("angle")
             if isinstance(angle, (int, float)) and float(angle) != 0.0:
-                text_entity["rotation"] = math.degrees(float(angle))
+                text_entity["rotation"] = float(angle)
             font = str(text_geometry.get("font_name", "")).strip()
             if font:
                 text_entity["style"] = font
@@ -6882,7 +6887,7 @@ def _generic_dimension_components(
             components.append(text_entity)
 
         aux_points = source_geometry.get("aux_points")
-        if isinstance(aux_points, list):
+        if not unused_auxiliaries and isinstance(aux_points, list):
             for point in aux_points:
                 if (
                     isinstance(point, dict)

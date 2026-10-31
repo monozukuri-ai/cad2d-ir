@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.17.1
+
+- JWW importer: a layer hidden in the file (state 0, or a group in state 0) has
+  `visible: false` as well as `plot: false`. It was only `plot: false` (nothing
+  at all for a hidden group), so renderers drew content Jw_cad hides. The raw
+  states stay in `metadata.jww`.
+- DXF export of GENERIC dimensions: the auxiliary lines and points of a JWW
+  dimension are written only in SXF mode. In mode 0 those slots are unused
+  storage with zeros or stale coordinates, and every dimension added four stray
+  points and a zero-length line, sometimes far outside the drawing.
+- DXF export of GENERIC dimensions: the value text's angle is taken as degrees,
+  which is what JWW stores. Converting it again rotated a vertical dimension's
+  text to 5156.62 degrees (116.6 on screen).
+
 ## 0.17.0
 
 - New EDRW importer (`cad2d-ir[edrawings]`, backed by `edrawings-kit` 0.2):
