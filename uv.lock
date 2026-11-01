@@ -20,7 +20,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.17.1"
+version = "0.17.2"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
@@ -89,8 +89,8 @@ requires-dist = [
     { name = "edrawings-kit", marker = "extra == 'edrawings'", specifier = ">=0.2,<0.3" },
     { name = "ezdgn", marker = "extra == 'all'", specifier = ">=0.3,<0.4" },
     { name = "ezdgn", marker = "extra == 'dgn'", specifier = ">=0.3,<0.4" },
-    { name = "ezdwf", marker = "extra == 'all'", specifier = ">=0.0.1,<0.1" },
-    { name = "ezdwf", marker = "extra == 'dwf'", specifier = ">=0.0.1,<0.1" },
+    { name = "ezdwf", marker = "extra == 'all'", specifier = ">=0.0.11,<0.1" },
+    { name = "ezdwf", marker = "extra == 'dwf'", specifier = ">=0.0.11,<0.1" },
     { name = "ezdwg", marker = "extra == 'all'", specifier = ">=0.11,<1" },
     { name = "ezdwg", marker = "extra == 'dwg'", specifier = ">=0.11,<1" },
     { name = "ezexb", marker = "extra == 'all'", specifier = ">=0.3,<0.4" },
@@ -299,14 +299,14 @@ wheels = [
 
 [[package]]
 name = "ezdwf"
-version = "0.0.8"
+version = "0.0.11"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/26/3a/6b65a2cf79f00cf70884406291b595e77fc34a72bae6bef2606fac373f1f/ezdwf-0.0.8.tar.gz", hash = "sha256:4bd972c6ba2b82ac248ca3b55197fe3703a1285e2e7a98af997ca1e522760bef", size = 162747, upload-time = "2026-10-15T07:15:07.166Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2f/96/a7af29dfa287da96dc2965bd8c51cd8609af0f3b4cbc7e7142203b16b605/ezdwf-0.0.11.tar.gz", hash = "sha256:1ef09ce3ad60e600a388ecd307822111f0d00a5947c30a14eef92463fa5e344f", size = 168739, upload-time = "2026-11-01T02:19:43.215Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/32/e16acad06bba71948ef9e1c044fd498d549b223d8bc51754fb45af3d002d/ezdwf-0.0.8-cp310-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:ff64195f3511bf4767951cbbd13ed2840d222e87413b91097fc7d71d3bb9a45e", size = 2065739, upload-time = "2026-10-15T07:15:00.287Z" },
-    { url = "https://files.pythonhosted.org/packages/d0/4d/6f0c984f2355e8581df6f87a9534995082ca3fbc2c0bf4eeb28e8c97b44d/ezdwf-0.0.8-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:27aac21f1509f86af788a316e837aebe1536f52a5b466b40427f9aea3c99ece4", size = 1120986, upload-time = "2026-10-15T07:15:02.392Z" },
-    { url = "https://files.pythonhosted.org/packages/d2/0f/bae16e27042ecd85c87f93061b28bd61700e274aadc0e3223c8a69442935/ezdwf-0.0.8-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ac43ac26e7c20d037a4ea33d1ca65f8308cc80ce232fcc1a295d6e3ce9982fe1", size = 1153085, upload-time = "2026-10-15T07:15:04.214Z" },
-    { url = "https://files.pythonhosted.org/packages/e0/61/1003cfc7c96e420525e6f1b0e26461d5ff680ce4896765400d1891456c34/ezdwf-0.0.8-cp310-abi3-win_amd64.whl", hash = "sha256:d1a3bb2e259b295ff7f9184223329c6ee370c604d0a173f2b43ffde915ef8939", size = 995627, upload-time = "2026-10-15T07:15:05.74Z" },
+    { url = "https://files.pythonhosted.org/packages/9e/78/0e29af8f9fca2b2f88e85e783d86c44204804f30c634a2f7f1f7b34b814d/ezdwf-0.0.11-cp310-abi3-macosx_10_12_universal2.macosx_10_12_x86_64.macosx_11_0_arm64.whl", hash = "sha256:546c1d89c29220b82eec7267ba5536e680c01ec66f589dc6b9bb4d0d61c6f489", size = 2098447, upload-time = "2026-11-01T02:19:36.561Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/3a/6b0dbfc2837b84639597b3e4fea321efde28a931a24ab6d49dd253d8f623/ezdwf-0.0.11-cp310-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:b084bb0ddcad4e76f532f6fcd115747a3bf865f0fb9223fb7c917eb9c62bc003", size = 1135374, upload-time = "2026-11-01T02:19:38.497Z" },
+    { url = "https://files.pythonhosted.org/packages/99/61/ad6e6c5de9928e3bda4d9ad86d2936a9b79c4f784d31c4931d6b2cd24c06/ezdwf-0.0.11-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:bc32f5c73572a223170be104972ea7ba20c10aa1e0033a2f6e87f2523be656d7", size = 1167987, upload-time = "2026-11-01T02:19:40.091Z" },
+    { url = "https://files.pythonhosted.org/packages/5e/92/3064c6bbab51ebcd78afbe514b3e7c6d2fa8d2a737fb40c42d36b89ff8c4/ezdwf-0.0.11-cp310-abi3-win_amd64.whl", hash = "sha256:acaa12b1ba242f161130523ed251d336053ade631edd572c85068ee38d842d1a", size = 1012142, upload-time = "2026-11-01T02:19:41.511Z" },
 ]
 
 [[package]]

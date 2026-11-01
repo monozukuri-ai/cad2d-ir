@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.17.2
+
+- DWF importer: an arc whose end angle is below its start angle crosses zero
+  counterclockwise, as W2D defines it. 315 to 45 degrees was emitted clockwise, the
+  270 degrees on the other side, for about one in five arcs and ellipses in real files.
+- DWF importer: an ellipse with one zero axis becomes the straight line its arc
+  sweeps. It failed with "ellipse axes must be non-zero" and was dropped.
+- DWF importer: a strip of two triangles that form a convex quad is one polygon, which
+  removes the seam along the shared edge and halves the memory of such hatches. Every
+  other strip keeps its triangles.
+- DWF importer: reads without ezdwf's raw W2D records (`keep_raw=False`, ezdwf
+  0.0.11), which saves a quarter of the memory of reading a large drawing. The per-sheet
+  `content_shift` from ezdwf is kept in `source.metadata.dwf.sheets`.
+
 ## 0.17.1
 
 - JWW importer: a layer hidden in the file (state 0, or a group in state 0) has

@@ -103,7 +103,8 @@ def convert_dwf_file_to_ir(
     source_path = Path(path)
     try:
         format_info = ezdwf.detect_format(source_path)
-        drawing = ezdwf.readfile(source_path)
+        # The raw W2D records are a second copy of every entity, and IR never reads them.
+        drawing = ezdwf.readfile(source_path, keep_raw=False)
     except Exception as exc:
         raise ImporterError(f"Failed to read DWF file {source_path}: {exc}") from exc
     return dwf_drawing_to_ir(
@@ -137,13 +138,12 @@ def dwf_drawing_to_ir(
 
     units, custom_scale, comparable_units = _resolve_header_units(sheets, context)
     entities: list[dict[str, Any]] = []
-    source_entities: list[Any] = []
+    source_kinds: Counter[str] = Counter()
     for sheet_index, sheet in enumerate(sheets):
         primary = tuple(getattr(sheet, "entities", ()))
         markup = tuple(getattr(sheet, "markup_entities", ()))
-        source_entities.extend(primary)
-        source_entities.extend(markup)
         for source_entity in (*primary, *markup):
+            source_kinds[_kind(source_entity)] += 1
             entities.extend(
                 _convert_entity_safe(source_entity, sheet, sheet_index, context)
             )
@@ -217,14 +217,13 @@ def dwf_drawing_to_ir(
     if import_options.validate:
         validate_ir(document)
 
-    source_kinds = Counter(_kind(entity) for entity in source_entities)
     converted_kinds = Counter(str(entity["kind"]) for entity in entities)
     statistics: dict[str, Any] = {
         "source_format": "dwf",
         "source_container": source_kind,
         "source_version": source_version,
         "source_sheets": len(sheets),
-        "source_entities": len(source_entities),
+        "source_entities": sum(source_kinds.values()),
         "source_entity_counts": dict(sorted(source_kinds.items())),
         "source_markup_entities": sum(
             len(getattr(sheet, "markup_entities", ())) for sheet in sheets
@@ -390,8 +389,6 @@ def _convert_ellipse(
     if x_length <= _EPSILON and y_length <= _EPSILON:
         # A zero-radius circle/arc is how some writers emit a dot marker.
         return {**common, "kind": "POINT", "position": center}
-    if x_length <= _EPSILON or y_length <= _EPSILON:
-        raise ValueError("ellipse axes must be non-zero")
     dot = x_axis[0] * y_axis[0] + x_axis[1] * y_axis[1]
     determinant = x_axis[0] * y_axis[1] - x_axis[1] * y_axis[0]
     orthogonal = abs(dot) <= 1.0e-9 * x_length * y_length
@@ -404,7 +401,11 @@ def _convert_ellipse(
     closed = kind == "CIRCLE" or bool(getattr(source_entity, "closed", False))
     if closed:
         start_degrees, end_degrees = 0.0, 360.0
-    sweep = end_degrees - start_degrees
+    # W2D angles run counterclockwise from start to end, so 315 to 45 is a
+    # 90 degree arc through zero, not 270 degrees the other way.
+    sweep = (end_degrees - start_degrees) % 360.0 or 360.0
+    if x_length <= _EPSILON or y_length <= _EPSILON:
+        return _flat_ellipse_line(center, x_axis, y_axis, start_degrees, sweep, common)
 
     if not orthogonal:
         points = _sample_affine_ellipse(
@@ -412,7 +413,7 @@ def _convert_ellipse(
             x_axis,
             y_axis,
             start_degrees,
-            end_degrees,
+            start_degrees + sweep,
             closed,
             context.options.curve_segments,
         )
@@ -446,7 +447,7 @@ def _convert_ellipse(
 
     start_point = _ellipse_point(center, x_axis, y_axis, start_degrees)
     end_point = _ellipse_point(center, x_axis, y_axis, end_degrees)
-    traversal_ccw = determinant * (sweep or 360.0) >= 0.0
+    traversal_ccw = determinant >= 0.0
     if kind == "ARC" and circular:
         start_angle = math.degrees(
             math.atan2(start_point[1] - center[1], start_point[0] - center[0])
@@ -484,6 +485,35 @@ def _convert_ellipse(
         "start_param": start_param,
         "end_param": end_param,
         "ccw": traversal_ccw,
+    }
+
+
+def _flat_ellipse_line(
+    center: list[float],
+    x_axis: list[float],
+    y_axis: list[float],
+    start_degrees: float,
+    sweep: float,
+    common: dict[str, Any],
+) -> dict[str, Any]:
+    """An ellipse with one zero axis is the straight line its arc sweeps along the other."""
+    uses_x = math.hypot(*x_axis) > _EPSILON
+    axis = x_axis if uses_x else y_axis
+    phase = 0.0 if uses_x else 90.0
+    # cos(angle - phase) along the axis: its extremes are at the ends of the
+    # arc and at any multiple of 180 degrees from the phase inside the arc.
+    first = start_degrees - phase
+    values = [math.cos(math.radians(first)), math.cos(math.radians(first + sweep))]
+    turn = math.ceil(first / 180.0)
+    while turn * 180.0 <= first + sweep:
+        values.append(1.0 if turn % 2 == 0 else -1.0)
+        turn += 1
+    low, high = min(values), max(values)
+    return {
+        **common,
+        "kind": "LINE",
+        "p1": [center[0] + axis[0] * low, center[1] + axis[1] * low],
+        "p2": [center[0] + axis[0] * high, center[1] + axis[1] * high],
     }
 
 
@@ -592,15 +622,42 @@ def _convert_triangles(
     )
     if len(points) < 3:
         raise ValueError(f"{kind} has too few points")
-    triangles = [points[index : index + 3] for index in range(len(points) - 2)]
+    quad = _strip_as_convex_quad(points)
+    loops = (
+        [quad]
+        if quad is not None
+        else [points[index : index + 3] for index in range(len(points) - 2)]
+    )
     if "GOURAUD" in kind:
         _diagnose_gradient(source_entity, context)
     return {
         **_with_fill_color(common, source_entity),
         "kind": "HATCH",
         "solid": True,
-        "loops": [{"vertices": triangle, "is_outer": True} for triangle in triangles],
+        "loops": [{"vertices": loop, "is_outer": True} for loop in loops],
     }
+
+
+def _strip_as_convex_quad(points: list[list[float]]) -> list[list[float]] | None:
+    """The polygon of a strip of two triangles that form a convex quad, else ``None``.
+
+    Most strips are such quads. One polygon renders without a seam along the
+    shared edge and takes half the memory, and its diagonal is the shared edge,
+    so it covers exactly the two triangles.
+    """
+    if len(points) != 4:
+        return None
+    quad = [points[0], points[2], points[3], points[1]]
+    turns = [
+        (quad[index - 1][0] - quad[index - 2][0])
+        * (quad[index][1] - quad[index - 1][1])
+        - (quad[index - 1][1] - quad[index - 2][1])
+        * (quad[index][0] - quad[index - 1][0])
+        for index in range(4)
+    ]
+    if all(turn > 0.0 for turn in turns) or all(turn < 0.0 for turn in turns):
+        return quad
+    return None
 
 
 def _convert_path(
@@ -1154,6 +1211,7 @@ def _sheet_metadata(sheet: Any, index: int) -> dict[str, Any]:
         "units": getattr(sheet, "units", None),
         "paper_bounds": _json_safe(getattr(sheet, "paper_bounds", None)),
         "content_bounds": _json_safe(getattr(sheet, "content_bounds", None)),
+        "content_shift": _json_safe(getattr(sheet, "content_shift", None)),
         "entity_count": len(getattr(sheet, "entities", ())),
         "markup_entity_count": len(getattr(sheet, "markup_entities", ())),
     }

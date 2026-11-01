@@ -312,6 +312,122 @@ def test_dwf_mixed_sheet_units_are_preserved_and_diagnosed() -> None:
     }
 
 
+def _hatch_loops_of(points: tuple[tuple[float, float], ...]) -> list[list[list[float]]]:
+    entity = _entity(
+        "POLYTRIANGLE",
+        1,
+        points=tuple(_point(x, y) for x, y in points),
+        style=_style(fill=True),
+    )
+    drawing = SimpleNamespace(sheets=(_sheet((entity,)),), diagnostics=())
+    hatch = dwf_drawing_to_ir(drawing).document["entities"][0]
+    assert all(loop["is_outer"] for loop in hatch["loops"])
+    return [loop["vertices"] for loop in hatch["loops"]]
+
+
+def test_dwf_strip_of_a_convex_quad_is_one_polygon() -> None:
+    # 2 枚の三角形の共有辺は四角形の対角線。継ぎ目が出ず、メモリも半分になる
+    assert _hatch_loops_of(((0, 0), (2, 0), (0, 2), (2, 2))) == [
+        [[0.0, 0.0], [0.0, 2.0], [2.0, 2.0], [2.0, 0.0]],
+    ]
+
+
+def test_dwf_quad_far_from_the_origin_is_still_one_polygon() -> None:
+    far = 136364096.0
+    assert _hatch_loops_of(((far, 0), (far + 2, 0), (far, 2), (far + 2, 2))) == [
+        [[far, 0.0], [far, 2.0], [far + 2, 2.0], [far + 2, 0.0]],
+    ]
+
+
+@pytest.mark.parametrize(
+    "points",
+    [
+        ((0, 0), (4, 0), (0, 4), (1, 1)),  # 折り返す(2 枚目が 1 枚目の内側)
+        ((0, 0), (4, 0), (4, 4), (1, 1)),  # へこんだ四角形は JWW のソリッドに向かない
+        ((0, 0), (4, 0), (2, 0), (3, 0)),  # 面積 0
+        ((0, 0), (4, 0), (0, 4), (0, 4)),  # 2 枚目が潰れている
+    ],
+)
+def test_dwf_other_quads_keep_their_triangles(
+    points: tuple[tuple[float, float], ...],
+) -> None:
+    assert _hatch_loops_of(points) == [
+        [[float(x), float(y)] for x, y in points[:3]],
+        [[float(x), float(y)] for x, y in points[1:]],
+    ]
+
+
+def _ellipse_entity(
+    kind: str,
+    x_axis: tuple[float, float],
+    y_axis: tuple[float, float],
+    start: float,
+    end: float,
+) -> dict[str, Any]:
+    entity = _entity(
+        kind,
+        1,
+        center=_point(100, 200),
+        x_axis=_point(*x_axis),
+        y_axis=_point(*y_axis),
+        start_angle_degrees=start,
+        end_angle_degrees=end,
+    )
+    drawing = SimpleNamespace(sheets=(_sheet((entity,)),), diagnostics=())
+    result = dwf_drawing_to_ir(drawing)
+    assert result.statistics["skipped_entities"] == 0
+    return result.document["entities"][0]
+
+
+def test_dwf_arc_through_zero_degrees_is_the_short_way_round() -> None:
+    # W2D の角度は開始から終了へ反時計回り。315°→45° は 0° をまたぐ 90° の弧
+    arc = _ellipse_entity("ARC", (10, 0), (0, 10), 315.0, 45.0)
+    assert arc["ccw"] is True
+    assert (arc["start_angle"], arc["end_angle"]) == pytest.approx((-45.0, 45.0))
+
+    ellipse = _ellipse_entity("ELLIPSE", (10, 0), (0, 5), 315.0, 45.0)
+    assert ellipse["ccw"] is True
+
+
+def test_dwf_sheared_arc_through_zero_degrees_samples_the_short_way_round() -> None:
+    arc = _ellipse_entity("ARC", (10, 0), (5, 10), 315.0, 45.0)
+    assert arc["kind"] == "LWPOLYLINE"
+    # x = 100 + 10 cos θ + 5 sin θ は θ が ±45° の範囲では 103.5 以上
+    assert min(x for x, _ in arc["vertices"]) >= 103.5
+
+
+def test_dwf_mirrored_arc_stays_clockwise() -> None:
+    arc = _ellipse_entity("ARC", (10, 0), (0, -10), 0.0, 90.0)
+    assert arc["ccw"] is False
+
+
+@pytest.mark.parametrize(
+    "x_axis, y_axis, start, end, p1, p2",
+    [
+        # 短軸が 0: x = cos θ の範囲が線になる
+        ((10, 0), (0, 0), 315.0, 45.0, (107.0710678, 200.0), (110.0, 200.0)),
+        ((10, 0), (0, 0), 225.0, 315.0, (92.9289322, 200.0), (107.0710678, 200.0)),
+        ((10, 0), (0, 0), 90.0, 270.0, (90.0, 200.0), (100.0, 200.0)),
+        ((10, 0), (0, 0), 0.0, 360.0, (90.0, 200.0), (110.0, 200.0)),
+        # 長軸が 0: y = sin θ の範囲が線になる
+        ((0, 0), (0, 10), 0.0, 90.0, (100.0, 200.0), (100.0, 210.0)),
+        ((0, 0), (0, 10), 180.0, 360.0, (100.0, 190.0), (100.0, 200.0)),
+    ],
+)
+def test_dwf_flat_ellipse_is_the_line_its_arc_sweeps(
+    x_axis: tuple[float, float],
+    y_axis: tuple[float, float],
+    start: float,
+    end: float,
+    p1: tuple[float, float],
+    p2: tuple[float, float],
+) -> None:
+    line = _ellipse_entity("ELLIPSE", x_axis, y_axis, start, end)
+    assert line["kind"] == "LINE"
+    assert line["p1"] == pytest.approx(list(p1))
+    assert line["p2"] == pytest.approx(list(p2))
+
+
 def test_dwf_triangle_strips_and_vertex_colors_are_preserved() -> None:
     points = tuple(_point(x, y) for x, y in ((0, 0), (2, 0), (0, 2), (2, 2), (0, 4)))
     triangle_strip = _entity("POLYTRIANGLE", 1, points=points, style=_style(fill=True))
