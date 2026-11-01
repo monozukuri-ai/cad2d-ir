@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.17.3
+
+- DWF importer: the sheets of a multi-sheet DWF are laid out on a grid in the
+  IR modelspace (`DWF_MULTISHEET_TILED`) instead of all landing on the same paper
+  coordinates. Up to four sheets form a row, more a grid of about `sqrt(n)`
+  columns, with cells the size of the largest paper and a gap of a tenth of the
+  cell width. The first sheet keeps its coordinates; every sheet's `offset`,
+  `cell` and `placed_bounds` are in `source.metadata.dwf.sheets`, the grid in
+  `header.metadata.dwf.sheet_grid`. Sheets with mixed units stay flattened.
+- DWF importer: raster `Image` records become `IMAGE` entities. PNG and JPEG
+  data is embedded as it is; raw rows and Group 4 data (bare or TIFF-wrapped,
+  `group4x_mapped`) are decoded to PNG by ezdwf 0.0.12 (`Image.to_png`), with the
+  record's two colors and their transparency. One `DWF_IMAGE_EMBEDDED` diagnostic
+  counts them; `DWF_IMAGE_DECODE_FAILED` names a record that did not decode. With
+  an older ezdwf those records stay `DWF_UNSUPPORTED_ENTITY`.
+
 ## 0.17.2
 
 - DWF importer: an arc whose end angle is below its start angle crosses zero

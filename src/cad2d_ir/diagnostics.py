@@ -832,6 +832,25 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "DWF import",
         "Multiple sheets were flattened into IR modelspace.",
     ),
+    "DWF_MULTISHEET_TILED": DiagnosticCode(
+        "warning",
+        "flattened",
+        "DWF import",
+        "Multiple sheets were placed on a grid in one IR modelspace with sheet "
+        "offsets retained in source metadata.",
+    ),
+    "DWF_IMAGE_EMBEDDED": DiagnosticCode(
+        "info",
+        "converted",
+        "DWF import",
+        "Raster image records became IMAGE entities with PNG or JPEG bytes.",
+    ),
+    "DWF_IMAGE_DECODE_FAILED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "DWF import",
+        "A raster image record could not be decoded to PNG and was skipped.",
+    ),
     "DWF_MIXED_SHEET_UNITS": DiagnosticCode(
         "warning",
         None,

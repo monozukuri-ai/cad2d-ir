@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import math
 import re
@@ -67,6 +68,7 @@ class _ConversionContext:
         default_factory=dict
     )
     next_entity_number: int = 1
+    embedded_images: int = 0
 
     def shared_style_metadata(self, style: Any) -> dict[str, Any]:
         value = _style_metadata(style)
@@ -84,6 +86,28 @@ class _ConversionContext:
         entity_id = f"DWF_E{self.next_entity_number:08d}"
         self.next_entity_number += 1
         return entity_id
+
+
+# Gap between tiled sheets as a share of the cell width (the same as IDW sheets).
+DEFAULT_SHEET_GAP_RATIO = 0.1
+
+
+@dataclass(frozen=True, slots=True)
+class _SheetFrame:
+    """Where one sheet sits when several sheets share the IR modelspace."""
+
+    offset: tuple[float, float]
+    cell: tuple[int, int] | None
+    bounds: tuple[float, float, float, float] | None
+
+
+@dataclass(frozen=True, slots=True)
+class _SheetLayout:
+    frames: list[_SheetFrame]
+    columns: int
+    rows: int
+    cell_size: tuple[float, float]
+    gap: float
 
 
 def convert_dwf_file_to_ir(
@@ -137,9 +161,13 @@ def dwf_drawing_to_ir(
         raise ImporterError(f"Failed to enumerate DWF sheets: {exc}") from exc
 
     units, custom_scale, comparable_units = _resolve_header_units(sheets, context)
+    # Sheets of one DWF share paper coordinates, so a drawing set would land on
+    # one A3. With comparable units they are laid out on a grid instead.
+    layout = _sheet_layout(sheets) if comparable_units else None
     entities: list[dict[str, Any]] = []
     source_kinds: Counter[str] = Counter()
     for sheet_index, sheet in enumerate(sheets):
+        first = len(entities)
         primary = tuple(getattr(sheet, "entities", ()))
         markup = tuple(getattr(sheet, "markup_entities", ()))
         for source_entity in (*primary, *markup):
@@ -147,8 +175,31 @@ def dwf_drawing_to_ir(
             entities.extend(
                 _convert_entity_safe(source_entity, sheet, sheet_index, context)
             )
+        if layout is not None and layout.frames[sheet_index].offset != (0.0, 0.0):
+            _translate_entities(entities[first:], layout.frames[sheet_index].offset)
 
-    if len(sheets) > 1:
+    if layout is not None:
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="DWF_MULTISHEET_TILED",
+                severity="warning",
+                message=(
+                    f"Placed {len(sheets)} DWF sheets on a grid of {layout.columns} "
+                    "column(s) in one IR modelspace; sheet offsets remain in source "
+                    "metadata."
+                ),
+                action="flattened",
+                details={
+                    "sheet_count": len(sheets),
+                    "columns": layout.columns,
+                    "rows": layout.rows,
+                    "cell": list(layout.cell_size),
+                    "gap": layout.gap,
+                    "offsets": [list(frame.offset) for frame in layout.frames],
+                },
+            )
+        )
+    elif len(sheets) > 1:
         context.diagnostics.append(
             ImportDiagnostic(
                 code="DWF_MULTISHEET_FLATTENED",
@@ -159,6 +210,20 @@ def dwf_drawing_to_ir(
                 ),
                 action="flattened",
                 details={"sheet_count": len(sheets)},
+            )
+        )
+    if context.embedded_images:
+        context.diagnostics.append(
+            ImportDiagnostic(
+                code="DWF_IMAGE_EMBEDDED",
+                severity="info",
+                message=(
+                    f"Embedded {context.embedded_images} DWF raster image(s) as IMAGE "
+                    "entities with PNG or JPEG bytes."
+                ),
+                source_kind="IMAGE",
+                action="converted",
+                details={"count": context.embedded_images},
             )
         )
     _forward_drawing_diagnostics(drawing, context)
@@ -174,7 +239,10 @@ def dwf_drawing_to_ir(
                 "container": source_kind,
                 "sheet_count": len(sheets),
                 "sheets": [
-                    _sheet_metadata(sheet, index) for index, sheet in enumerate(sheets)
+                    _sheet_metadata(
+                        sheet, index, layout.frames[index] if layout else None
+                    )
+                    for index, sheet in enumerate(sheets)
                 ],
             }
         },
@@ -193,12 +261,20 @@ def dwf_drawing_to_ir(
                 "coordinate_space": "sheet_paper",
                 "sheet_units": [getattr(sheet, "units", None) for sheet in sheets],
                 "multisheet_modelspace": len(sheets) > 1,
+                "tiled_sheets": layout is not None,
             }
         },
     }
+    if layout is not None:
+        header["metadata"]["dwf"]["sheet_grid"] = {
+            "columns": layout.columns,
+            "rows": layout.rows,
+            "cell": list(layout.cell_size),
+            "gap": layout.gap,
+        }
     if custom_scale is not None:
         header["unit_scale_to_mm"] = custom_scale
-    bbox = _drawing_bbox(sheets) if comparable_units else None
+    bbox = _drawing_bbox(sheets, layout) if comparable_units else None
     if bbox is not None:
         header["bbox"] = {"min": [bbox[0], bbox[1]], "max": [bbox[2], bbox[3]]}
 
@@ -233,6 +309,7 @@ def dwf_drawing_to_ir(
         "skipped_entities": sum(context.skipped_counts.values()),
         "skipped_entity_counts": dict(sorted(context.skipped_counts.items())),
         "approximated_entities": sum(context.approximation_counts.values()),
+        "embedded_images": context.embedded_images,
     }
     return ImportResult(
         document=document,
@@ -371,6 +448,9 @@ def _convert_entity(
 
     if kind == "PATH":
         return _convert_path(source_entity, common, context)
+
+    if kind == "IMAGE":
+        return _convert_image(source_entity, common, context)
 
     return []
 
@@ -735,6 +815,96 @@ def _convert_path(
                     "segments": segments,
                 }
     return result
+
+
+def _convert_image(
+    source_entity: Any,
+    common: dict[str, Any],
+    context: _ConversionContext,
+) -> list[dict[str, Any]]:
+    """A raster ``Image`` record becomes an ``IMAGE`` with PNG or JPEG bytes.
+
+    PNG and JPEG data is embedded as it is. Every other W2D encoding (raw rows,
+    Group 4 bare or in a TIFF) is converted to PNG by ezdwf 0.0.12 and later
+    (``Image.to_png``); with an older ezdwf such a record stays unsupported.
+    The image is upright, its first row along the top of its box.
+    """
+    image = getattr(source_entity, "image", None)
+    if image is None:
+        raise ValueError("IMAGE has no image record")
+    low = _point(getattr(image, "min", None))
+    high = _point(getattr(image, "max", None))
+    x0, x1 = sorted((low[0], high[0]))
+    y0, y1 = sorted((low[1], high[1]))
+    if x1 - x0 <= _EPSILON or y1 - y0 <= _EPSILON:
+        raise ValueError("IMAGE has no area")
+    data = bytes(getattr(image, "data", b"") or b"")
+    if not data:
+        raise ValueError("IMAGE has no pixel data")
+    image_format = str(getattr(image, "format", "") or "").lower()
+    color_map = tuple(getattr(image, "color_map", ()) or ())
+    identifier = getattr(image, "identifier", None)
+    mime = _sniff_mime(data)
+    if mime not in ("image/png", "image/jpeg"):
+        to_png = getattr(image, "to_png", None)
+        if to_png is None:
+            return []
+        try:
+            data = bytes(to_png())
+        except Exception as exc:  # noqa: BLE001 - ezdwf raises its own DwfError family
+            context.diagnostics.append(
+                ImportDiagnostic(
+                    code="DWF_IMAGE_DECODE_FAILED",
+                    severity="warning",
+                    message=f"DWF {image_format or 'raster'} image was not decoded: {exc}",
+                    source_id=_source_id(source_entity),
+                    source_kind="IMAGE",
+                    action="skipped",
+                    details={
+                        "format": image_format,
+                        "identifier": identifier,
+                        "columns": getattr(image, "columns", None),
+                        "rows": getattr(image, "rows", None),
+                    },
+                )
+            )
+            return []
+        mime = "image/png"
+    common["metadata"]["dwf"]["image"] = {
+        "format": image_format,
+        "identifier": identifier,
+        "columns": getattr(image, "columns", None),
+        "rows": getattr(image, "rows", None),
+        "color_map_size": len(color_map),
+        "transparent": any(
+            len(color) > 3 and int(color[3]) < 255 for color in color_map
+        ),
+    }
+    context.embedded_images += 1
+    extension = "png" if mime == "image/png" else "jpg"
+    stem = "dwf_image" if identifier is None else f"dwf_image_{identifier}"
+    return [
+        {
+            **common,
+            "kind": "IMAGE",
+            "insert": [x0, y0],
+            "width": x1 - x0,
+            "height": y1 - y0,
+            "name": f"{stem}.{extension}",
+            "mime_type": mime,
+            "data": base64.b64encode(data).decode("ascii"),
+        }
+    ]
+
+
+def _sniff_mime(data: bytes) -> str:
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8"):
+        return "image/jpeg"
+    if data.startswith((b"II*\x00", b"MM\x00*")):
+        return "image/tiff"
+    return "application/octet-stream"
 
 
 def _entity_common(
@@ -1201,8 +1371,10 @@ def _style_metadata(style: Any) -> dict[str, Any]:
     }
 
 
-def _sheet_metadata(sheet: Any, index: int) -> dict[str, Any]:
-    return {
+def _sheet_metadata(
+    sheet: Any, index: int, frame: _SheetFrame | None
+) -> dict[str, Any]:
+    result = {
         "index": index,
         "section_index": getattr(sheet, "section_index", None),
         "name": getattr(sheet, "name", None),
@@ -1215,14 +1387,28 @@ def _sheet_metadata(sheet: Any, index: int) -> dict[str, Any]:
         "entity_count": len(getattr(sheet, "entities", ())),
         "markup_entity_count": len(getattr(sheet, "markup_entities", ())),
     }
+    if frame is not None:
+        # Added to every coordinate of the sheet; ``placed_bounds`` is the
+        # sheet's paper (or content) after the shift.
+        result["offset"] = list(frame.offset)
+        result["cell"] = list(frame.cell) if frame.cell is not None else None
+        result["placed_bounds"] = list(frame.bounds) if frame.bounds else None
+    return result
 
 
-def _drawing_bbox(sheets: Sequence[Any]) -> tuple[float, float, float, float] | None:
-    bounds = [
-        tuple(float(value) for value in sheet.content_bounds)
-        for sheet in sheets
-        if getattr(sheet, "content_bounds", None) is not None
-    ]
+def _drawing_bbox(
+    sheets: Sequence[Any], layout: _SheetLayout | None
+) -> tuple[float, float, float, float] | None:
+    bounds = []
+    for index, sheet in enumerate(sheets):
+        value = getattr(sheet, "content_bounds", None)
+        if value is None:
+            continue
+        x0, y0, x1, y1 = (float(item) for item in value)
+        if layout is not None:
+            dx, dy = layout.frames[index].offset
+            x0, y0, x1, y1 = x0 + dx, y0 + dy, x1 + dx, y1 + dy
+        bounds.append((x0, y0, x1, y1))
     if not bounds:
         return None
     return (
@@ -1231,6 +1417,111 @@ def _drawing_bbox(sheets: Sequence[Any]) -> tuple[float, float, float, float] | 
         max(bound[2] for bound in bounds),
         max(bound[3] for bound in bounds),
     )
+
+
+def _sheet_extent(sheet: Any) -> tuple[float, float, float, float] | None:
+    """The sheet's paper, or its content when the DWF states no paper."""
+    for name in ("paper_bounds", "content_bounds"):
+        value = getattr(sheet, name, None)
+        if value is None:
+            continue
+        try:
+            x0, y0, x1, y1 = (float(item) for item in value)
+        except (TypeError, ValueError):
+            continue
+        if (
+            all(math.isfinite(item) for item in (x0, y0, x1, y1))
+            and x1 > x0
+            and y1 > y0
+        ):
+            return (x0, y0, x1, y1)
+    return None
+
+
+def _sheet_layout(
+    sheets: Sequence[Any], gap_ratio: float = DEFAULT_SHEET_GAP_RATIO
+) -> _SheetLayout | None:
+    """Where each sheet goes when several share one modelspace.
+
+    Sheets sit in reading order (left to right, then down) on a grid of equal
+    cells, each the size of the largest paper, with a gap of ``gap_ratio`` times
+    the cell width. Up to four sheets form one row; more form a grid of about
+    ``sqrt(n)`` columns, so that a 96 sheet set is 10 by 10 rather than a strip.
+    The first sheet keeps its file coordinates and anchors the grid at its top
+    left corner; a sheet without paper or content has no cell and is not moved.
+    Returns ``None`` when fewer than two sheets have an extent.
+    """
+    extents = [_sheet_extent(sheet) for sheet in sheets]
+    placed = [extent for extent in extents if extent is not None]
+    if len(placed) < 2:
+        return None
+    cell_width = max(extent[2] - extent[0] for extent in placed)
+    cell_height = max(extent[3] - extent[1] for extent in placed)
+    gap = cell_width * gap_ratio
+    count = len(placed)
+    columns = count if count <= 4 else math.ceil(math.sqrt(count))
+    anchor_left, anchor_top = placed[0][0], placed[0][3]
+    frames: list[_SheetFrame] = []
+    position = 0
+    for extent in extents:
+        if extent is None:
+            frames.append(_SheetFrame((0.0, 0.0), None, None))
+            continue
+        column, row = position % columns, position // columns
+        left = anchor_left + column * (cell_width + gap)
+        top = anchor_top - row * (cell_height + gap)
+        dx, dy = left - extent[0], top - extent[3]
+        frames.append(
+            _SheetFrame(
+                (dx, dy),
+                (column, row),
+                (extent[0] + dx, extent[1] + dy, extent[2] + dx, extent[3] + dy),
+            )
+        )
+        position += 1
+    return _SheetLayout(
+        frames=frames,
+        columns=columns,
+        rows=math.ceil(count / columns),
+        cell_size=(cell_width, cell_height),
+        gap=gap,
+    )
+
+
+_POINT_KEYS = ("p1", "p2", "center", "insert", "position")
+_POINT_LIST_KEYS = ("vertices", "control_points", "fit_points")
+
+
+def _translate_entities(
+    entities: Iterable[dict[str, Any]], offset: tuple[float, float]
+) -> None:
+    """Move the entities a DWF sheet produced by ``offset`` (in place)."""
+    dx, dy = offset
+    shifted_metadata: set[int] = set()
+    for entity in entities:
+        for key in _POINT_KEYS:
+            point = entity.get(key)
+            if point is not None:
+                entity[key] = [point[0] + dx, point[1] + dy]
+        for key in _POINT_LIST_KEYS:
+            points = entity.get(key)
+            if points:
+                entity[key] = [[point[0] + dx, point[1] + dy] for point in points]
+        for loop in entity.get("loops") or ():
+            vertices = loop.get("vertices")
+            if vertices:
+                loop["vertices"] = [
+                    [point[0] + dx, point[1] + dy] for point in vertices
+                ]
+        # Entities made from one record share their metadata dictionary.
+        metadata = (entity.get("metadata") or {}).get("dwf") or {}
+        colored = metadata.get("colored_points")
+        if colored and id(metadata) not in shifted_metadata:
+            shifted_metadata.add(id(metadata))
+            for item in colored:
+                point = item.get("point")
+                if point is not None:
+                    item["point"] = [point[0] + dx, point[1] + dy]
 
 
 def _colored_points(source_entity: Any) -> list[list[float]]:

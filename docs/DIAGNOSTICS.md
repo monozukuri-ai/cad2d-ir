@@ -47,9 +47,12 @@ entity/source identifiers and structured details.
 | `DWF_CURVE_APPROXIMATED` | warning | approximated | DWF import | A path curve or sheared ellipse was sampled as a polyline. |
 | `DWF_DRAWING_WARNING` | warning | - | DWF import | The native DWF parser reported a diagnostic. |
 | `DWF_ENTITY_CONVERSION_FAILED` | error | skipped | DWF import | A malformed DWF entity was skipped. |
+| `DWF_IMAGE_DECODE_FAILED` | warning | skipped | DWF import | A raster image record could not be decoded to PNG (ezdwf `Image.to_png`) and was skipped. |
+| `DWF_IMAGE_EMBEDDED` | info | converted | DWF import | Raster image records became `IMAGE` entities with PNG or JPEG bytes; `details.count` is their number. |
 | `DWF_MIXED_SHEET_UNITS` | warning | - | DWF import | Sheets used different paper units, so coordinates were retained per sheet with unknown document units. |
-| `DWF_MULTISHEET_FLATTENED` | warning | flattened | DWF import | Multiple sheets were placed in one IR modelspace with sheet metadata retained. |
-| `DWF_UNSUPPORTED_ENTITY` | warning | skipped | DWF import | An unsupported DWF entity, such as a raster image, was skipped. |
+| `DWF_MULTISHEET_FLATTENED` | warning | flattened | DWF import | Multiple sheets with different units were placed in one IR modelspace at their own coordinates, with sheet metadata retained. |
+| `DWF_MULTISHEET_TILED` | warning | flattened | DWF import | Multiple sheets were laid out on a grid in one IR modelspace; each sheet's offset is in `source.metadata.dwf.sheets`. |
+| `DWF_UNSUPPORTED_ENTITY` | warning | skipped | DWF import | An unsupported DWF entity, such as a raster image an older ezdwf cannot decode, was skipped. |
 | `DXF_BINARY_DETECTED` | info | detected | DXF import | The input carried the `AutoCAD Binary DXF` sentinel and was decoded from the binary group-code stream (`details.group_code_bytes` is 1 for R12, 2 for R13+). |
 | `DXF_CONSTRAINTS_OMITTED` | warning | skipped | DXF export | IR-only constraints were omitted. |
 | `DXF_DECODE_REPLACED` | warning | normalized | DXF import | Undecodable input bytes were replaced while decoding. |

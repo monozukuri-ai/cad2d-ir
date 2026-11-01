@@ -73,8 +73,11 @@ ASCII, CP932, then Latin-1. The result is reported by `DGN_ENCODING_DETECTED`,
 explicit project encoding when it is known. An explicit encoding still fails in
 strict mode and uses replacement characters with `DGN_TEXT_DECODE_REPLACED`
 when `strict=False`. DWF and DWFx imports include all sheets and markup
-entities. Their source sheet remains in `metadata.dwf`; multiple sheets are
-disclosed with `DWF_MULTISHEET_FLATTENED`.
+entities. Their source sheet remains in `metadata.dwf`; multiple sheets are laid
+out on a grid (`DWF_MULTISHEET_TILED`, offsets in `source.metadata.dwf.sheets`),
+or left at their own coordinates when their units differ
+(`DWF_MULTISHEET_FLATTENED`). Raster images become `IMAGE` entities with PNG or
+JPEG bytes (`DWF_IMAGE_EMBEDDED`); Group 4 and raw-row records need ezdwf 0.0.12.
 
 MI input uses `ezmi2d`'s file-scoped encoding selection. `encoding="auto"`
 leaves BOM, declaration, MI-version, and heuristic selection to the parser;
