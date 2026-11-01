@@ -9,6 +9,7 @@ import re
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +70,82 @@ class _ConversionContext:
     )
     next_entity_number: int = 1
     embedded_images: int = 0
+    # Millimetres per unit of the sheet being converted (``None`` when unknown);
+    # it sets how finely curves are sampled.
+    scale_to_mm: float | None = None
+    # The constant part of every entity's ``metadata.dwf``, one dictionary per
+    # (sheet, stream, style); see ``_entity_common``.
+    entity_metadata_cache: dict[tuple[Any, ...], dict[str, Any]] = field(
+        default_factory=dict
+    )
+    # ``approximation`` dictionaries, one per (source kind, segment count); a
+    # drawing of a million short polylines would otherwise carry a million copies.
+    approximation_cache: dict[tuple[str, int], dict[str, Any]] = field(
+        default_factory=dict
+    )
+    # The ``{"dwf": ...}`` wrapper around each shared metadata dictionary, and
+    # one copy of every layer name / colour string (both are built per entity).
+    metadata_wrapper_cache: dict[int, dict[str, Any]] = field(default_factory=dict)
+    strings: dict[str, str] = field(default_factory=dict)
+
+    def shared_entity_metadata(
+        self,
+        sheet_index: int,
+        section_index: Any,
+        stream_index: Any,
+        resource_href: Any,
+        resource_role: Any,
+        is_markup: bool,
+        style: dict[str, Any],
+        counts: tuple[tuple[str, int], ...] = (),
+    ) -> dict[str, Any]:
+        key = (
+            sheet_index,
+            section_index,
+            stream_index,
+            resource_href,
+            resource_role,
+            is_markup,
+            id(style),
+            counts,
+        )
+        cached = self.entity_metadata_cache.get(key)
+        if cached is None:
+            cached = {
+                "sheet_index": sheet_index,
+                "section_index": section_index,
+                "stream_index": stream_index,
+                "resource_href": resource_href,
+                "resource_role": resource_role,
+                "is_markup": is_markup,
+                "style": style,
+                **dict(counts),
+            }
+            self.entity_metadata_cache[key] = cached
+        return cached
+
+    def shared_metadata_wrapper(self, metadata: dict[str, Any]) -> dict[str, Any]:
+        """``{"dwf": metadata}`` for a shared ``metadata`` (kept alive by its cache)."""
+        key = id(metadata)
+        cached = self.metadata_wrapper_cache.get(key)
+        if cached is None:
+            cached = self.metadata_wrapper_cache[key] = {"dwf": metadata}
+        return cached
+
+    def intern(self, value: str) -> str:
+        return self.strings.setdefault(value, value)
+
+    def shared_approximation(self, source_kind: str, segments: int) -> dict[str, Any]:
+        key = (source_kind, segments)
+        cached = self.approximation_cache.get(key)
+        if cached is None:
+            cached = {
+                "method": "polyline",
+                "source_kind": source_kind,
+                "segments": segments,
+            }
+            self.approximation_cache[key] = cached
+        return cached
 
     def shared_style_metadata(self, style: Any) -> dict[str, Any]:
         value = _style_metadata(style)
@@ -127,8 +204,20 @@ def convert_dwf_file_to_ir(
     source_path = Path(path)
     try:
         format_info = ezdwf.detect_format(source_path)
-        # The raw W2D records are a second copy of every entity, and IR never reads them.
-        drawing = ezdwf.readfile(source_path, keep_raw=False)
+        open_drawing = getattr(ezdwf, "open_drawing", None)
+        if open_drawing is not None:
+            # ezdwf 0.0.13: the drawing stays in the Rust core and each sheet's
+            # entities are materialized a chunk at a time while they are converted.
+            # A 4 MB DWFx plot set with 4.7 million points took 2.5 GB as objects.
+            # ``consume`` releases every converted chunk from the core, so the
+            # drawing shrinks as the IR grows instead of both peaking together.
+            try:
+                drawing = open_drawing(source_path, consume=True)
+            except TypeError:  # a development build without ``consume``
+                drawing = open_drawing(source_path)
+        else:
+            # The raw W2D records are a second copy of every entity; IR never reads them.
+            drawing = ezdwf.readfile(source_path, keep_raw=False)
     except Exception as exc:
         raise ImporterError(f"Failed to read DWF file {source_path}: {exc}") from exc
     return dwf_drawing_to_ir(
@@ -166,15 +255,25 @@ def dwf_drawing_to_ir(
     layout = _sheet_layout(sheets) if comparable_units else None
     entities: list[dict[str, Any]] = []
     source_kinds: Counter[str] = Counter()
+    # (entities, markup entities) of each sheet as read; a streaming reader's
+    # sheets carry none, so they are counted while being converted.
+    sheet_counts: list[tuple[int, int]] = []
     for sheet_index, sheet in enumerate(sheets):
         first = len(entities)
-        primary = tuple(getattr(sheet, "entities", ()))
-        markup = tuple(getattr(sheet, "markup_entities", ()))
-        for source_entity in (*primary, *markup):
-            source_kinds[_kind(source_entity)] += 1
-            entities.extend(
-                _convert_entity_safe(source_entity, sheet, sheet_index, context)
-            )
+        counts = [0, 0]
+        context.scale_to_mm = _UNIT_SCALE_TO_MM.get(
+            _normalized_unit(getattr(sheet, "units", None))
+        )
+        for group, source_entities in enumerate(
+            _sheet_entities(drawing, sheet, sheet_index)
+        ):
+            for source_entity in source_entities:
+                counts[group] += 1
+                source_kinds[_kind(source_entity)] += 1
+                entities.extend(
+                    _convert_entity_safe(source_entity, sheet, sheet_index, context)
+                )
+        sheet_counts.append((counts[0], counts[1]))
         if layout is not None and layout.frames[sheet_index].offset != (0.0, 0.0):
             _translate_entities(entities[first:], layout.frames[sheet_index].offset)
 
@@ -240,7 +339,10 @@ def dwf_drawing_to_ir(
                 "sheet_count": len(sheets),
                 "sheets": [
                     _sheet_metadata(
-                        sheet, index, layout.frames[index] if layout else None
+                        sheet,
+                        index,
+                        layout.frames[index] if layout else None,
+                        sheet_counts[index],
                     )
                     for index, sheet in enumerate(sheets)
                 ],
@@ -301,9 +403,7 @@ def dwf_drawing_to_ir(
         "source_sheets": len(sheets),
         "source_entities": sum(source_kinds.values()),
         "source_entity_counts": dict(sorted(source_kinds.items())),
-        "source_markup_entities": sum(
-            len(getattr(sheet, "markup_entities", ())) for sheet in sheets
-        ),
+        "source_markup_entities": sum(markup for _, markup in sheet_counts),
         "converted_entities": len(entities),
         "converted_entity_counts": dict(sorted(converted_kinds.items())),
         "skipped_entities": sum(context.skipped_counts.values()),
@@ -496,6 +596,7 @@ def _convert_ellipse(
             start_degrees + sweep,
             closed,
             context.options.curve_segments,
+            context.scale_to_mm,
         )
         context.approximation_counts[kind] += 1
         context.diagnostics.append(
@@ -514,11 +615,9 @@ def _convert_ellipse(
             "kind": "LWPOLYLINE",
             "vertices": points,
             "closed": closed,
-            "approximation": {
-                "method": "polyline",
-                "source_kind": f"DWF_{kind}",
-                "segments": len(points) if closed else len(points) - 1,
-            },
+            "approximation": context.shared_approximation(
+                f"DWF_{kind}", len(points) if closed else len(points) - 1
+            ),
         }
 
     circular = math.isclose(x_length, y_length, rel_tol=1.0e-9, abs_tol=_EPSILON)
@@ -635,11 +734,9 @@ def _convert_polybezier(
         "kind": "LWPOLYLINE",
         "vertices": points,
         "closed": bool(getattr(source_entity, "closed", False)),
-        "approximation": {
-            "method": "polyline",
-            "source_kind": "DWF_POLYBEZIER",
-            "segments": len(points) - 1,
-        },
+        "approximation": context.shared_approximation(
+            "DWF_POLYBEZIER", len(points) - 1
+        ),
     }
 
 
@@ -672,7 +769,10 @@ def _convert_text(
     text = str(getattr(source_entity, "text", "") or "")
     has_mtext_formatting = _MTEXT_FORMAT_CODE_RE.search(text) is not None
     if has_mtext_formatting:
-        common["metadata"]["dwf"]["mtext_formatting_detected"] = True
+        # The entity's metadata may be the shared dictionary: replace, never mutate.
+        common["metadata"] = {
+            "dwf": {**common["metadata"]["dwf"], "mtext_formatting_detected": True}
+        }
     result = {
         **common,
         "kind": "MTEXT" if has_mtext_formatting else "TEXT",
@@ -752,7 +852,7 @@ def _convert_path(
     approximated = False
     for figure in figures:
         points, figure_approximated = _sample_path_figure(
-            figure, context.options.curve_segments
+            figure, context.options.curve_segments, context.scale_to_mm
         )
         closed = bool(getattr(figure, "closed", False))
         if closed:
@@ -809,11 +909,9 @@ def _convert_path(
                     if entity["closed"]
                     else len(entity["vertices"]) - 1
                 )
-                entity["approximation"] = {
-                    "method": "polyline",
-                    "source_kind": "DWF_PATH",
-                    "segments": segments,
-                }
+                entity["approximation"] = context.shared_approximation(
+                    "DWF_PATH", segments
+                )
     return result
 
 
@@ -870,7 +968,7 @@ def _convert_image(
             )
             return []
         mime = "image/png"
-    common["metadata"]["dwf"]["image"] = {
+    image_metadata = {
         "format": image_format,
         "identifier": identifier,
         "columns": getattr(image, "columns", None),
@@ -880,6 +978,8 @@ def _convert_image(
             len(color) > 3 and int(color[3]) < 255 for color in color_map
         ),
     }
+    # The entity's metadata may be the shared dictionary: replace, never mutate.
+    common["metadata"] = {"dwf": {**common["metadata"]["dwf"], "image": image_metadata}}
     context.embedded_images += 1
     extension = "png" if mime == "image/png" else "jpg"
     stem = "dwf_image" if identifier is None else f"dwf_image_{identifier}"
@@ -914,8 +1014,10 @@ def _entity_common(
     context: _ConversionContext,
 ) -> dict[str, Any]:
     style = source_entity.style
-    layer_name = str(
-        getattr(style, "layer", None) or getattr(source_entity, "layer", "0") or "0"
+    layer_name = context.intern(
+        str(
+            getattr(style, "layer", None) or getattr(source_entity, "layer", "0") or "0"
+        )
     )
     source_unit = _normalized_unit(getattr(sheet, "units", None))
     scale_to_mm = _UNIT_SCALE_TO_MM.get(source_unit)
@@ -923,6 +1025,8 @@ def _entity_common(
     color = _rgba_hex(
         getattr(style, "stroke_color", None) or getattr(style, "color", None)
     )
+    if color is not None:
+        color = context.intern(color)
     layer = context.layers.setdefault(
         layer_name,
         {
@@ -958,34 +1062,46 @@ def _entity_common(
     # シート名・単位などの定数は文書メタデータのsheets一覧にあり、要素ごとには
     # 動的な最小限だけ持つ(entity_indexはsource.idの「区:流:番」と重複するため
     # 省略)。効果カウントは非ゼロのときだけ載せる
-    metadata = {
-        "sheet_index": sheet_index,
-        "section_index": getattr(source_entity, "section_index", None),
-        "stream_index": getattr(source_entity, "stream_index", None),
-        "resource_href": getattr(source_entity, "resource_href", None),
-        "resource_role": getattr(source_entity, "resource_role", None),
-        "is_markup": bool(getattr(source_entity, "is_markup", False)),
-        "style": context.shared_style_metadata(style),
-    }
+    # The constant part is one shared dictionary per (sheet, stream, style): a
+    # plot set of 1.7 million entities spent 600 MB on identical copies of it.
+    # Anything per entity goes into a copy; nothing may mutate the shared one.
+    counts: list[tuple[str, int]] = []
     for effect_name, effect_key in (
         ("clips", "clip_count"),
         ("opacity_masks", "opacity_mask_count"),
         ("compositing_groups", "compositing_group_count"),
     ):
         if appearance_effects[effect_name]:
-            metadata[effect_key] = appearance_effects[effect_name]
+            counts.append((effect_key, appearance_effects[effect_name]))
     glyph_outline_count = len(getattr(source_entity, "glyph_outline", ()) or ())
     if glyph_outline_count:
-        metadata["glyph_outline_count"] = glyph_outline_count
+        counts.append(("glyph_outline_count", glyph_outline_count))
+    metadata = context.shared_entity_metadata(
+        sheet_index,
+        getattr(source_entity, "section_index", None),
+        getattr(source_entity, "stream_index", None),
+        getattr(source_entity, "resource_href", None),
+        getattr(source_entity, "resource_role", None),
+        bool(getattr(source_entity, "is_markup", False)),
+        context.shared_style_metadata(style),
+        tuple(counts),
+    )
     colored_points = tuple(getattr(source_entity, "colored_points", ()))
     if colored_points:
-        metadata["colored_points"] = [
-            {
-                "point": _point(item.point),
-                "color": _json_safe(getattr(item, "color", None)),
+        metadata_wrapper = {
+            "dwf": {
+                **metadata,
+                "colored_points": [
+                    {
+                        "point": _point(item.point),
+                        "color": _json_safe(getattr(item, "color", None)),
+                    }
+                    for item in colored_points
+                ],
             }
-            for item in colored_points
-        ]
+        }
+    else:
+        metadata_wrapper = context.shared_metadata_wrapper(metadata)
     source_info: dict[str, Any] = {
         "format": "dwf",
         "id": _source_id(source_entity),
@@ -1003,7 +1119,7 @@ def _entity_common(
         "linetype": linetype,
         "visible": bool(getattr(style, "visible", True)),
         "source": source_info,
-        "metadata": {"dwf": metadata},
+        "metadata": metadata_wrapper,
     }
     if color is not None:
         result["color"] = color
@@ -1082,7 +1198,7 @@ def _forward_drawing_diagnostics(drawing: Any, context: _ConversionContext) -> N
                 severity=severity,  # type: ignore[arg-type]
                 message=str(getattr(diagnostic, "message", "DWF parser diagnostic")),
                 source_id=(
-                    str(getattr(diagnostic, "offset"))
+                    str(diagnostic.offset)
                     if getattr(diagnostic, "offset", None) is not None
                     else None
                 ),
@@ -1182,8 +1298,36 @@ def _diagnose_gradient(source_entity: Any, context: _ConversionContext) -> None:
     )
 
 
+# Sampling step along a curve, in sheet millimetres. The chord of a 0.25 mm step
+# on a 1 mm radius lies 0.008 mm off the arc, below any plotted line width.
+_CURVE_STEP_MM = 0.25
+
+
+def _curve_steps(
+    length: float, fraction: float, curve_segments: int, scale_to_mm: float | None
+) -> int:
+    """How many straight pieces a curve of ``length`` (sheet units) is sampled into.
+
+    ``curve_segments`` is the count for a full circle and ``fraction`` of it the
+    ceiling for this curve (1.0 for a bezier). The curve's length in millimetres
+    over the sampling step is what the drawing needs: a 0.5 mm arrowhead arc
+    takes 2 pieces rather than 96. A plot set with 1.9 million path segments
+    would otherwise sample into tens of millions of points. Without known sheet
+    units every curve gets the ceiling.
+    """
+    ceiling = max(1, math.ceil(fraction * curve_segments))
+    if scale_to_mm is None or not math.isfinite(length):
+        return ceiling
+    needed = math.ceil(length * scale_to_mm / _CURVE_STEP_MM)
+    return max(min(2, ceiling), min(ceiling, needed))
+
+
+def _polygon_length(points: Sequence[Sequence[float]]) -> float:
+    return sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b in pairwise(points))
+
+
 def _sample_path_figure(
-    figure: Any, curve_segments: int
+    figure: Any, curve_segments: int, scale_to_mm: float | None = None
 ) -> tuple[list[list[float]], bool]:
     current = _point(figure.start)
     points = [current]
@@ -1196,19 +1340,27 @@ def _sample_path_figure(
         elif kind == "cubic_bezier":
             control1 = _point(segment.control1)
             control2 = _point(segment.control2)
-            for index in range(1, curve_segments + 1):
+            count = _curve_steps(
+                _polygon_length((current, control1, control2, end)),
+                1.0,
+                curve_segments,
+                scale_to_mm,
+            )
+            for index in range(1, count + 1):
                 points.append(
-                    _cubic_bezier(
-                        current, control1, control2, end, index / curve_segments
-                    )
+                    _cubic_bezier(current, control1, control2, end, index / count)
                 )
             approximated = True
         elif kind == "quadratic_bezier":
             control = _point(segment.control)
-            for index in range(1, curve_segments + 1):
-                points.append(
-                    _quadratic_bezier(current, control, end, index / curve_segments)
-                )
+            count = _curve_steps(
+                _polygon_length((current, control, end)),
+                1.0,
+                curve_segments,
+                scale_to_mm,
+            )
+            for index in range(1, count + 1):
+                points.append(_quadratic_bezier(current, control, end, index / count))
             approximated = True
         elif kind == "elliptical_arc":
             center = _point(segment.center)
@@ -1216,7 +1368,12 @@ def _sample_path_figure(
             y_axis = _point(segment.y_axis)
             start = float(segment.start_angle_degrees)
             sweep = float(segment.sweep_angle_degrees)
-            count = max(1, math.ceil(abs(sweep) / 360.0 * curve_segments))
+            count = _curve_steps(
+                _arc_length(x_axis, y_axis, sweep),
+                abs(sweep) / 360.0,
+                curve_segments,
+                scale_to_mm,
+            )
             for index in range(1, count + 1):
                 points.append(
                     _ellipse_point(
@@ -1230,6 +1387,14 @@ def _sample_path_figure(
     return points, approximated
 
 
+def _arc_length(
+    x_axis: Sequence[float], y_axis: Sequence[float], sweep_degrees: float
+) -> float:
+    """The length of an elliptical arc, taken on the mean radius (an overestimate)."""
+    radius = (math.hypot(*x_axis) + math.hypot(*y_axis)) / 2.0
+    return abs(math.radians(sweep_degrees)) * radius
+
+
 def _sample_affine_ellipse(
     center: list[float],
     x_axis: list[float],
@@ -1238,9 +1403,18 @@ def _sample_affine_ellipse(
     end_degrees: float,
     closed: bool,
     curve_segments: int,
+    scale_to_mm: float | None = None,
 ) -> list[list[float]]:
     sweep = 360.0 if closed else end_degrees - start_degrees
-    count = max(3 if closed else 1, math.ceil(abs(sweep) / 360.0 * curve_segments))
+    count = max(
+        3 if closed else 1,
+        _curve_steps(
+            _arc_length(x_axis, y_axis, sweep),
+            abs(sweep) / 360.0,
+            curve_segments,
+            scale_to_mm,
+        ),
+    )
     limit = count if closed else count + 1
     return [
         _ellipse_point(
@@ -1371,8 +1545,23 @@ def _style_metadata(style: Any) -> dict[str, Any]:
     }
 
 
+def _sheet_entities(
+    drawing: Any, sheet: Any, sheet_index: int
+) -> tuple[Iterable[Any], Iterable[Any]]:
+    """The (entities, markup entities) of a sheet, read lazily when possible.
+
+    An ``ezdwf.DrawingReader`` (0.0.13) keeps the drawing in the Rust core and
+    yields a sheet's entities a chunk at a time; a ``Drawing`` carries them on
+    the sheet itself.
+    """
+    reader = getattr(drawing, "entities", None)
+    if callable(reader):
+        return reader(sheet_index), drawing.markup_entities(sheet_index)
+    return getattr(sheet, "entities", ()), getattr(sheet, "markup_entities", ())
+
+
 def _sheet_metadata(
-    sheet: Any, index: int, frame: _SheetFrame | None
+    sheet: Any, index: int, frame: _SheetFrame | None, counts: tuple[int, int]
 ) -> dict[str, Any]:
     result = {
         "index": index,
@@ -1384,8 +1573,8 @@ def _sheet_metadata(
         "paper_bounds": _json_safe(getattr(sheet, "paper_bounds", None)),
         "content_bounds": _json_safe(getattr(sheet, "content_bounds", None)),
         "content_shift": _json_safe(getattr(sheet, "content_shift", None)),
-        "entity_count": len(getattr(sheet, "entities", ())),
-        "markup_entity_count": len(getattr(sheet, "markup_entities", ())),
+        "entity_count": counts[0],
+        "markup_entity_count": counts[1],
     }
     if frame is not None:
         # Added to every coordinate of the sheet; ``placed_bounds`` is the

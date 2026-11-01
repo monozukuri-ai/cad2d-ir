@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.17.4
+
+- DWF importer: reads with `ezdwf.open_drawing(..., consume=True)` (ezdwf
+  0.0.13) when it is available, so the drawing stays in the Rust core, each
+  sheet's entities are materialized a chunk at a time while they are converted,
+  and every converted chunk is released from the core. A 4 MB DWFx plot set
+  with 4.7 million points took 2.5 GB as Python objects before, and a plot set
+  of 171,000 paths peaked at 3.2 GB with the Rust drawing and the IR both alive.
+  `dwf_drawing_to_ir` accepts such a reader (sheets without entities plus
+  `entities(index)` / `markup_entities(index)`) as well as a `Drawing`.
+- DWF importer: the constant part of every entity's `metadata.dwf` (sheet,
+  stream, resource, markup flag, style, clip / mask / group / glyph counts) is one
+  shared dictionary per combination; a plot set of 1.7 million entities spent
+  600 MB on identical copies. Entities with their own data (`colored_points`,
+  `image`, `mtext_formatting_detected`) get a copy of the shared dictionary plus
+  those keys. The `approximation` dictionaries of sampled curves are shared the
+  same way, per source kind and segment count, and so are the `{"dwf": ...}`
+  wrappers, layer names and colour strings.
+- DWF importer: curves are sampled by their length. `curve_segments` (96 for a
+  full circle) stays the ceiling, but a curve of known sheet units gets no more
+  pieces than its length in millimetres over a 0.25 mm step (at least 2), so a
+  0.5 mm arrowhead arc or bezier takes 2 pieces rather than 96. A DWFx plot set
+  with 1.9 million path segments sampled into tens of millions of points before.
+
 ## 0.17.3
 
 - DWF importer: the sheets of a multi-sheet DWF are laid out on a grid in the
