@@ -254,6 +254,20 @@ composite or otherwise honor the alpha channel; reducing them to seven-character
 RGB is a consumer-side loss. Standalone legacy W2D 00.30/00.50 support remains
 an `ezdwf` parser boundary rather than an IR-adapter concern.
 
+Plot sets of a million entities are read with `ezdwf.open_drawing(...,
+consume=True)` when `ezdwf` 0.0.13 or later is installed: the drawing stays in
+the Rust core, each sheet is materialized a chunk at a time while it is
+converted, and the converted chunks are released from the core. In the IR the
+constant part of every entity's `metadata.dwf` (sheet, stream, resource, markup
+flag, style, effect counts) is one shared dictionary per combination, the
+`approximation` dictionaries and layer / colour strings are shared the same
+way, and entities with the same line weight share one `lineweight_mm` float.
+`visible` is written only when it is false (the schema default is true).
+`ImportOptions.entity_provenance=False` additionally omits every entity's
+`source` dictionary, as the JWW, IDW and EXB adapters do; the shared
+`metadata.dwf` stays. A LINE then has ten keys instead of eleven, which keeps
+its dictionary in the smaller CPython size class (272 rather than 464 bytes).
+
 ## MI adapter
 
 The MI adapter consumes the public `ezmi2d.Document` model directly. It does

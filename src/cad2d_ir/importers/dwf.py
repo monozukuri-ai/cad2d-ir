@@ -87,6 +87,9 @@ class _ConversionContext:
     # one copy of every layer name / colour string (both are built per entity).
     metadata_wrapper_cache: dict[int, dict[str, Any]] = field(default_factory=dict)
     strings: dict[str, str] = field(default_factory=dict)
+    # One float object per distinct ``lineweight_mm``: a plot set of 1.7 million
+    # entities carried 1.7 million copies of a handful of values (40 MB).
+    floats: dict[float, float] = field(default_factory=dict)
 
     def shared_entity_metadata(
         self,
@@ -134,6 +137,9 @@ class _ConversionContext:
 
     def intern(self, value: str) -> str:
         return self.strings.setdefault(value, value)
+
+    def intern_float(self, value: float) -> float:
+        return self.floats.setdefault(value, value)
 
     def shared_approximation(self, source_kind: str, segments: int) -> dict[str, Any]:
         key = (source_kind, segments)
@@ -1047,8 +1053,8 @@ def _entity_common(
     if lineweight is not None and scale_to_mm is not None:
         candidate = float(lineweight) * scale_to_mm
         if math.isfinite(candidate) and candidate >= 0.0:
-            lineweight_mm = candidate
-            layer.setdefault("lineweight_mm", candidate)
+            lineweight_mm = context.intern_float(candidate)
+            layer.setdefault("lineweight_mm", lineweight_mm)
 
     source = getattr(source_entity, "source", None)
     appearance_effects = {
@@ -1102,25 +1108,31 @@ def _entity_common(
         }
     else:
         metadata_wrapper = context.shared_metadata_wrapper(metadata)
-    source_info: dict[str, Any] = {
-        "format": "dwf",
-        "id": _source_id(source_entity),
-        "kind": _kind(source_entity),
-    }
-    if context.options.debug_provenance:
-        source_info["metadata"] = {
-            "offset": getattr(source, "offset", None),
-            "length": getattr(source, "length", None),
-            "opcode": getattr(source, "opcode", None),
-        }
+    # Key count decides the dictionary's size class: with ``visible`` (default
+    # true, so omitted) and ``source`` a LINE had 11 keys and took 464 bytes;
+    # at 10 keys or fewer it takes 272. A plot set of 1.75 million entities
+    # spent 520 MB on the entity dictionaries and 450 MB on their ``source``.
     result: dict[str, Any] = {
         "id": context.allocate_id(),
         "layer": layer_name,
         "linetype": linetype,
-        "visible": bool(getattr(style, "visible", True)),
-        "source": source_info,
-        "metadata": metadata_wrapper,
     }
+    if not getattr(style, "visible", True):
+        result["visible"] = False
+    if context.options.entity_provenance:
+        source_info: dict[str, Any] = {
+            "format": "dwf",
+            "id": _source_id(source_entity),
+            "kind": _kind(source_entity),
+        }
+        if context.options.debug_provenance:
+            source_info["metadata"] = {
+                "offset": getattr(source, "offset", None),
+                "length": getattr(source, "length", None),
+                "opcode": getattr(source, "opcode", None),
+            }
+        result["source"] = source_info
+    result["metadata"] = metadata_wrapper
     if color is not None:
         result["color"] = color
     if lineweight_mm is not None:

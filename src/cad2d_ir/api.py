@@ -277,8 +277,9 @@ def convert_file_to_ir(
 ) -> ImportResult:
     """Convert a supported CAD file to IR using format detection or an explicit adapter.
 
-    ``entity_provenance=False`` omits per-entity ``source``/``metadata`` (JWW),
-    roughly halving peak memory for render-only imports of very large drawings.
+    ``entity_provenance=False`` omits per-entity ``source``/``metadata`` (JWW,
+    IDW, EXB; DWF omits ``source``), roughly halving peak memory for render-only
+    imports of very large drawings.
     ``keep_3d=True`` (DWG/DXF) returns the geometry before XY projection in
     ``ImportResult.model3d``; see ``cad2d_ir.model3d``.
     """

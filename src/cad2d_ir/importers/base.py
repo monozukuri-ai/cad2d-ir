@@ -67,7 +67,8 @@ class ImportOptions:
     # JWWでは1要素あたり約1.5KB(IRの6割)がこの2つで、表示・書き出しだけが目的の
     # 大きな図面(数十万要素)ではオフにするとピークメモリがほぼ半分になる。
     # 文書レベルのsource/header.metadata、寸法のdefinition、診断は影響しない。
-    # 現在はJWWインポータが対応
+    # JWW・IDW・EXB・DWF のインポータが対応(DWF は要素ごとの source だけを省く。
+    # metadata.dwf はシート・ストリームごとに共有されていて小さい)
     entity_provenance: bool = True
     # DWG/DXF: 投影前の 3D 幾何(折線・面・ブロック配置・未対応の 3D 要素の件数)を
     # IR とは別の側道 ``ImportResult.model3d`` で返す。IR 自体は 2D のまま変わらない。

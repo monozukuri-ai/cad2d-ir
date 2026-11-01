@@ -498,3 +498,79 @@ def test_dwf_zero_radius_circle_becomes_point() -> None:
     assert entity["kind"] == "POINT" and entity["position"] == [4.0, 5.0]
     assert not [d for d in result.diagnostics if d.severity == "error"]
     validate_ir(result.document, strict_jsonschema=True)
+
+
+def test_entity_provenance_can_be_omitted_for_render_only_imports() -> None:
+    from cad2d_ir.importers.base import ImportOptions
+
+    def drawing() -> SimpleNamespace:
+        hidden = _style()
+        hidden.visible = False
+        return SimpleNamespace(
+            sheets=(
+                _sheet(
+                    (
+                        _entity("LINE", 1, points=(_point(0, 0), _point(10, 5))),
+                        _entity(
+                            "LINE", 2, points=(_point(0, 0), _point(3, 4)), style=hidden
+                        ),
+                        _entity(
+                            "POLYGON",
+                            3,
+                            points=(_point(0, 0), _point(5, 0), _point(5, 5)),
+                            closed=True,
+                            style=_style(fill=True),
+                        ),
+                    )
+                ),
+            ),
+            diagnostics=(),
+        )
+
+    full = dwf_drawing_to_ir(drawing(), source_name="fixture.dwf")
+    slim = dwf_drawing_to_ir(
+        drawing(),
+        source_name="fixture.dwf",
+        options=ImportOptions(entity_provenance=False),
+    )
+    validate_ir(slim.document, strict_jsonschema=True)
+    assert slim.statistics == full.statistics
+    assert slim.diagnostics == full.diagnostics
+    assert slim.document["source"] == full.document["source"]
+    assert slim.document["header"] == full.document["header"]
+    assert len(slim.document["entities"]) == len(full.document["entities"]) == 3
+    for lean, rich in zip(slim.document["entities"], full.document["entities"]):
+        assert "source" not in lean, lean["kind"]
+        assert rich["source"] == {
+            "format": "dwf",
+            "id": rich["source"]["id"],
+            "kind": rich["source"]["kind"],
+        }
+        # The shared metadata.dwf stays (sheet / stream / style); geometry and styling are unchanged.
+        assert lean == {k: v for k, v in rich.items() if k != "source"}, lean["kind"]
+    # ``visible`` is written only when false (the schema default is true); the
+    # key count keeps a LINE's dictionary in the smaller size class.
+    line, hidden_line, polygon = full.document["entities"]
+    assert (
+        "visible" not in line
+        and hidden_line["visible"] is False
+        and "visible" not in polygon
+    )
+    assert set(line) == {
+        "id",
+        "layer",
+        "linetype",
+        "source",
+        "metadata",
+        "color",
+        "lineweight_mm",
+        "kind",
+        "p1",
+        "p2",
+    }
+    # One float object serves every entity with the same line weight
+    assert (
+        line["lineweight_mm"]
+        is polygon["lineweight_mm"]
+        is hidden_line["lineweight_mm"]
+    )

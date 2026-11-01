@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.5
+
+- DWF importer: `entity_provenance=False` (the option JWW, IDW and EXB already
+  honour) omits every entity's `source` dictionary; the shared `metadata.dwf`
+  stays. `visible` is written only when it is false (the schema default is
+  true), and the entities that share a line weight share one `lineweight_mm`
+  float. The key count decides a dictionary's size class: a LINE with 11 keys
+  took 464 bytes, with 10 or fewer it takes 272. A plot set of 1.75 million
+  entities spent 520 MB on the entity dictionaries and 450 MB on their
+  `source`; read for display only it now takes about 850 MB less.
+
 ## 0.17.4
 
 - DWF importer: reads with `ezdwf.open_drawing(..., consume=True)` (ezdwf
