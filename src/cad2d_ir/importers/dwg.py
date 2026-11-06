@@ -85,6 +85,8 @@ class _ConversionContext:
     attached_attributes: int = 0
     linked_images: int = 0
     inserts_by_handle: dict[int, dict[str, Any]] = field(default_factory=dict)
+    # Layer handle -> its text in metadata.dwg: one string per layer, not per entity
+    layer_handle_texts: dict[int, str] = field(default_factory=dict)
     next_entity_number: int = 1
     # ``ImportOptions.keep_3d``: 投影前の 3D 幾何を集める側道。scope は None(モデル空間)、
     # ブロック定義のヘッダハンドル、または _MODEL3D_SKIP(ペーパー空間: 集めない)
@@ -633,6 +635,8 @@ def _read_dwg_tables(
 
 
 _BUILTIN_LINETYPES = ("BYLAYER", "BYBLOCK", "CONTINUOUS")
+# The built-in names as these constants: one object, not a new upper-case copy per entity
+_BUILTIN_LINETYPE_NAMES = {name: name for name in _BUILTIN_LINETYPES}
 
 
 def _linetype_name(raw_name: Any) -> str | None:
@@ -640,7 +644,7 @@ def _linetype_name(raw_name: Any) -> str | None:
     name = str(raw_name).strip()
     if not name:
         return None
-    return name.upper() if name.upper() in _BUILTIN_LINETYPES else name
+    return _BUILTIN_LINETYPE_NAMES.get(name.upper(), name)
 
 
 def _build_linetypes(
@@ -1112,6 +1116,11 @@ def _entity_common(source_entity: Any, context: _ConversionContext) -> dict[str,
             "metadata": {"dwg": {"layer_handle": _handle_text(layer_handle)}},
         }
     handle_text = _handle_text(handle)
+    layer_handle_text = context.layer_handle_texts.get(layer_handle)
+    if layer_handle_text is None:
+        layer_handle_text = context.layer_handle_texts[layer_handle] = _handle_text(
+            layer_handle
+        )
     result: dict[str, Any] = {
         "id": context.allocate_id(),
         "layer": layer,
@@ -1120,7 +1129,7 @@ def _entity_common(source_entity: Any, context: _ConversionContext) -> dict[str,
         "metadata": {
             "dwg": {
                 "handle": handle_text,
-                "layer_handle": _handle_text(layer_handle),
+                "layer_handle": layer_handle_text,
             }
         },
     }
@@ -2443,8 +2452,13 @@ def _mtext_attachment(value: int) -> str:
     }.get(value, "top_left")
 
 
+_SOURCE_KINDS: dict[str, str] = {}
+
+
 def _source_kind(entity: Any) -> str:
-    return str(getattr(entity, "dxftype", "UNKNOWN")).upper()
+    kind = str(getattr(entity, "dxftype", "UNKNOWN")).upper()
+    # One object per entity type: the IR keeps the kind of every entity
+    return _SOURCE_KINDS.setdefault(kind, kind)
 
 
 def _entity_handle(entity: Any) -> int:

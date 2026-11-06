@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.7
+
+- DWG importer: strings every entity repeats are one object each: the layer
+  handle in `metadata.dwg` (per layer, kept in the conversion context), the
+  source kind (per entity type) and the built-in linetype names. The IR is
+  unchanged; with ezdwg 0.19.2 the peak of reading production drawings of
+  185,000 to 220,000 entities is 518 MB and 662 MB instead of 540 MB and
+  691 MB (638 MB and 808 MB with ezdwg 0.19.1).
+
 ## 0.17.6
 
 - DWG importer: the per-entity type checks test the concrete `tuple`, `list`,
