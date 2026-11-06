@@ -1111,14 +1111,15 @@ def _entity_common(source_entity: Any, context: _ConversionContext) -> dict[str,
             "linetype": "CONTINUOUS",
             "metadata": {"dwg": {"layer_handle": _handle_text(layer_handle)}},
         }
+    handle_text = _handle_text(handle)
     result: dict[str, Any] = {
         "id": context.allocate_id(),
         "layer": layer,
         "linetype": _entity_linetype(dxf, context),
-        "source": {"format": "dwg", "id": _handle_text(handle), "kind": kind},
+        "source": {"format": "dwg", "id": handle_text, "kind": kind},
         "metadata": {
             "dwg": {
-                "handle": _handle_text(handle),
+                "handle": handle_text,
                 "layer_handle": _handle_text(layer_handle),
             }
         },
@@ -1589,7 +1590,7 @@ def _finite_number(value: Any) -> float | None:
 
 
 def _finite_pair(value: Any) -> list[float] | None:
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+    if not _is_sequence(value):
         return None
     if len(value) < 2:
         return None
@@ -1703,10 +1704,7 @@ def _convert_dimension(
             "text_midpoint",
             "insert",
         )
-        if key in dxf
-        and isinstance(dxf[key], Sequence)
-        and not isinstance(dxf[key], (str, bytes))
-        and len(dxf[key]) >= 2
+        if key in dxf and _is_sequence(dxf[key]) and len(dxf[key]) >= 2
     }
     definition: dict[str, Any] = {
         "points": points,
@@ -2354,7 +2352,7 @@ def _point(
     kind: str,
     context: _ConversionContext,
 ) -> list[float]:
-    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+    if not _is_sequence(value):
         raise TypeError("point must be a coordinate sequence")
     if len(value) < 2:
         raise ValueError("point must contain x and y")
@@ -2385,7 +2383,10 @@ def _mark_nonplanar_extrusion(
     context: _ConversionContext,
 ) -> None:
     extrusion = dxf.get("extrusion")
-    if not isinstance(extrusion, Sequence) or len(extrusion) < 3:
+    cls = type(extrusion)
+    if (
+        cls is not tuple and cls is not list and not isinstance(extrusion, Sequence)
+    ) or len(extrusion) < 3:
         return
     x, y, z = map(float, extrusion[:3])
     if abs(x) > _EPSILON or abs(y) > _EPSILON or abs(abs(z) - 1.0) > _EPSILON:
@@ -2455,7 +2456,7 @@ def _dxf(entity: Any) -> Mapping[str, Any]:
 
 
 def _mapping(value: Any, label: str) -> Mapping[str, Any]:
-    if not isinstance(value, Mapping):
+    if type(value) is not dict and not isinstance(value, Mapping):
         raise TypeError(f"{label} must be a mapping")
     return value
 
@@ -2490,7 +2491,25 @@ def _near(left: Sequence[float], right: Sequence[float]) -> bool:
     )
 
 
+def _is_sequence(value: Any) -> bool:
+    """``isinstance(value, Sequence)`` excluding str/bytes, tuple and list first."""
+    cls = type(value)
+    if cls is tuple or cls is list:
+        return True
+    return isinstance(value, Sequence) and not isinstance(value, (str, bytes))
+
+
 def _json_safe(value: Any) -> Any:
+    # Concrete types first: the Mapping/Sequence checks below go through the ABC
+    # machinery and dominated the import of dimension-heavy drawings (13.5k
+    # DIMENSIONs copy their whole dxf into source_geometry). Same result.
+    cls = type(value)
+    if cls is float:
+        return value if math.isfinite(value) else str(value)
+    if cls is dict:
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if cls is list or cls is tuple:
+        return [_json_safe(item) for item in value]
     if value is None or isinstance(value, (str, bool, int)):
         return value
     if isinstance(value, float):

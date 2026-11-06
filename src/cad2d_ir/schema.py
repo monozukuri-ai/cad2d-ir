@@ -389,6 +389,9 @@ def _validate_entity_scope(entities: list[Any], path: str) -> None:
         seen_ids[entity_id] = idx
 
 
+_ENTITY_ID_RE = re.compile(r"[A-Za-z][A-Za-z0-9_\-:.]{0,63}")
+
+
 def _validate_entity(entity: Any, path: str) -> None:
     if not isinstance(entity, dict):
         raise IRValidationError(f"{path} must be an object")
@@ -396,7 +399,7 @@ def _validate_entity(entity: Any, path: str) -> None:
         raise IRValidationError(f"{path} must contain id and kind")
     if not isinstance(entity["id"], str) or not entity["id"]:
         raise IRValidationError(f"{path}.id must be a non-empty string")
-    if re.fullmatch(r"[A-Za-z][A-Za-z0-9_\-:.]{0,63}", entity["id"]) is None:
+    if _ENTITY_ID_RE.fullmatch(entity["id"]) is None:
         raise IRValidationError(f"{path}.id has invalid format")
     if entity["kind"] not in _SUPPORTED_KINDS:
         raise IRValidationError(f"{path}.kind is not supported")
@@ -785,7 +788,7 @@ def _require_point2(entity: dict[str, Any], key: str, path: str) -> None:
     value = entity.get(key)
     if not isinstance(value, list) or len(value) != 2:
         raise IRValidationError(f"{path}.{key} must be [x, y]")
-    if not all(isinstance(v, (int, float)) for v in value):
+    if not (isinstance(value[0], (int, float)) and isinstance(value[1], (int, float))):
         raise IRValidationError(f"{path}.{key} must contain only numbers")
 
 

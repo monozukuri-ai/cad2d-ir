@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.17.6
+
+- DWG importer: the per-entity type checks test the concrete `tuple`, `list`,
+  `dict` and `float` types before the `Sequence` / `Mapping` ABCs, whose
+  `isinstance` was the larger part of `_json_safe` (every DIMENSION copies its
+  whole `dxf` into `source_geometry`) and of the point checks; `validate_ir`
+  compiles the entity id pattern once. The IR is unchanged (the same JSON for
+  29 R2010+ production drawings); with the same ezdwg, importing three
+  production drawings of 5-9 MB takes 0.2-1.3 s (2-9 %) less.
+
 ## 0.17.5
 
 - DWF importer: `entity_provenance=False` (the option JWW, IDW and EXB already
