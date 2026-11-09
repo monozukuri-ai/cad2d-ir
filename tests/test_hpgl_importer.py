@@ -244,7 +244,9 @@ def test_dxf_page_selection_width_mapping_and_unused_blocks(tmp_path):
 def test_cli_requires_page_preserves_output_on_failure_and_reports_partial(
     tmp_path, capsys
 ):
-    path = save(tmp_path, b"SP1;LA1,4;PD40,0;PG;PD80,0;")  # LA: caps approximated, so partial
+    path = save(
+        tmp_path, b"SP1;LA1,4;PD40,0;PG;PD80,0;"
+    )  # LA: caps approximated, so partial
     out, report, ir = [tmp_path / n for n in ("out.dxf", "report.json", "all.json")]
     out.write_text("keep")
     assert main(["hpgl2dxf", str(path), "-o", str(out)]) == 2
@@ -308,8 +310,15 @@ def test_label_mode_label_emits_one_text_per_line_and_guesses_cp932():
     assert texts[1]["insert"] == pytest.approx([25.0, 36.0])
     assert texts[0]["height"] == pytest.approx(7.0)
     assert texts[0]["source"]["metadata"]["line"] == 0
+    # The line is one advance (1.5 character widths of 5 mm) plus one character
+    # wide; the width factor fits its two half-width characters (one cell of
+    # 7 mm) to that length.
+    assert texts[0]["width_factor"] == pytest.approx(12.5 / 7.0)
     assert "HPGL_TEXT_ENCODING_GUESSED" not in codes(result)
-    assert len([e for e in entities(convert(data)) if e["kind"] == "TEXT"]) == 4
+    glyphs = [e for e in entities(convert(data)) if e["kind"] == "TEXT"]
+    assert len(glyphs) == 4
+    # One TEXT per glyph fills the 5 mm character width with half a cell.
+    assert glyphs[0]["width_factor"] == pytest.approx(5.0 / 3.5)
     result = convert(b"IN;SP1;PA0,0;LB\x82\xa0\x82\xa2x\x03", label_mode="label")
     (text,) = [e for e in entities(result) if e["kind"] == "TEXT"]
     assert text["text"] == "あいx"

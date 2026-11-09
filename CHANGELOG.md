@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.17.10
+
+- SXF importer: a TEXT's `width_factor` is the stored box width against the
+  width of its character cells (a full-width character one cell as wide as the
+  text is high, a half-width one half a cell) instead of 0.6 of the height per
+  character. Full-width text that fills its cells now has the factor 1.0; it
+  had 1.67, which made the text 1.67 times too wide when the IR was written to
+  DXF or drawn with the factor. The stored width stays in
+  `metadata.sxf.width`.
+- HP-GL importer: a label's `width_factor` fits the text to the length the
+  plotter lays it out on (the character cells from the first to the last one;
+  a plotter advances by one and a half character widths) instead of being the
+  width-to-height ratio of one character, which made a label line about a
+  third of its length.
+
 ## 0.17.9
 
 - EXB importer: drawings written before the compound-document format

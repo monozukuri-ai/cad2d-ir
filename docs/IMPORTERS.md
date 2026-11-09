@@ -466,7 +466,7 @@ The SXF adapter parses either SFC or AP202/P21 and consumes `ezsxf.build_drawing
 | two-point path | `LINE` | direct |
 | other path | `LWPOLYLINE` | SFC curve source kinds carry `approximation`; P21 paths disclose the flattening boundary |
 | fill with outer/inner rings | solid `HATCH` | holes retained |
-| text | `TEXT` / `MTEXT` | layer, RGB color, line width, font, anchor, angle, width retained |
+| text | `TEXT` / `MTEXT` | layer, RGB color, line width, font, anchor and angle retained; `width_factor` is the stored box width against the character cells of the text (one cell, as wide as the text is high, for a full-width character, half a cell for a half-width one), and the width itself is in `metadata.sxf.width` |
 | marker/symbol insertion point | `POINT` | code, scale, and symbol name retained |
 | SFC dimension feature | semantic `DIMENSION` | native feature plus grouped rendered world-space paths/text retained |
 

@@ -201,6 +201,37 @@ def test_sfc_drawing_to_ir_preserves_dimensions_and_records_curves() -> None:
     validate_ir(document, strict_jsonschema=True)
 
 
+def test_text_width_factor_is_the_box_width_against_the_character_cells() -> None:
+    style = _Style(font_name="Test Font")
+    drawing = _Drawing(
+        texts=[
+            # full-width characters fill one cell each: 3 cells of height 5
+            _Text("平面図", (0.0, 0.0), 5.0, 15.0, 0.0, 1, 1, style, 4),
+            # half-width characters fill half a cell: 4 × 2.5, stored a little wider
+            _Text("A-01", (0.0, 10.0), 5.0, 10.6, 0.0, 1, 1, style, 4),
+            # mixed: 2 + 1.5 cells, stored at twice the natural width
+            _Text("断面A-A", (0.0, 20.0), 4.0, 28.0, 0.0, 1, 1, style, 4),
+            # half-width katakana is half-width
+            _Text("ｶﾅ", (0.0, 30.0), 6.0, 6.0, 0.0, 1, 1, style, 4),
+        ]
+    )
+
+    result = sxf_drawing_to_ir(drawing, parsed=_parsed(), source_name="fixture.sfc")
+    texts = [e for e in result.document["entities"] if e["kind"] == "TEXT"]
+
+    assert [text["width_factor"] for text in texts] == pytest.approx(
+        [1.0, 1.06, 2.0, 1.0]
+    )
+    # the stored box width stays available for an exact SXF round trip
+    assert [text["metadata"]["sxf"]["width"] for text in texts] == [
+        15.0,
+        10.6,
+        28.0,
+        6.0,
+    ]
+    validate_ir(result.document, strict_jsonschema=True)
+
+
 def test_p21_drawing_to_ir_marks_flattened_semantics() -> None:
     drawing = _Drawing(
         paths=[

@@ -127,6 +127,19 @@ the baseline for the default `left` / `baseline`, the center of the text for
 `center` / `middle`, and so on. A renderer places the text with that point and
 needs no other.
 
+## Text width factor
+
+`width_factor` scales the glyphs of a `TEXT` horizontally, as the DXF width
+factor does (group 41): 1.0 is the natural width of the font, and the text is
+stretched or compressed about its `insert`. A DXF `MTEXT` has no factor of its
+own and uses the one of its text style (`tables.text_styles`).
+
+Formats that lay text out in character cells instead of font metrics (JWW,
+SXF, iCAD, HP-GL labels) store a cell width or the length of the text. Their
+importers take the natural width of such a text as one cell, as wide as the
+text is high, for a full-width character and half a cell for a half-width one,
+so a text that fills its cells has the factor 1.0.
+
 DXF and DWG store two points for a text. The first (DXF group 10) is always the
 left end of the baseline, and for a justified text the second (group 11) is the
 point of the justification. The importers put the second point into `insert`

@@ -84,7 +84,7 @@ still inspects the contents. An unrelated file named `.plt` is rejected.
 | Collinear solid fills | omitted with diagnostic | Device-specific stroke fallback is outside this adapter |
 | Hatch/crosshatch | explicit lines | Core hatch segments retained, with nominal pen attributes |
 | Labels | per-glyph substitute-font `TEXT`; mirrored `INSERT` blocks | Font metrics/outlines are approximate; glyphs crossing/outside their clip are omitted |
-| Labels with `label_mode="label"` | one `TEXT` per label line from its first glyph cell | Lines are grouped by glyph geometry (LF/CR); bytes outside Roman-8 are re-decoded as Shift_JIS (`HPGL_TEXT_ENCODING_GUESSED`); a line crossing its clip is kept whole |
+| Labels with `label_mode="label"` | one `TEXT` per label line from its first glyph cell | Lines are grouped by glyph geometry (LF/CR); bytes outside Roman-8 are re-decoded as Shift_JIS (`HPGL_TEXT_ENCODING_GUESSED`); a line crossing its clip is kept whole; `width_factor` fits the text to the length of the line (from the first glyph cell to the last) |
 | Pen dots / `LT0` | `POINT` | CAD point-display semantics differ from physical pen marks; the pen-down mark at the start of a drawn vector is not repeated as a POINT |
 
 Pen identity maps to `HPGL_PEN_<number>` layers; these are not recovered CAD

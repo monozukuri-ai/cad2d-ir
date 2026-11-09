@@ -607,7 +607,10 @@ def _convert_text(primitive: Any, context: _ConversionContext) -> dict[str, Any]
         }
     else:
         width = max(0.0, float(_attr(primitive, "width", 0.0)))
-        estimated_width = max(height * 0.6 * max(1, len(text)), _EPSILON)
+        # SXF lays text out in character cells: a full-width character is one
+        # cell (as wide as the text is high), a half-width one half a cell.
+        # ``width_factor`` is the stored box width against that natural width.
+        estimated_width = max(height * _text_cells(text), _EPSILON)
         result = {
             **common,
             "kind": "TEXT",
@@ -631,6 +634,16 @@ def _convert_text(primitive: Any, context: _ConversionContext) -> dict[str, Any]
         }
     )
     return result
+
+
+def _text_cells(text: str) -> float:
+    """Character cells of a string: half a cell for the characters CP932 stores
+    in one byte (ASCII and half-width katakana), one cell for any other."""
+    cells = 0.0
+    for character in text:
+        code = ord(character)
+        cells += 0.5 if code < 0x80 or 0xFF61 <= code <= 0xFF9F else 1.0
+    return max(cells, 0.5)
 
 
 def _convert_marker(primitive: Any, context: _ConversionContext) -> dict[str, Any]:

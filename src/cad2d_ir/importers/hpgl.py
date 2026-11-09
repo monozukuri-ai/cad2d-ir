@@ -73,6 +73,33 @@ def _glyph_lines(glyphs: Any) -> list[list[Any]]:
     return lines
 
 
+def _line_extent(glyphs: Any) -> float:
+    """Length of a label line along its baseline: from the left edge of the
+    first cell to the right edge of the last cell that is not a space."""
+    first = glyphs[0]
+    last = next((g for g in reversed(glyphs) if not g.character.isspace()), first)
+    ax = first.axis_x
+    width = math.hypot(ax.x, ax.y)
+    if width == 0:
+        return 0.0
+    along = (
+        (last.origin.x - first.origin.x) * ax.x
+        + (last.origin.y - first.origin.y) * ax.y
+    ) / width
+    return along + math.hypot(last.axis_x.x, last.axis_x.y)
+
+
+def _text_cells(text: str) -> float:
+    """Character cells of a string in a monospaced layout: half a cell for a
+    single-byte character (ASCII, half-width katakana), one cell for any other.
+    A cell is as wide as the text is high."""
+    cells = 0.0
+    for character in text:
+        code = ord(character)
+        cells += 0.5 if code < 0x80 or 0xFF61 <= code <= 0xFF9F else 1.0
+    return max(cells, 0.5)
+
+
 def _decode_label(label: Any, line_count: int) -> tuple[list[str] | None, str | None]:
     """Re-decode label bytes as cp932 when they hold bytes Roman-8 never uses.
 
@@ -577,10 +604,23 @@ class _Converter:
                     "Label bytes outside HP-GL's Roman-8 set were decoded as Shift_JIS (cp932); the original bytes remain in layout metadata.",
                 )
                 metadata["encoding"] = encoding
-            self.text(glyphs[0], text, metadata)
+            self.text(glyphs[0], text, metadata, extent=_line_extent(glyphs))
 
-    def text(self, glyph: Any, text: str, metadata: dict[str, Any]) -> None:
-        """Emit TEXT from one glyph cell; reflected cells use a block INSERT."""
+    def text(
+        self,
+        glyph: Any,
+        text: str,
+        metadata: dict[str, Any],
+        extent: float | None = None,
+    ) -> None:
+        """Emit TEXT from one glyph cell; reflected cells use a block INSERT.
+
+        ``extent`` is the length of the text along its baseline, from the left
+        edge of this cell to the right edge of its last one; by default the
+        width of the cell itself. ``width_factor`` fits the text to it: a
+        plotter advances by one and a half character widths, so the length of a
+        line is not the character width times the number of characters.
+        """
         x, y = glyph.axis_x, glyph.axis_y
         width = math.hypot(x.x, x.y)
         if width == 0:
@@ -589,13 +629,15 @@ class _Converter:
         rise, shear = ux * y.y - uy * y.x, ux * y.x + uy * y.y
         if abs(rise) <= 1e-12:
             return
+        if extent is None or extent <= 0:
+            extent = width
         shape = {
             "kind": "TEXT",
             "insert": _xy(glyph.origin),
             "text": text,
             "height": abs(rise),
             "rotation": math.degrees(math.atan2(uy, ux)),
-            "width_factor": width / abs(rise),
+            "width_factor": extent / (abs(rise) * _text_cells(text)),
             "oblique_deg": math.degrees(math.atan2(shear, abs(rise))),
             "style": "HPGL_FALLBACK",
         }
