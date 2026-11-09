@@ -180,6 +180,10 @@ for a justified text and the first one otherwise. "Aligned" and "fit" texts
 (group 72 = 3, 5) run from the first point to the second, so they are `left` /
 `baseline` at the first point; "middle" (72 = 4) is `center` / `middle` at the
 second. The DXF export writes `insert` as the second point of a justified text.
+Its first point is the left end of the baseline as far as the export can tell
+without the font: a full-width character counts as one text height wide and
+any other as half, times the width factor. A reader that honours the
+justification never uses it; one that does not starts the text there.
 
 ## Visibility
 

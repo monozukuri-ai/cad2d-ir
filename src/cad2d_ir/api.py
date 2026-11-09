@@ -11,6 +11,7 @@ from cad2d_ir.codecs.dxf import (
     EntityMapEntry,
     GenericDimensionMode,
     TargetVersion,
+    dxf_text_encoding,
     dxf_to_ir,
     ir_to_dxf,
     read_dxf_file,
@@ -55,6 +56,9 @@ class IrToDxfResult:
     diagnostics: list[ExportDiagnostic] = field(default_factory=list)
     entity_map: list[EntityMapEntry] = field(default_factory=list)
     target_version: str = "AC1024"
+    #: Byte encoding to store ``dxf_text`` with: UTF-8, or for DXF R12 the code
+    #: page the text of the drawing asked for (named in ``$DWGCODEPAGE``).
+    encoding: str = "utf-8"
 
 
 @dataclass(slots=True)
@@ -686,6 +690,7 @@ def convert_ir_to_dxf_text(
         diagnostics=diagnostics,
         entity_map=entity_map,
         target_version=target_version,
+        encoding=dxf_text_encoding(dxf_text),
     )
 
 

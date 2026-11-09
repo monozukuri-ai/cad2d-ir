@@ -50,6 +50,7 @@ from cad2d_ir.importers.base import (
     ImportResult,
     MissingOptionalDependencyError,
 )
+from cad2d_ir.mtext import mtext_lines
 from cad2d_ir.schema import validate_ir
 
 _TAU = 2.0 * math.pi
@@ -1019,6 +1020,32 @@ def _text_fields(text: Any, context: _ConversionContext) -> dict[str, Any] | Non
     return fields
 
 
+def attribute_text(
+    contents: str, value: str, width_factor: float | None, height: float
+) -> tuple[str, float | None]:
+    """The text an attribute shows, and its width factor, without inline codes.
+
+    An attribute of an ``INSERT`` is a plain text (one line per ``\\n``), but
+    CAXA stores its contents and its value with the inline codes of its text
+    (``{\\W0.667^0.667;d4}`` and ``\\W0.667;\\W^0.667;d4``). The codes are
+    read as those of an ``MTEXT``: the lines lose them, and a width code
+    becomes the width factor of the attribute (the factor of its first line).
+    The contents come first, since they are what the drawing shows; the value
+    stands in when they have no text.
+    """
+    base = width_factor if width_factor else 1.0
+    for source in (contents, value):
+        lines = mtext_lines(source, width_factor=base, height=height)
+        rows = [line.text for line in lines]
+        if not "".join(rows).strip():
+            continue
+        factor = lines[0].width_factor if lines else base
+        if abs(factor - 1.0) <= _EPSILON:
+            return "\n".join(rows), None
+        return "\n".join(rows), round(factor, 6)
+    return "", (None if abs(base - 1.0) <= _EPSILON else round(base, 6))
+
+
 def _natural_text_width(contents: str, height: float, width_factor: float) -> float:
     longest = (
         max(contents.replace("\\P", "\n").split("\n"), key=len) if contents else ""
@@ -1060,9 +1087,15 @@ def _insert_fields(
         visible = attribute.visibility is not False and (
             int(attribute.text_attributes.hide_flag_raw) == 0
         )
+        text, width_factor = attribute_text(
+            str(fields["text"]),
+            str(attribute.value.value),
+            fields.get("width_factor"),
+            float(fields["height"]),
+        )
         item: dict[str, Any] = {
             "tag": str(attribute.tag.value),
-            "text": str(attribute.value.value) or str(fields["text"]),
+            "text": text,
             "insert": fields["insert"],
             "height": fields["height"],
             "rotation": fields["rotation"],
@@ -1071,9 +1104,10 @@ def _insert_fields(
         if fields["kind"] == "TEXT":
             item["halign"] = fields["halign"]
             item["valign"] = fields["valign"]
-        for key in ("style", "width_factor"):
-            if key in fields:
-                item[key] = fields[key]
+        if "style" in fields:
+            item["style"] = fields["style"]
+        if width_factor is not None:
+            item["width_factor"] = width_factor
         attributes.append(item)
     if attributes:
         result["attribute_texts"] = attributes

@@ -1156,6 +1156,20 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
     "DXF_R12_INSUNITS_OMITTED": DiagnosticCode(
         "warning", "skipped", "DXF R12 export", "INSUNITS was omitted from R12 output."
     ),
+    "DXF_R12_CODEPAGE_SELECTED": DiagnosticCode(
+        "info",
+        "normalized",
+        "DXF R12 export",
+        "The text was stored in a code page other than ANSI_932, which the characters of the drawing asked for (ANSI_936 for simplified Chinese, for example); `$DWGCODEPAGE` names it.",
+    ),
+    "DXF_R12_CHARACTERS_REPLACED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "DXF R12 export",
+        "Characters the code page of the file cannot store were written as a "
+        "similar character (`2` for `²`) or as `?` (`_` in the name of a layer, "
+        "block, linetype or text style and in a font file).",
+    ),
     "DXF_R12_VIEWPORT_OMITTED": DiagnosticCode(
         "warning",
         "skipped",

@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.17.13
+
+- DXF R12 export: the text is stored in the Windows code page its characters
+  ask for, and `$DWGCODEPAGE` names it: ANSI_932 for Japanese and plain ASCII
+  drawings as before, ANSI_936 (GBK) for simplified Chinese, ANSI_949 for
+  Korean, ANSI_950 for traditional Chinese, ANSI_1252 and the other
+  single-byte pages for European, Cyrillic, Greek, Turkish, Hebrew, Arabic,
+  Baltic and Thai text. R12 output always declared ANSI_932, and
+  `write_dxf_file` raised `UnicodeEncodeError` for a character outside it.
+  `IrToDxfResult.encoding` and the new `dxf_text_encoding(dxf_text)` give the
+  codec for the text `ir_to_dxf` returns, and `resolve_dxf_output_encoding`
+  takes that text as `dxf_text`. `DXF_R12_CODEPAGE_SELECTED` reports a code
+  page other than ANSI_932. An explicit `encoding` for AC1009 has to be the
+  one the file declares, which is no longer always CP932.
+- DXF R12 export: in the text of `TEXT`, `ATTRIB`, `ATTDEF` and `DIMENSION`
+  the diameter signs `⌀` and `∅` become `%%c`, and `Ø`, `°` and `±` become
+  `%%c`, `%%d` and `%%p` where the code page has no such character. A
+  character the code page still cannot store becomes its compatibility form
+  where the code page has that (`2` for `²`, `μ` for the micro sign, `mm`
+  for `㎜`), and `?` otherwise, or `_` in the name of a layer, block,
+  linetype or text style and in a font file, where two names stay two names
+  (`DXF_R12_CHARACTERS_REPLACED`).
+- DXF export: an aligned `TEXT`, `ATTRIB` or `ATTDEF` (centered, right,
+  middle and so on) has its first point (groups 10 and 20) at the estimated
+  left end of its baseline; the alignment point stays in groups 11 and 21.
+  The first point was a copy of the alignment point, and a program that
+  ignores the alignment, as Jw_cad does, drew a centered text from its centre
+  and a right-aligned one from its right end.
+- DXF export and import: string values use the caret notation of DXF in
+  both directions. A caret is written as `^ `, since AutoCAD and ODA read `^`
+  and the character after it as one control character (the caret of a stack
+  such as `\S+0.1^-0.2;` was lost there), and the reader turns `^ `, `^J`,
+  `^M` and `^I` back into a caret, line feed, carriage return and tab. A
+  multi-line attribute, written with `^J`, now reads back with its line
+  breaks; stacks from AutoCAD (`\S1^ 2;`) lose the space. Other `^`
+  sequences are read as they are.
+- DXF import: the Y scale factor of an `INSERT` (group 42) defaults to 1 when
+  the group is missing. It followed the X scale factor, and since AutoCAD and
+  ODA leave out a factor of 1, a block mirrored in X (group 41 = -1 alone) was
+  drawn mirrored in both axes.
+- EXB importer: the text of a block attribute (`attribute_texts`) is the plain
+  text of its lines, and a width code in it becomes the `width_factor` of the
+  attribute. CAXA stores the contents and the value of an attribute with the
+  inline codes of its text (`{\W0.667^0.667;d4}`, `\W0.667;\W^0.667;d4`),
+  and the value was kept as it was, so the codes were shown and written to
+  DXF as text.
+- DXF import: a DXF before AutoCAD 2007 that names ANSI_936, ANSI_949,
+  ANSI_950, ANSI_874 or one of ANSI_1250 to ANSI_1258 in `$DWGCODEPAGE` is
+  decoded in that code page. Only ANSI_932 and ANSI_1252 were known, and the
+  others were read as UTF-8 or CP932.
+
 ## 0.17.12
 
 - New module `cad2d_ir.mtext` for the inline codes of `MTEXT` text:

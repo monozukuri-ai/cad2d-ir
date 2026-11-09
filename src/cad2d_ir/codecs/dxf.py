@@ -6,6 +6,7 @@ import copy
 import math
 import re
 import struct
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable, Literal
@@ -47,12 +48,54 @@ GenericDimensionMode = Literal["explode", "skip"]
 SUPPORTED_DXF_TARGET_VERSIONS: tuple[TargetVersion, ...] = ("AC1009", "AC1024")
 _HANDLE_START = 0x100
 _HANDLE_EXCLUDED_RECORDS = {"SECTION", "ENDSEC", "ENDTAB", "EOF"}
+# Windows code pages a DXF names in ``$DWGCODEPAGE``, and their codecs.
 _CODEPAGE_ENCODINGS = {
+    "ANSI_874": "cp874",
     "ANSI_932": "cp932",
+    "ANSI_936": "gbk",
+    "ANSI_949": "cp949",
+    "ANSI_950": "cp950",
+    "ANSI_1250": "cp1250",
+    "ANSI_1251": "cp1251",
     "ANSI_1252": "cp1252",
+    "ANSI_1253": "cp1253",
+    "ANSI_1254": "cp1254",
+    "ANSI_1255": "cp1255",
+    "ANSI_1256": "cp1256",
+    "ANSI_1257": "cp1257",
+    "ANSI_1258": "cp1258",
     "DOS932": "cp932",
     "UTF-8": "utf-8",
 }
+# The code pages DXF R12 text is written in. ANSI_932 comes first: R12 output
+# was always written in it, and it is what Jw_cad reads.
+_R12_CJK_CODEPAGES = ("ANSI_932", "ANSI_936", "ANSI_949", "ANSI_950")
+_R12_SINGLE_BYTE_CODEPAGES = (
+    "ANSI_1251",
+    "ANSI_1250",
+    "ANSI_1253",
+    "ANSI_1254",
+    "ANSI_1255",
+    "ANSI_1256",
+    "ANSI_1257",
+    "ANSI_874",
+)
+# No legacy code page has the diameter signs; every CAD draws ``%%c`` as one.
+# The other symbols are written as their code where the code page lacks them.
+_R12_DIAMETER_SIGNS = "\u2300\u2205"
+_R12_CODED_SYMBOLS = {
+    "\u00d8": "%%c",
+    "\u00f8": "%%c",
+    "\u00b0": "%%d",
+    "\u00b1": "%%p",
+}
+_R12_TEXT_RECORDS = frozenset({"TEXT", "ATTRIB", "ATTDEF", "DIMENSION"})
+# Groups that hold the name of a layer, block, linetype or text style, or refer
+# to one. Such a name has to stay one name, and "?" is no character of a name.
+# Group 3 is a name in BLOCK and DIMENSION records only; in STYLE it is a font
+# file, as group 4 is.
+_R12_NAME_CODES = frozenset({2, 6, 7, 8})
+_R12_NAME_CODE3_RECORDS = frozenset({"BLOCK", "DIMENSION"})
 # AutoCAD escapes for characters outside the file codepage: ``\U+XXXX`` (Unicode)
 # and the older MIF form ``\M+nXXXX`` (a double-byte code in the CJK codepage
 # selected by ``n``). Writers such as ezjww emit these in ANSI_1252 files.
@@ -582,10 +625,9 @@ def write_dxf_file(
     generic_dimensions: GenericDimensionMode = "explode",
     encoding: str = "auto",
 ) -> None:
-    selected_encoding = resolve_dxf_output_encoding(
-        target_version=target_version,
-        encoding=encoding,
-    )
+    if target_version not in SUPPORTED_DXF_TARGET_VERSIONS:
+        choices = ", ".join(SUPPORTED_DXF_TARGET_VERSIONS)
+        raise ValueError(f"target_version must be one of: {choices}")
     dxf_text = ir_to_dxf(
         ir_document,
         validate=validate,
@@ -596,32 +638,79 @@ def write_dxf_file(
         curve_segments=curve_segments,
         generic_dimensions=generic_dimensions,
     )
+    selected_encoding = resolve_dxf_output_encoding(
+        target_version=target_version,
+        encoding=encoding,
+        dxf_text=dxf_text,
+    )
     Path(path).write_bytes(dxf_text.encode(selected_encoding))
+
+
+def dxf_text_encoding(dxf_text: str) -> str:
+    """The byte encoding a DXF text is to be stored with.
+
+    A DXF before AC1021 (AutoCAD 2007), such as R12, is stored in the code page
+    its header names with ``$DWGCODEPAGE`` (``cp932`` when it names none);
+    later versions are UTF-8.
+    """
+    version: str | None = None
+    codepage: str | None = None
+    lines = dxf_text.split("\n", 200)[:200]
+    for index in range(0, len(lines) - 3, 2):
+        code, name = lines[index].strip(), lines[index + 1].strip()
+        if code == "0" and name == "ENDSEC":
+            break
+        if code != "9":
+            continue
+        if name == "$ACADVER":
+            version = lines[index + 3].strip()
+        elif name == "$DWGCODEPAGE":
+            codepage = lines[index + 3].strip()
+    if version is None or version >= "AC1021":
+        return "utf-8"
+    return _CODEPAGE_ENCODINGS.get((codepage or "").upper(), "cp932")
 
 
 def resolve_dxf_output_encoding(
     *,
     target_version: TargetVersion,
     encoding: str = "auto",
+    dxf_text: str | None = None,
 ) -> str:
-    """Resolve and validate the byte encoding for a target DXF version."""
+    """Resolve and validate the byte encoding for a DXF output.
+
+    DXF R12 text is stored in the code page the writer chose from the text of
+    the drawing and named in ``$DWGCODEPAGE``; pass the text as ``dxf_text`` to
+    get that one (``IrToDxfResult.encoding`` holds it as well). Without
+    ``dxf_text`` the answer for AC1009 is ``cp932``, the code page of a drawing
+    with Japanese or plain ASCII text. An explicit ``encoding`` has to be the
+    one the output declares.
+    """
     if target_version not in SUPPORTED_DXF_TARGET_VERSIONS:
         choices = ", ".join(SUPPORTED_DXF_TARGET_VERSIONS)
         raise ValueError(f"target_version must be one of: {choices}")
 
+    declared = "utf-8"
+    if target_version == "AC1009":
+        declared = dxf_text_encoding(dxf_text) if dxf_text is not None else "cp932"
     requested = encoding.strip().lower()
     if requested == "auto":
-        return "cp932" if target_version == "AC1009" else "utf-8"
+        return declared
 
     try:
         selected = codecs.lookup(requested).name
     except LookupError as exc:
         raise ValueError(f"Unknown DXF output encoding: {encoding!r}") from exc
 
-    if target_version == "AC1009" and selected != "cp932":
+    if target_version == "AC1009" and selected != codecs.lookup(declared).name:
+        codepage = next(
+            name
+            for name, codec in _CODEPAGE_ENCODINGS.items()
+            if codec == declared and name.startswith("ANSI_")
+        )
         raise ValueError(
-            "AC1009 output declares $DWGCODEPAGE=ANSI_932 and must be "
-            "written with encoding='cp932' (or encoding='auto')."
+            f"AC1009 output declares $DWGCODEPAGE={codepage} and must be "
+            f"written with encoding={declared!r} (or encoding='auto')."
         )
     return selected
 
@@ -923,11 +1012,213 @@ def ir_to_dxf(
         + objects_pairs
         + [(0, "EOF")]
     )
+    if target_version == "AC1009":
+        pairs = _store_r12_text(
+            pairs, diagnostics=export_diagnostics, warnings=warnings
+        )
     if diagnostics is not None:
         diagnostics.extend(export_diagnostics)
     if entity_map is not None:
         entity_map.extend(generated_map)
     return _format_pairs(pairs)
+
+
+def _select_r12_codepage(characters: dict[str, int]) -> str:
+    """The code page for the text of a DXF R12 file.
+
+    ``characters`` counts the non-ASCII characters of the file. Kana anywhere
+    make it ANSI_932 and Hangul ANSI_949, so that a Japanese or Korean drawing
+    keeps its code page even when a few characters have to become ``?``.
+    Otherwise the first code page that stores every character wins, ANSI_932
+    before the others, and when none does, the one that loses the fewest.
+    Cyrillic, Thai, Hebrew and Arabic text without CJK characters takes its own
+    code page before the CJK ones (ANSI_932 stores Cyrillic, as full-width
+    letters).
+    """
+
+    def has(low: int, high: int) -> bool:
+        return any(low <= ord(character) <= high for character in characters)
+
+    kana = has(0x3040, 0x30FF) or has(0xFF66, 0xFF9F)
+    hangul = has(0xAC00, 0xD7AF) or has(0x3130, 0x318F)
+    han = has(0x4E00, 0x9FFF) or has(0x3400, 0x4DBF)
+    if kana:
+        return "ANSI_932"
+    if hangul:
+        return "ANSI_949"
+    other_script = has(0x0400, 0x04FF) or has(0x0E00, 0x0E7F) or has(0x0590, 0x06FF)
+    if other_script and not han:
+        order = ("ANSI_1252", *_R12_SINGLE_BYTE_CODEPAGES, *_R12_CJK_CODEPAGES)
+    else:
+        order = (
+            "ANSI_932",
+            "ANSI_1252",
+            *_R12_CJK_CODEPAGES[1:],
+            *_R12_SINGLE_BYTE_CODEPAGES,
+        )
+    best: tuple[int, str] | None = None
+    for codepage in order:
+        codec = _CODEPAGE_ENCODINGS[codepage]
+        lost = sum(
+            count
+            for character, count in characters.items()
+            if not _encodable(character, codec)
+        )
+        if lost == 0:
+            return codepage
+        if best is None or lost < best[0]:
+            best = (lost, codepage)
+    return best[1] if best is not None else "ANSI_932"
+
+
+def _encodable(text: str, codec: str) -> bool:
+    try:
+        text.encode(codec)
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _store_r12_text(
+    pairs: list[DXFPair],
+    *,
+    diagnostics: list[ExportDiagnostic],
+    warnings: list[str] | None,
+) -> list[DXFPair]:
+    """Make the values of a DXF R12 file storable in one Windows code page.
+
+    R12 has no Unicode. The code page is chosen from the characters of the file
+    and named in ``$DWGCODEPAGE``. In the text of TEXT, ATTRIB, ATTDEF and
+    DIMENSION records the diameter sign becomes ``%%c``, and the degree and
+    plus-minus signs become ``%%d`` and ``%%p`` where the code page lacks them.
+    A character the code page still cannot store becomes its compatibility
+    form where the code page has that (``2`` for ``²``), otherwise ``?``, or
+    ``_`` in a name or a font file; two names stay two names (the later one
+    gets a number).
+    """
+    text_values: set[int] = set()
+    record = ""
+    for index, (code, value) in enumerate(pairs):
+        if code == 0:
+            record = value
+        elif code == 1 and record in _R12_TEXT_RECORDS:
+            text_values.add(index)
+    symbols = _R12_DIAMETER_SIGNS + "".join(_R12_CODED_SYMBOLS)
+    characters: dict[str, int] = {}
+    for index, (_, value) in enumerate(pairs):
+        if value.isascii():
+            continue
+        skip = symbols if index in text_values else ""
+        for character in value:
+            if character > "\x7f" and character not in skip:
+                characters[character] = characters.get(character, 0) + 1
+    codepage = _select_r12_codepage(characters)
+    codec = _CODEPAGE_ENCODINGS[codepage]
+    coded = {ord(sign): "%%c" for sign in _R12_DIAMETER_SIGNS}
+    coded.update(
+        (ord(symbol), code)
+        for symbol, code in _R12_CODED_SYMBOLS.items()
+        if not _encodable(symbol, codec)
+    )
+    lost = {
+        ord(character): _r12_similar(character, codec)
+        for character in characters
+        if not _encodable(character, codec)
+    }
+    replaced = sum(
+        count for character, count in characters.items() if ord(character) in lost
+    )
+    similar = sum(
+        count
+        for character, count in characters.items()
+        if lost.get(ord(character), "?") != "?"
+    )
+    lost_in_names = {key: "_" if value == "?" else value for key, value in lost.items()}
+    names: dict[str, str] = {}
+    taken: set[str] = set()
+    if lost:
+        taken = {
+            value.casefold()
+            for code, value in pairs
+            if code in _R12_NAME_CODES or code == 3
+            if value.translate(lost_in_names) == value
+        }
+    stored: list[DXFPair] = []
+    record = ""
+    for index, (code, value) in enumerate(pairs):
+        if code == 0:
+            record = value
+        if code == 3 and stored and stored[-1] == (9, "$DWGCODEPAGE"):
+            value = codepage
+        elif not value.isascii():
+            if index in text_values:
+                value = value.translate(coded)
+            if lost:
+                if code in _R12_NAME_CODES or (
+                    code == 3 and record in _R12_NAME_CODE3_RECORDS
+                ):
+                    value = _r12_name(value, lost_in_names, names, taken)
+                elif code == 4 or (code == 3 and record == "STYLE"):
+                    value = value.translate(lost_in_names)
+                else:
+                    value = value.translate(lost)
+        stored.append((code, value))
+    if codepage != "ANSI_932":
+        _diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_R12_CODEPAGE_SELECTED",
+            severity="info",
+            message=(
+                f"DXF R12 text is stored in the code page {codepage}, which the "
+                "characters of the drawing ask for."
+            ),
+            action="normalized",
+        )
+    if replaced:
+        _diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_R12_CHARACTERS_REPLACED",
+            severity="warning",
+            message=(
+                f"{replaced} character(s) that the code page {codepage} cannot "
+                f"store were written as a similar character ({similar}, such as "
+                "'2' for '²') or as '?' ('_' in a name) in DXF R12."
+            ),
+            action="approximated",
+        )
+    return stored
+
+
+def _r12_similar(character: str, codec: str) -> str:
+    """What DXF R12 stores for a character its code page lacks.
+
+    The compatibility form of the character when the code page has it (``2``
+    for ``²``, ``μ`` for the micro sign, ``mm`` for ``㎜``), otherwise ``?``.
+    """
+    similar = unicodedata.normalize("NFKC", character)
+    if similar != character and similar.strip() and _encodable(similar, codec):
+        return similar
+    return "?"
+
+
+def _r12_name(
+    value: str, lost: dict[int, str], names: dict[str, str], taken: set[str]
+) -> str:
+    """``value`` without the characters the code page lacks, as its own name."""
+    known = names.get(value)
+    if known is not None:
+        return known
+    name = value.translate(lost)
+    if name != value:
+        base, serial = name, 1
+        while name.casefold() in taken:
+            serial += 1
+            name = f"{base}_{serial}"
+        taken.add(name.casefold())
+    names[value] = name
+    return name
 
 
 def _select_dxf_encoding(raw: bytes, requested: str) -> tuple[str, str]:
@@ -1379,6 +1670,8 @@ def _read_binary_dxf(
             if replaced:
                 replacement_characters += replaced
                 affected_values += 1
+            if "^" in decoded:
+                decoded = _caret_decode(decoded)
             pairs.append((code, decoded))
         else:
             pairs.append((code, value))
@@ -1505,6 +1798,8 @@ def _parse_pairs(
             )
             index = resume
             continue
+        if "^" in value:
+            value = _caret_decode(value)
         pairs.append((code, value))
         index += 2
         if code == 0 and value.strip().upper() == "EOF":
@@ -3602,8 +3897,10 @@ def _insert_from_pairs(
     if rotation != 0.0:
         entity["rotation"] = rotation
 
+    # Each scale factor defaults to 1 on its own: AutoCAD and ODA leave out
+    # a factor of 1, so a block mirrored in X comes with group 41 alone.
     sx = _first_float(pairs, 41, default=1.0) or 1.0
-    sy = _first_float(pairs, 42, default=sx) or sx
+    sy = _first_float(pairs, 42, default=1.0) or 1.0
     if abs(sx - sy) < 1e-12:
         if abs(sx - 1.0) > 1e-12:
             entity["scale"] = sx
@@ -4674,20 +4971,96 @@ def _lwpolyline_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     return pairs
 
 
+_DXF_TEXT_CODE = re.compile(r"%%[cdpCDP%]")
+_DXF_TEXT_TOGGLE = re.compile(r"%%[uokUOK]")
+
+
+def _text_cells(text: str) -> float:
+    """Width of a text in character cells, each as wide as the text is high.
+
+    A character that takes two bytes in Shift_JIS is one cell and any other
+    half a cell, which is how Jw_cad lays a text out. The symbols a reader
+    draws for ``%%c``, ``%%d`` and ``%%p`` count as one cell each.
+    """
+    text = _DXF_TEXT_TOGGLE.sub("", text)
+    cells = float(len(_DXF_TEXT_CODE.findall(text)))
+    for character in _DXF_TEXT_CODE.sub("", text):
+        if character in _R12_DIAMETER_SIGNS or character in _R12_CODED_SYMBOLS:
+            cells += 1.0
+            continue
+        try:
+            wide = len(character.encode("cp932")) == 2
+        except UnicodeEncodeError:
+            wide = ord(character) > 0x2E7F
+        cells += 1.0 if wide else 0.5
+    return cells
+
+
+def _justified_text_start(
+    insert: Any,
+    text: str,
+    height: float,
+    rotation: float,
+    width_factor: Any,
+    halign: str,
+    valign: str,
+) -> tuple[float, float]:
+    """Left end of the baseline of a justified text, from its character cells.
+
+    A DXF text carries two points: the first one is where the text starts, the
+    second one what it is justified to. A reader that knows the justification
+    takes the second point and lays the text out itself; one that does not
+    (Jw_cad) draws the text from the first point. So the first point is where a
+    text of that many cells starts, not a copy of the second point.
+    """
+    factor = 1.0
+    if (
+        isinstance(width_factor, (int, float))
+        and not isinstance(width_factor, bool)
+        and math.isfinite(width_factor)
+        and width_factor > 0.0
+    ):
+        factor = float(width_factor)
+    width = _text_cells(text) * height * factor
+    along = {"center": -width / 2.0, "right": -width}.get(halign, 0.0)
+    up = {"middle": -height / 2.0, "top": -height}.get(valign, 0.0)
+    angle = math.radians(rotation)
+    cos, sin = math.cos(angle), math.sin(angle)
+    return (
+        float(insert[0]) + along * cos - up * sin,
+        float(insert[1]) + along * sin + up * cos,
+    )
+
+
 def _text_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     insert = entity["insert"]
+    rotation = float(entity.get("rotation", 0.0))
+    halign = str(entity.get("halign", "left"))
+    valign = str(entity.get("valign", "baseline"))
+    halign_code = _TEXT_HALIGN_TO_DXF.get(halign, 0)
+    valign_code = _TEXT_VALIGN_TO_DXF.get(valign, 0)
+    start = (insert[0], insert[1])
+    if halign_code != 0 or valign_code != 0:
+        start = _justified_text_start(
+            insert,
+            str(entity["text"]),
+            float(entity["height"]),
+            rotation,
+            entity.get("width_factor"),
+            halign,
+            valign,
+        )
     pairs = [(0, "TEXT")]
     pairs.extend(_common_to_pairs(entity))
     pairs.extend(
         [
-            (10, _num(insert[0])),
-            (20, _num(insert[1])),
+            (10, _num(start[0])),
+            (20, _num(start[1])),
             (40, _num(entity["height"])),
             (1, str(entity["text"])),
         ]
     )
 
-    rotation = float(entity.get("rotation", 0.0))
     if rotation != 0.0:
         pairs.append((50, _num(rotation)))
 
@@ -4695,10 +5068,6 @@ def _text_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     if style:
         pairs.append((7, str(style)))
 
-    halign = str(entity.get("halign", "left"))
-    valign = str(entity.get("valign", "baseline"))
-    halign_code = _TEXT_HALIGN_TO_DXF.get(halign, 0)
-    valign_code = _TEXT_VALIGN_TO_DXF.get(valign, 0)
     if halign_code != 0:
         pairs.append((72, str(halign_code)))
     if valign_code != 0:
@@ -5164,16 +5533,31 @@ def _attribute_to_pairs(
         r"#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{8})", color
     ):
         pairs.append((420, str(int(color[1:7], 16))))
+    rotation = float(attribute.get("rotation", 0.0))
+    halign = str(attribute.get("halign", "left"))
+    valign = str(attribute.get("valign", "baseline"))
+    halign_code = _TEXT_HALIGN_TO_DXF.get(halign, 0)
+    valign_code = _TEXT_VALIGN_TO_DXF.get(valign, 0)
+    start = (insert[0], insert[1])
+    if halign_code != 0 or valign_code != 0:
+        start = _justified_text_start(
+            insert,
+            str(attribute.get("text", "")),
+            float(attribute["height"]),
+            rotation,
+            attribute.get("width_factor"),
+            halign,
+            valign,
+        )
     pairs.extend(
         [
-            (10, _num(insert[0])),
-            (20, _num(insert[1])),
+            (10, _num(start[0])),
+            (20, _num(start[1])),
             (40, _num(attribute["height"])),
             (1, str(attribute.get("text", ""))),
         ]
     )
 
-    rotation = float(attribute.get("rotation", 0.0))
     if rotation != 0.0:
         pairs.append((50, _num(rotation)))
     width_factor = attribute.get("width_factor")
@@ -5186,8 +5570,6 @@ def _attribute_to_pairs(
     if style:
         pairs.append((7, str(style)))
 
-    halign_code = _TEXT_HALIGN_TO_DXF.get(str(attribute.get("halign", "left")), 0)
-    valign_code = _TEXT_VALIGN_TO_DXF.get(str(attribute.get("valign", "baseline")), 0)
     if halign_code != 0:
         pairs.append((72, str(halign_code)))
     if halign_code != 0 or valign_code != 0:
@@ -7252,7 +7634,26 @@ def _format_pairs(pairs: list[DXFPair]) -> str:
 
 
 def _single_line(value: str) -> str:
-    """A DXF value is one line; control characters use the caret notation."""
+    """A DXF value is one line, in the caret notation of DXF.
+
+    A line break becomes ``^J`` (``^M`` for a lone carriage return) and a caret
+    ``^ ``, as AutoCAD and ODA write them: they read ``^`` and the character
+    after it as one control character, so a stack such as ``\\S1^2;`` would
+    lose its caret.
+    """
+    if "^" in value:
+        value = value.replace("^", "^ ")
     if "\n" not in value and "\r" not in value:
         return value
     return value.replace("\r\n", "^J").replace("\n", "^J").replace("\r", "^M")
+
+
+# The caret notation a reader undoes: ``^ `` is a caret, ``^J``, ``^M`` and ``^I``
+# a line feed, carriage return and tab. Any other ``^`` stays as it is, since
+# writers that do not escape the caret put stacks such as ``\S1^2;`` into text.
+_DXF_CARET_RE = re.compile(r"\^([ JMI])")
+_DXF_CARET_CODES = {" ": "^", "J": "\n", "M": "\r", "I": "\t"}
+
+
+def _caret_decode(value: str) -> str:
+    return _DXF_CARET_RE.sub(lambda match: _DXF_CARET_CODES[match.group(1)], value)

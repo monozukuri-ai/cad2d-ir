@@ -140,7 +140,10 @@ def build_parser() -> argparse.ArgumentParser:
     ir2dxf_parser.add_argument(
         "--encoding",
         default="auto",
-        help="Output encoding (auto: CP932 for AC1009, UTF-8 for AC1024)",
+        help=(
+            "Output encoding (auto: the code page of the text for AC1009, "
+            "UTF-8 for AC1024)"
+        ),
     )
     hpgl = subparsers.add_parser(
         "hpgl2dxf", help="Convert one HP-GL page through IR to paper-space DXF"
@@ -239,7 +242,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             report["completeness"] = "partial" if partial else "complete"
             encoding = resolve_dxf_output_encoding(
-                target_version=args.target_version, encoding="auto"
+                target_version=args.target_version,
+                encoding="auto",
+                dxf_text=result.exported.dxf_text,
             )
             # Complete conversion and encoding before opening any output.
             encoded = result.exported.dxf_text.encode(encoding)
@@ -339,6 +344,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             output_encoding = resolve_dxf_output_encoding(
                 target_version=args.target_version,
                 encoding=args.encoding,
+                dxf_text=result.dxf_text,
             )
             _write_text(args.output, result.dxf_text, encoding=output_encoding)
             for diagnostic in result.diagnostics:

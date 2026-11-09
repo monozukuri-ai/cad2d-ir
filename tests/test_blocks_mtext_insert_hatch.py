@@ -9,6 +9,31 @@ def _entity_by_kind(document: dict, kind: str) -> dict:
     return next(entity for entity in document["entities"] if entity["kind"] == kind)
 
 
+def test_insert_scale_factors_default_to_one_each() -> None:
+    # AutoCAD and ODA leave out a scale factor of 1, so a block mirrored in X
+    # comes with group 41 alone; group 42 does not follow 41.
+    from cad2d_ir import dxf_to_ir
+
+    def insert(groups: list[str]) -> list[str]:
+        return ["0", "INSERT", "8", "0", "2", "B", "10", "0", "20", "0", *groups]
+
+    lines = [
+        *("0", "SECTION", "2", "BLOCKS"),
+        *("0", "BLOCK", "2", "B", "3", "B", "8", "0", "10", "0", "20", "0", "70", "0"),
+        *("0", "LINE", "8", "0", "10", "0", "20", "0", "11", "1", "21", "0"),
+        *("0", "ENDBLK", "8", "0", "0", "ENDSEC"),
+        *("0", "SECTION", "2", "ENTITIES"),
+        *insert(["41", "-1"]),
+        *insert(["42", "-1"]),
+        *insert(["41", "2", "42", "2"]),
+        *insert(["41", "2", "42", "1"]),
+        *("0", "ENDSEC", "0", "EOF"),
+    ]
+    document = dxf_to_ir("\n".join(lines) + "\n")
+    scales = [entity.get("scale") for entity in document["entities"]]
+    assert scales == [[-1.0, 1.0], [1.0, -1.0], 2.0, [2.0, 1.0]]
+
+
 def test_dxf_to_ir_parses_blocks_mtext_insert_hatch() -> None:
     dxf_text = "\n".join(
         [

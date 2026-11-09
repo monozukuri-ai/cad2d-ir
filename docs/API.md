@@ -14,7 +14,8 @@ Dispatches to the DXF, DWG, DGN, DWF/DWFx, EXB, IDW, JWW, JWS, MI/BI, PDF, or SX
 - `statistics`: source, conversion, approximation, and skip facts
 - `warnings`: compatibility property containing warning/error messages
 
-For DXF files, `encoding="auto"` checks a BOM, then `$DWGCODEPAGE`,
+For DXF files, `encoding="auto"` checks a BOM, then `$DWGCODEPAGE`
+(ANSI_932, ANSI_936, ANSI_949, ANSI_950, ANSI_874 and ANSI_1250 to ANSI_1258),
 then tries UTF-8, and finally falls back to CP932. A declared codepage is
 ignored in favour of UTF-8 when the non-ASCII bytes are valid UTF-8 and either
 `$ACADVER` is AC1021 (AutoCAD 2007) or later, where DXF text is UTF-8 by
@@ -142,12 +143,37 @@ output handles are omitted and consumers use `index`.
 | `AC1009` | R12 | LWPOLYLINE to POLYLINE; MTEXT to one TEXT per line (placed, sized and scaled as the line is; see "MTEXT inline codes" in docs/SCHEMA_NOTES.md); ELLIPSE/SPLINE to sampled POLYLINE; HATCH to boundary POLYLINE; IMAGE skipped |
 | `AC1024` | R2010 | native supported entities (IMAGE with its IMAGEDEF objects), deterministic handles, and `$HANDSEED` |
 
-AC1009 text output declares `$DWGCODEPAGE=ANSI_932`. Use
-`write_dxf_file(..., target_version="AC1009", encoding="cp932")`, or leave
-`encoding="auto"` to select CP932 for AC1009 and UTF-8 for AC1024. Manual
-consumers of the `str` returned by `ir_to_dxf()` must likewise encode R12
-output as CP932. An explicit non-CP932 encoding is rejected for AC1009 so the
-declared codepage cannot disagree with the file bytes.
+AC1009 has no Unicode: its text is stored in one Windows code page, which
+`$DWGCODEPAGE` names. The writer picks it from the characters of the drawing:
+ANSI_932 (CP932) for Japanese and plain ASCII text, ANSI_936 (GBK) for
+simplified Chinese, ANSI_949 for Korean, ANSI_950 for traditional Chinese,
+ANSI_1252 or another single-byte page for European, Cyrillic, Greek, Turkish,
+Hebrew, Arabic, Baltic and Thai text. Kana anywhere make it ANSI_932 and
+Hangul ANSI_949; otherwise the first page that stores every character wins,
+ANSI_932 first, and when none does, the one that loses the fewest
+(`DXF_R12_CODEPAGE_SELECTED` reports a page other than ANSI_932). In the text
+of `TEXT`, `ATTRIB`, `ATTDEF` and `DIMENSION` the diameter signs `⌀` and `∅`
+are written as `%%c`, and `Ø`, `°` and `±` as `%%c`, `%%d` and `%%p` where the
+page lacks them. A character the page still cannot store becomes its
+compatibility form (NFKC) where the page has that, such as `2` for `²` and `μ`
+for the micro sign, and `?` otherwise, or `_` in the name of a layer, block,
+linetype or text style and in a font file; names that would become the same
+get a number (`DXF_R12_CHARACTERS_REPLACED`).
+
+`write_dxf_file(..., encoding="auto")` writes AC1009 in the declared code
+page and AC1024 in UTF-8. Consumers of the `str` returned by `ir_to_dxf()`
+encode it with `dxf_text_encoding(dxf_text)`, which reads the header;
+`convert_ir_to_dxf_text()` returns the same codec as `IrToDxfResult.encoding`.
+`resolve_dxf_output_encoding(target_version=..., dxf_text=...)` validates an
+explicit encoding: for AC1009 it has to be the declared one, so the declared
+code page cannot disagree with the file bytes. Without `dxf_text` it answers
+`cp932` for AC1009.
+
+An aligned `TEXT`, `ATTRIB` or `ATTDEF` carries its alignment point in groups
+11 and 21 and the estimated left end of its baseline in groups 10 and 20
+(a full-width character counts as one text height wide, any other as half,
+times the width factor), so that a program that ignores the alignment still
+starts the text near the right place.
 
 `generic_dimensions="explode"` is the default. It writes a GENERIC dimension
 as the geometry of its block (`definition.block`) when it has one, and

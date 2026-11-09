@@ -36,6 +36,7 @@ from cad2d_ir.importers.exb import (
     _colorref_hex,
     _sample_circular,
     _sample_ellipse,
+    attribute_text,
     normalize_text,
 )
 from cad2d_ir.schema import validate_ir
@@ -272,6 +273,23 @@ def test_text_escapes_are_normalized() -> None:
     assert normalize_text("型部\\R\\H0.707x;0^0^7^^0.2^^^^;尺寸公差") == "型部尺寸公差"
     # DXF-compatible escapes pass through untouched
     assert normalize_text("借用\\P件登记 {\\H2x;梯}") == "借用\\P件登记 {\\H2x;梯}"
+
+
+def test_attribute_text_loses_its_codes() -> None:
+    # CAXA stores the contents of an attribute with the codes of its text and
+    # the value with its own two-code form; the attribute shows "d4" at 0.667.
+    assert attribute_text(
+        "{\\W0.667^0.667;d4}", "\\W0.667;\\W^0.667;d4", 0.667, 3.5
+    ) == ("d4", 0.667)
+    # The code wins over the factor of the style, and 1 is left out.
+    assert attribute_text("{\\W1^1;A-100}", "A-100", 0.667, 3.5) == ("A-100", None)
+    assert attribute_text("A-100", "A-100", 0.667, 3.5) == ("A-100", 0.667)
+    assert attribute_text("A-100", "", None, 3.5) == ("A-100", None)
+    # Lines stay lines; a stack becomes its plain form; the value stands in
+    # when the contents have no text.
+    assert attribute_text("件\\P登记", "件\\P登记", None, 3.5) == ("件\n登记", None)
+    assert attribute_text("M\\S+0.1^-0.2;", "", None, 3.5) == ("M+0.1/-0.2", None)
+    assert attribute_text(" ", "{\\W0.8^0.8;B}", None, 3.5) == ("B", 0.8)
 
 
 def test_arc_angles_follow_the_basis_handedness() -> None:

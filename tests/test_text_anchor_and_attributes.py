@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import copy
 from typing import Any
 
 import pytest
@@ -233,12 +232,12 @@ def test_insert_attributes_survive_a_dxf_round_trip(target_version: str) -> None
     (before,) = document["entities"]
     (after,) = again["entities"]
     # A multi-line attribute is written as one ATTRIB, its line break in the
-    # caret notation DXF has for control characters; the rest is unchanged.
-    expected = copy.deepcopy(before["attribute_texts"])
-    expected[2]["text"] = "first^Jsecond"
+    # caret notation DXF has for control characters (^J), which the reader
+    # turns back into a line break; nothing changes.
+    assert "first^Jsecond" in exported
     placed = [text for text in after["attribute_texts"] if text["tag"] != "COUNT"]
-    assert placed == expected
-    assert after["attributes"] == {**before["attributes"], "NOTE": "first^Jsecond"}
+    assert placed == before["attribute_texts"]
+    assert after["attributes"] == before["attributes"]
     # The value without geometry is still written at the insertion point.
     (count,) = [text for text in after["attribute_texts"] if text["tag"] == "COUNT"]
     assert (count["insert"], count["height"], count["text"]) == (

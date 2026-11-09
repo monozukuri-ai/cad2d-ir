@@ -26,6 +26,7 @@ from cad2d_ir.api import (
 )
 from cad2d_ir.codecs.dxf import (
     SUPPORTED_DXF_TARGET_VERSIONS,
+    dxf_text_encoding,
     dxf_to_ir,
     ir_to_dxf,
     read_dxf_file,
@@ -50,7 +51,7 @@ from cad2d_ir.importers import (
 )
 from cad2d_ir.schema import IRValidationError, load_schema, validate_ir
 
-__version__ = "0.17.12"
+__version__ = "0.17.13"
 
 __all__ = [
     "__version__",
@@ -92,6 +93,7 @@ __all__ = [
     "dump_ir_json",
     "detect_source_format",
     "diagnostic_code_details",
+    "dxf_text_encoding",
     "ir_to_dxf",
     "load_ir_json",
     "load_schema",

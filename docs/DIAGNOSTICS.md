@@ -76,6 +76,8 @@ entity/source identifiers and structured details.
 | `DXF_POLYLINE_3D_PROJECTED` | warning | projected | DXF import | A 3D `POLYLINE` whose vertices leave the XY plane was projected to XY. |
 | `DXF_R12_ELLIPSE_APPROXIMATED` | warning | approximated | DXF R12 export | ELLIPSE was approximated by a polyline. |
 | `DXF_R12_HATCH_EXPLODED` | warning | exploded | DXF R12 export | HATCH was emitted as boundary polylines. |
+| `DXF_R12_CHARACTERS_REPLACED` | warning | approximated | DXF R12 export | Characters the code page of the file cannot store were written as a similar character where it has one (`2` for `²`) or as `?` (`_` in the name of a layer, block, linetype or text style and in a font file; names that would become the same get a number). |
+| `DXF_R12_CODEPAGE_SELECTED` | info | normalized | DXF R12 export | The text was stored in a code page other than ANSI_932, which the characters of the drawing asked for (ANSI_936 for simplified Chinese, for example); `$DWGCODEPAGE` names it. |
 | `DXF_R12_INSUNITS_OMITTED` | warning | skipped | DXF R12 export | INSUNITS was omitted from R12 output. |
 | `DXF_R12_LINETYPE_SCALE_OMITTED` | warning | skipped | DXF R12 export | A per-entity linetype scale was omitted from R12 output. |
 | `DXF_R12_LINEWEIGHT_OMITTED` | warning | skipped | DXF R12 export | Lineweight was omitted from R12 output. |
