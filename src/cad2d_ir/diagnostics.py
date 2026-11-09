@@ -1010,7 +1010,7 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "warning",
         "normalized",
         "DXF R12 export",
-        "MTEXT formatting codes were removed.",
+        "MTEXT formatting codes were removed; the width factor and the height of each line are kept on its TEXT.",
     ),
     "IDW_UNITS_ASSUMED_CM": DiagnosticCode(
         "info",

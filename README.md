@@ -3,6 +3,8 @@
 `cad2d-ir` is a typed intermediate representation and conversion toolkit
 for 2D CAD data.
 
+> 日本語: 2D CAD の図面（JWW、SXF、DWG、DXF など）を 1 つの中間表現に読み込み、DXF に書き出す Python のライブラリです。説明は[このページの下](#日本語)にあります。
+
 It provides:
 
 - a canonical JSON Schema for 2D CAD geometry and tables;
@@ -223,6 +225,37 @@ tests/
 examples/
 docs/
 ```
+
+## 日本語
+
+`cad2d-ir` は、2D CAD の図面を 1 つの型付きの中間表現（IR。JSON Schema つき）に読み込み、DXF に書き出す Python のライブラリです。形式ごとの読み取りは、追加のパッケージ（extras）で入れます。
+
+- 読める形式: DXF、DWG、DGN、DWF / DWFx、EDRW（eDrawings）、EXB（CAXA）、HP-GL / PLT、ICD（iCAD SX）、IDW（Inventor）、JWW・JWS（Jw_cad）、MI / BI（ME10）、SXF（SFC・P21）、ベクター PDF
+- 書き出し: DXF R12（AC1009）と R2010（AC1024）
+- 読み取りと書き出しで落ちた情報は、診断として構造化して返します
+
+```bash
+pip install "cad2d-ir[jww]"   # Jw_cad
+pip install "cad2d-ir[sxf]"   # SFC・P21
+pip install "cad2d-ir[dwg]"   # DWG
+```
+
+```python
+from pathlib import Path
+
+from cad2d_ir import convert_file_to_ir, convert_ir_to_dxf_text
+
+imported = convert_file_to_ir("drawing.jww", strict=False)  # 形式は中身から判別する
+for diagnostic in imported.diagnostics:
+    print(diagnostic.code, diagnostic.as_dict())
+
+exported = convert_ir_to_dxf_text(imported.document, target_version="AC1024")
+Path("drawing.dxf").write_text(exported.dxf_text, encoding="utf-8")
+```
+
+IDW（`inventor-kit`）と ICD（`icadkit`）の読み取りは、PolyForm Noncommercial のパッケージを使います。商用で使う前に、下の License とそれぞれのパッケージのライセンスを確認してください。
+
+関連するライブラリ: 形式ごとの読み書きは [ezjww](https://github.com/monozukuri-ai/ezjww)（Jw_cad）、[ezsxf](https://github.com/monozukuri-ai/ezsxf)（SXF）、[ezdwg](https://github.com/monozukuri-ai/ezdwg)（DWG）。インストールせずにブラウザで図面を開く・変換するなら [zumen-gate](https://zumen-gate.com) が使えます。
 
 ## License
 

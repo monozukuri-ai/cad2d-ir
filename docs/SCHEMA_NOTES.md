@@ -137,8 +137,35 @@ of its own and uses the one of its text style (`tables.text_styles.*.width_facto
 
 An `MTEXT` from a format that stores a factor with each text (EXB, SXF, MI)
 carries `width_factor` itself, and that one takes precedence over the text
-style. The DXF export writes it as `\W…;` in front of the text; for DXF R12,
-which has no `MTEXT`, every `TEXT` the entity becomes gets the factor.
+style. The DXF export writes it as `\W…;` in front of the text.
+
+## MTEXT inline codes
+
+The text of an `MTEXT` carries the inline codes of DXF (`\P` paragraph,
+`\W0.8;` width factor, `\H0.7x;` character height, `\fArial|b0|i0;` font,
+`\S+0.1^-0.2;` stack, braces around a change, and so on). `cad2d_ir.mtext`
+reads them for a consumer that draws one string per line or writes a format
+without such codes:
+
+- `mtext_lines(text, width_factor=..., height=...)` returns the lines without
+  the codes, each with its width factor and its height as a multiple of the
+  height of the entity. A line has one of each: when they change inside a
+  line, the height is the one most of the line has, and the width factor the
+  one that keeps the length of the line.
+- `mtext_layout(lines, vertical)` gives the lines to draw with the distance of
+  each baseline below the insertion point, for the vertical part of `attach`.
+  A line advances by `LINE_PITCH` times its own height, an empty line keeps
+  its room, and empty lines at the end take none.
+- `mtext_plain(text)` is the text without the codes.
+- `mtext_source_text(entity)` is the text with its codes. The DWG importer
+  puts the text without the codes into `text` and keeps the stored text in
+  `metadata.dwg.raw_text`; the stored text is used while it still reads as
+  `text`, that is until `text` is edited.
+
+The DXF export uses the same functions. An `MTEXT` from DWG is written with
+its stored codes. For DXF R12, which has no `MTEXT`, every line becomes a
+`TEXT` at the place `mtext_layout` gives it, with the width factor and the
+height of the line.
 
 Formats that lay text out in character cells instead of font metrics (JWW,
 SXF, iCAD, HP-GL labels) store a cell width or the length of the text. Their
@@ -368,7 +395,7 @@ selection; `metadata.exb.hatch` keeps the hatch pattern definition.
 ## Current conversion limitations
 
 - `constraints` are IR-only metadata today and are omitted on DXF export.
-- `GENERIC` dimensions are exported as visual LINE/TEXT/POINT/polyline primitives by default; they are not mislabeled as native DXF `DIMENSION` entities.
+- `GENERIC` dimensions are exported as visual primitives by default; they are not mislabeled as native DXF `DIMENSION` entities. One that carries the geometry the source drew (`definition.block`) is written as that geometry, the others as LINE/TEXT/POINT/polyline primitives built from `definition`.
 - `HATCH` mapping currently focuses on polyline-like loops.
 - `IMAGE` entities are written to R2010 DXF as references by path; a DXF never
   carries the pixels, so an embedded image is reduced to its file name

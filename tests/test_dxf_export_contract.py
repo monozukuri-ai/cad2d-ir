@@ -430,7 +430,7 @@ def test_mtext_width_factor_is_written_in_front_of_the_text() -> None:
     assert "\\W1.5;{\\W0.5;a}b\\Pc" in lines
     assert {"plain", "one", "wide"} <= set(lines)
 
-    # R12 has no MTEXT: every TEXT it becomes carries the factor itself.
+    # R12 has no MTEXT: every TEXT it becomes carries the factor of its line.
     restored = dxf_to_ir(ir_to_dxf(document, target_version="AC1009"))
     factors = {
         entity["text"]: entity.get("width_factor")
@@ -440,11 +440,204 @@ def test_mtext_width_factor_is_written_in_front_of_the_text() -> None:
     assert factors == {
         "narrow": 0.667,
         "plain": None,
-        "one": 1.0,
-        "wide": 25.0,
-        "ab": 1.5,
+        "one": None,
+        "wide": None,
+        # "a" at 0.5 and "b" at 1.5: the line is as long as at 1.0
+        "ab": None,
         "c": 1.5,
     }
+
+
+def _mtext_document(entities: list[dict], **tables: dict) -> dict:
+    return {
+        "format": "cad2d-ir",
+        "version": "0.2.0",
+        "header": {"units": "mm", "angle_unit": "deg", "coord_space": "world"},
+        "tables": {"layers": {"0": {}}, **tables},
+        "entities": entities,
+    }
+
+
+def test_r12_mtext_lines_keep_their_place_width_and_height() -> None:
+    def mtext(index: int, text: str, **extra: object) -> dict:
+        return {
+            "id": f"M{index}",
+            "kind": "MTEXT",
+            "insert": [100.0 * index, 100.0],
+            "height": 5.0,
+            "text": text,
+            **extra,
+        }
+
+    document = _mtext_document(
+        [
+            # Top left (the default): the first baseline is one height below
+            # the insertion point, the next one a line further down. An MTEXT
+            # is drawn with the width factor of its text style.
+            mtext(0, "one\\Ptwo", style="NARROW"),
+            # Middle center: the lines are centered on the insertion point, and
+            # a line advances by its own height.
+            mtext(1, "{\\H2x;BIG}\\Psmall", attach="middle_center"),
+            # Bottom right, upright: the last baseline is at the insertion point.
+            mtext(2, "a\\Pb", attach="bottom_right", rotation=90.0),
+            # An inline width, and a height given in drawing units.
+            mtext(3, "\\W0.5;\\H2.5;half", style="NARROW"),
+            # An empty line keeps its room.
+            mtext(4, "first\\P\\Pthird"),
+        ],
+        text_styles={"NARROW": {"font": "arial.ttf", "width_factor": 0.8}},
+    )
+
+    restored = dxf_to_ir(ir_to_dxf(document, target_version="AC1009"))
+    texts = {
+        entity["text"]: (
+            [round(value, 6) for value in entity["insert"]],
+            entity["height"],
+            entity.get("width_factor"),
+            entity.get("halign", "left"),
+            entity.get("rotation", 0.0),
+        )
+        for entity in restored["entities"]
+    }
+    assert texts == {
+        "one": ([0.0, 95.0], 5.0, 0.8, "left", 0.0),
+        "two": ([0.0, 87.0], 5.0, 0.8, "left", 0.0),
+        "BIG": ([100.0, 99.0], 10.0, None, "center", 0.0),
+        "small": ([100.0, 91.0], 5.0, None, "center", 0.0),
+        "a": ([192.0, 100.0], 5.0, None, "right", 90.0),
+        "b": ([200.0, 100.0], 5.0, None, "right", 90.0),
+        "half": ([300.0, 97.5], 2.5, 0.5, "left", 0.0),
+        "first": ([400.0, 95.0], 5.0, None, "left", 0.0),
+        "third": ([400.0, 79.0], 5.0, None, "left", 0.0),
+    }
+
+
+def test_dwg_mtext_is_written_with_its_stored_inline_codes() -> None:
+    # The DWG importer keeps the stored text beside the text without codes.
+    def mtext(index: int, text: str, stored: str) -> dict:
+        return {
+            "id": f"M{index}",
+            "kind": "MTEXT",
+            "insert": [0.0, 10.0 * index],
+            "height": 2.5,
+            "text": text,
+            "metadata": {"dwg": {"handle": index, "raw_text": stored}},
+        }
+
+    document = _mtext_document(
+        [
+            mtext(0, "HALF\nPLAIN", "{\\W0.5;HALF}\\PPLAIN"),
+            # Edited since the import: the stored text no longer applies.
+            mtext(1, "EDITED", "{\\W0.5;OLD}"),
+        ]
+    )
+
+    lines = ir_to_dxf(document).splitlines()
+    assert "{\\W0.5;HALF}\\PPLAIN" in lines
+    assert "EDITED" in lines and "{\\W0.5;OLD}" not in lines
+
+    restored = dxf_to_ir(ir_to_dxf(document, target_version="AC1009"))
+    assert {
+        entity["text"]: entity.get("width_factor") for entity in restored["entities"]
+    } == {"HALF": 0.5, "PLAIN": None, "EDITED": None}
+
+
+def test_long_mtext_is_written_in_chunks() -> None:
+    text = "\\fArial|b0|i0;" + "0123456789" * 60
+    document = _mtext_document(
+        [{"id": "M", "kind": "MTEXT", "insert": [0, 0], "height": 2.5, "text": text}]
+    )
+
+    dxf = ir_to_dxf(document)
+    lines = dxf.splitlines()
+    codes, values = lines[0::2], lines[1::2]
+    start = values.index("MTEXT")
+    chunks = [
+        (int(code), value)
+        for code, value in zip(codes[start:], values[start:])
+        if int(code) in (1, 3)
+    ]
+    # 250 characters in every group 3, the rest in group 1
+    assert [code for code, _ in chunks] == [3, 3, 1]
+    assert [len(value) for _, value in chunks] == [250, 250, len(text) - 500]
+    assert dxf_to_ir(dxf)["entities"][0]["text"] == text
+
+
+@pytest.mark.parametrize("target_version", ["AC1024", "AC1009"])
+def test_generic_dimension_is_written_as_the_geometry_of_its_block(
+    target_version: str,
+) -> None:
+    # A dimension whose kind the importer could not tell carries what the source
+    # drew for it. That is written, not a bare line and a text of default size.
+    def dimension(index: int, block: str | None) -> dict:
+        definition: dict = {
+            "points": {"location": [0.0, 0.0], "text_midpoint": [5.0, 1.0]},
+            "text": "R5",
+            "measurement": 5.0,
+        }
+        if block is not None:
+            definition["block"] = block
+        return {
+            "id": f"D{index}",
+            "kind": "DIMENSION",
+            "dim_kind": "GENERIC",
+            "layer": "DIM",
+            "definition": definition,
+        }
+
+    def geometry(prefix: str) -> list[dict]:
+        return [
+            {"id": f"{prefix}1", "kind": "LINE", "layer": "0", "p1": [0, 0], "p2": [10, 0]},
+            {"id": f"{prefix}2", "kind": "LINE", "layer": "0", "p1": [10, 0], "p2": [9, 1]},
+            {
+                "id": f"{prefix}3",
+                "kind": "TEXT",
+                "layer": "NOTES",
+                "insert": [5.0, 1.0],
+                "height": 3.5,
+                "text": "R5",
+                "width_factor": 0.667,
+                "halign": "center",
+            },
+        ]
+
+    document = _mtext_document(
+        [dimension(0, "*D0"), dimension(1, None), dimension(2, "*D2")],
+        layers={"0": {}, "DIM": {}, "NOTES": {}},
+        blocks={
+            "*D0": {"base_point": [0.0, 0.0], "entities": geometry("A")},
+            # A block that is not placed at the origin is not used.
+            "*D2": {"base_point": [1.0, 0.0], "entities": geometry("B")},
+        },
+    )
+
+    result = convert_ir_to_dxf_text(document, target_version=target_version)  # type: ignore[arg-type]
+    restored = dxf_to_ir(result.dxf_text)
+    kinds = [entity["kind"] for entity in restored["entities"]]
+    # The block of D0, then one text each for D1 and D2 (no line: they have no
+    # measured points).
+    assert kinds == ["LINE", "LINE", "TEXT", "TEXT", "TEXT"]
+    first, second, text = restored["entities"][:3]
+    assert (first["p1"], first["p2"]) == ([0.0, 0.0], [10.0, 0.0])
+    assert (second["p1"], second["p2"]) == ([10.0, 0.0], [9.0, 1.0])
+    # Geometry on layer 0 follows the dimension; other layers stay.
+    assert [first["layer"], second["layer"], text["layer"]] == ["DIM", "DIM", "NOTES"]
+    assert (text["text"], text["height"], text["width_factor"], text["halign"]) == (
+        "R5",
+        3.5,
+        0.667,
+        "center",
+    )
+    # Without a block the text has the default height.
+    assert [entity["height"] for entity in restored["entities"][3:]] == [2.5, 2.5]
+    # Every primitive is mapped to its dimension.
+    assert [entry["ir_id"] for entry in result.entity_map if entry["scope"] == "modelspace"] == [
+        "D0",
+        "D0",
+        "D0",
+        "D1",
+        "D2",
+    ]
 
 
 def test_unknown_entity_and_constraints_have_structured_export_diagnostics() -> None:

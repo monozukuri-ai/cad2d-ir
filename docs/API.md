@@ -139,7 +139,7 @@ output handles are omitted and consumers use `index`.
 
 | Value | CAD release | Export behavior |
 |---|---|---|
-| `AC1009` | R12 | LWPOLYLINE to POLYLINE; MTEXT to TEXT; ELLIPSE/SPLINE to sampled POLYLINE; HATCH to boundary POLYLINE; IMAGE skipped |
+| `AC1009` | R12 | LWPOLYLINE to POLYLINE; MTEXT to one TEXT per line (placed, sized and scaled as the line is; see "MTEXT inline codes" in docs/SCHEMA_NOTES.md); ELLIPSE/SPLINE to sampled POLYLINE; HATCH to boundary POLYLINE; IMAGE skipped |
 | `AC1024` | R2010 | native supported entities (IMAGE with its IMAGEDEF objects), deterministic handles, and `$HANDSEED` |
 
 AC1009 text output declares `$DWGCODEPAGE=ANSI_932`. Use
@@ -149,8 +149,10 @@ consumers of the `str` returned by `ir_to_dxf()` must likewise encode R12
 output as CP932. An explicit non-CP932 encoding is rejected for AC1009 so the
 declared codepage cannot disagree with the file bytes.
 
-`generic_dimensions="explode"` is the default. It preserves GENERIC
-dimension lines, rendered paths, text, and point markers as primitives.
+`generic_dimensions="explode"` is the default. It writes a GENERIC dimension
+as the geometry of its block (`definition.block`) when it has one, and
+otherwise preserves its lines, rendered paths, text, and point markers as
+primitives.
 `"skip"` retains the previous omission behavior with a structured reason.
 
 Raster images (`IMAGE`) are written to AC1024 output as `IMAGE` entities with

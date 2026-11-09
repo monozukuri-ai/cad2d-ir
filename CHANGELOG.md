@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.17.12
+
+- New module `cad2d_ir.mtext` for the inline codes of `MTEXT` text:
+  `mtext_lines` (the lines without the codes, each with its width factor and
+  its height), `mtext_layout` and `mtext_baselines` (where each baseline lies
+  below the insertion point), `mtext_plain` and `mtext_source_text`. The codes
+  are the ones AutoCAD writes; the two-value width factor and the stack with a
+  height that CAXA writes are read as well. See "MTEXT inline codes" in
+  docs/SCHEMA_NOTES.md.
+- DXF R12 export: the `TEXT` entities an `MTEXT` becomes hang below its
+  attachment point, one line apart, as the lines of the `MTEXT` do. They were
+  written left-aligned with the first baseline on the insertion point, whatever
+  the attachment, and 1.2 heights apart, so a top-left `MTEXT` came out one
+  line too high and a centered one off to the right. Each `TEXT` also gets the
+  width factor of its line (from `\W`, the entity or its text style) and the
+  height `\H` gives the line; an empty line keeps its room.
+- DXF export: an `MTEXT` from DWG is written with its stored inline codes
+  (`metadata.dwg.raw_text`) as long as `text` was not edited. The fonts,
+  heights, colours and width factors of such a text were lost, since `text`
+  has no codes.
+- DXF export: a GENERIC dimension that carries the geometry the source drew
+  (`definition.block`, with its base point at the origin) is written as that
+  geometry. It was reduced to a line between the measured points, if any, and
+  a text of the default height at the text position.
+- DXF export: an `MTEXT` longer than 250 characters is written in groups 3
+  with the rest in group 1, as DXF asks for.
+- DXF import: the value of a multi-line attribute is read with `mtext_plain`,
+  which keeps text behind a toggle such as `\L`.
+
 ## 0.17.11
 
 - DWG importer: `tables.text_styles` carries the `width_factor` of a text style

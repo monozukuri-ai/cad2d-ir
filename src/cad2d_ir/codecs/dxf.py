@@ -26,6 +26,13 @@ from cad2d_ir.layouts import (
     viewport_from_dxf_values,
     viewport_to_dxf_view,
 )
+from cad2d_ir.mtext import (
+    WIDTH_FACTOR_RANGE,
+    mtext_layout,
+    mtext_lines,
+    mtext_plain,
+    mtext_source_text,
+)
 from cad2d_ir.schema import validate_ir
 from cad2d_ir.tolerance import explode_tolerance
 
@@ -95,6 +102,15 @@ class _RenderedEntity:
     pairs: list[DXFPair]
     # The IMAGEDEF_REACTOR an IMAGE owns; bound to the entity's handle when written.
     reactor_handle: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _ExportTables:
+    """Tables an entity is written with: the block of a dimension, and the text
+    style whose width factor an MTEXT is drawn with."""
+
+    blocks: dict[str, Any] = field(default_factory=dict)
+    text_styles: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -818,6 +834,11 @@ def ir_to_dxf(
         table_pairs = _add_r2010_subclasses(table_pairs)
         table_pairs, _ = _add_record_handles(table_pairs, allocator)
     layer_handles = _layer_record_handles(table_pairs)
+    raw_blocks = export_document.get("tables", {}).get("blocks", {})
+    tables = _ExportTables(
+        blocks=raw_blocks if isinstance(raw_blocks, dict) else {},
+        text_styles=normalized_tables.get("text_styles", {}),
+    )
 
     block_pairs = _blocks_to_pairs(
         export_document.get("tables", {}).get("blocks", {}),
@@ -826,6 +847,7 @@ def ir_to_dxf(
         generic_dimensions=generic_dimensions,
         allocator=allocator,
         images=images,
+        tables=tables,
         diagnostics=export_diagnostics,
         warnings=warnings,
         entity_map=generated_map,
@@ -853,6 +875,7 @@ def ir_to_dxf(
             generic_dimensions=generic_dimensions,
             allocator=allocator,
             images=images,
+            tables=tables,
             diagnostics=export_diagnostics,
             warnings=warnings,
             entity_map=generated_map,
@@ -865,6 +888,7 @@ def ir_to_dxf(
         generic_dimensions=generic_dimensions,
         allocator=allocator,
         images=images,
+        tables=tables,
         layer_handles=layer_handles,
         diagnostics=export_diagnostics,
         warnings=warnings,
@@ -3504,7 +3528,7 @@ def _attribute_from_pairs(
     if embedded:
         multiline = "".join(text for code, text in embedded if code in (3, 1))
         if multiline:
-            value = _plain_mtext(multiline)[0]
+            value = mtext_plain(multiline)
 
     try:
         fields = _text_fields_from_pairs(
@@ -4693,6 +4717,21 @@ def _text_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     return pairs
 
 
+def _mtext_width_factor(width_factor: Any) -> float | None:
+    """The width factor an ``MTEXT`` can have, or ``None``.
+
+    AutoCAD accepts 0.1 to 10; other values are no factor.
+    """
+    if (
+        isinstance(width_factor, bool)
+        or not isinstance(width_factor, (int, float))
+        or not math.isfinite(width_factor)
+        or not WIDTH_FACTOR_RANGE[0] <= width_factor <= WIDTH_FACTOR_RANGE[1]
+    ):
+        return None
+    return float(width_factor)
+
+
 def _mtext_inline_width(width_factor: Any) -> str:
     """The inline code for the width factor an ``MTEXT`` carries itself.
 
@@ -4700,31 +4739,36 @@ def _mtext_inline_width(width_factor: Any) -> str:
     its text style unless the text sets one with ``\\W…;``. Factors outside the
     0.1 to 10 that AutoCAD accepts, and 1.0, give no code.
     """
-    if (
-        isinstance(width_factor, bool)
-        or not isinstance(width_factor, (int, float))
-        or not math.isfinite(width_factor)
-        or not 0.1 <= width_factor <= 10.0
-        or abs(width_factor - 1.0) < 1e-6
-    ):
+    factor = _mtext_width_factor(width_factor)
+    if factor is None or abs(factor - 1.0) < 1e-6:
         return ""
-    return f"\\W{f'{width_factor:.6f}'.rstrip('0').rstrip('.')};"
+    return f"\\W{f'{factor:.6f}'.rstrip('0').rstrip('.')};"
+
+
+# A DXF MTEXT keeps at most this many characters in a group; a longer text is
+# written in groups 3, with the rest in group 1.
+_MTEXT_CHUNK = 250
 
 
 def _mtext_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     insert = entity["insert"]
     pairs = [(0, "MTEXT")]
     pairs.extend(_common_to_pairs(entity))
+    # The text with its inline codes (a DWG MTEXT keeps them beside the text).
     # A line break inside MTEXT is the paragraph code in DXF.
-    text = _DXF_LINE_BREAK.sub(r"\\P", str(entity["text"]))
+    text = _DXF_LINE_BREAK.sub(r"\\P", mtext_source_text(entity))
+    text = _mtext_inline_width(entity.get("width_factor")) + text
     pairs.extend(
         [
             (10, _num(insert[0])),
             (20, _num(insert[1])),
             (40, _num(entity["height"])),
-            (1, _mtext_inline_width(entity.get("width_factor")) + text),
         ]
     )
+    while len(text) > _MTEXT_CHUNK:
+        pairs.append((3, text[:_MTEXT_CHUNK]))
+        text = text[_MTEXT_CHUNK:]
+    pairs.append((1, text))
 
     rotation = float(entity.get("rotation", 0.0))
     if rotation != 0.0:
@@ -5844,6 +5888,7 @@ def _blocks_to_pairs(
     warnings: list[str] | None,
     entity_map: list[EntityMapEntry],
     images: _ImageRegistry | None = None,
+    tables: _ExportTables | None = None,
 ) -> list[DXFPair]:
     pairs: list[DXFPair] = [(0, "SECTION"), (2, "BLOCKS")]
     if not isinstance(blocks, dict):
@@ -5890,6 +5935,7 @@ def _blocks_to_pairs(
                 generic_dimensions=generic_dimensions,
                 allocator=allocator,
                 images=images,
+                tables=tables,
                 diagnostics=diagnostics,
                 warnings=warnings,
                 entity_map=entity_map,
@@ -5920,6 +5966,7 @@ def _append_entity_output(
     ir_id_override: str | None = None,
     paper_space: bool = False,
     images: _ImageRegistry | None = None,
+    tables: _ExportTables | None = None,
 ) -> None:
     rendered, reason_code = _render_entity(
         entity,
@@ -5929,6 +5976,7 @@ def _append_entity_output(
         diagnostics=diagnostics,
         warnings=warnings,
         images=images,
+        tables=tables,
     )
     ir_id = ir_id_override if ir_id_override is not None else str(entity.get("id", ""))
     if not rendered:
@@ -6149,6 +6197,7 @@ def _append_layout_output(
     warnings: list[str] | None,
     entity_map: list[EntityMapEntry],
     images: _ImageRegistry | None = None,
+    tables: _ExportTables | None = None,
 ) -> None:
     """Write one paper-space layout into the ENTITIES section.
 
@@ -6247,6 +6296,7 @@ def _append_layout_output(
             entity_map=entity_map,
             paper_space=True,
             images=images,
+            tables=tables,
         )
 
 
@@ -6275,6 +6325,7 @@ def _render_entity(
     diagnostics: list[ExportDiagnostic],
     warnings: list[str] | None,
     images: _ImageRegistry | None = None,
+    tables: _ExportTables | None = None,
 ) -> tuple[list[_RenderedEntity], str | None]:
     entity_id = str(entity.get("id", ""))
     kind = str(entity.get("kind", ""))
@@ -6305,11 +6356,13 @@ def _render_entity(
             )
             return [], "DXF_GENERIC_DIMENSION_SKIPPED"
 
-        components = _generic_dimension_components(
-            entity,
-            diagnostics=diagnostics,
-            warnings=warnings,
-        )
+        components = _generic_dimension_block_components(entity, tables)
+        if components is None:
+            components = _generic_dimension_components(
+                entity,
+                diagnostics=diagnostics,
+                warnings=warnings,
+            )
         if not components:
             message = (
                 f"[DIMENSION:{entity_id or '?'}] GENERIC dimension had no "
@@ -6348,6 +6401,7 @@ def _render_entity(
                 diagnostics=diagnostics,
                 warnings=warnings,
                 images=images,
+                tables=tables,
             )
             rendered.extend(child_rendered)
         return rendered, None
@@ -6373,7 +6427,9 @@ def _render_entity(
             return [_RenderedEntity("POLYLINE", _polyline_r12_to_pairs(prepared))], None
 
         if kind == "MTEXT":
-            text_entities, formatting_changed = _explode_mtext(prepared)
+            text_entities, formatting_changed = _explode_mtext(
+                prepared, tables.text_styles if tables is not None else None
+            )
             _diagnose(
                 diagnostics,
                 warnings,
@@ -6638,56 +6694,69 @@ def _polyline_r12_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     return pairs
 
 
-def _explode_mtext(entity: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
-    plain, formatting_changed = _plain_mtext(str(entity.get("text", "")))
-    lines = plain.splitlines() or [""]
-    insert = entity["insert"]
+def _mtext_base_width(
+    entity: dict[str, Any], text_styles: dict[str, Any] | None
+) -> float:
+    """The width factor an ``MTEXT`` starts with: its own, else its text style's."""
+    factor = _mtext_width_factor(entity.get("width_factor"))
+    if factor is None and "width_factor" not in entity and text_styles:
+        style = text_styles.get(str(entity.get("style", "")))
+        if isinstance(style, dict):
+            factor = _mtext_width_factor(style.get("width_factor"))
+    return 1.0 if factor is None else factor
+
+
+def _explode_mtext(
+    entity: dict[str, Any], text_styles: dict[str, Any] | None = None
+) -> tuple[list[dict[str, Any]], bool]:
+    """The ``TEXT`` entities an ``MTEXT`` becomes in DXF R12, one per line.
+
+    The lines hang below the attachment point as the lines of the ``MTEXT`` do.
+    Each one gets the width factor and the height that the inline codes, the
+    entity and its text style give it; the other codes are removed.
+    """
+    source = mtext_source_text(entity)
     height = float(entity["height"])
+    lines = mtext_lines(
+        source, width_factor=_mtext_base_width(entity, text_styles), height=height
+    )
+    vertical, _, horizontal = str(entity.get("attach") or "top_left").partition("_")
+    insert = entity["insert"]
     rotation = float(entity.get("rotation", 0.0))
     angle = math.radians(rotation)
-    step = height * 1.2
     result: list[dict[str, Any]] = []
-    for index, line in enumerate(lines):
+    # An empty line keeps its room, but is no TEXT.
+    for line, drop in mtext_layout(lines, vertical):
         text_entity: dict[str, Any] = {
             **_entity_common_values(entity),
             "kind": "TEXT",
             "insert": [
-                float(insert[0]) + math.sin(angle) * step * index,
-                float(insert[1]) - math.cos(angle) * step * index,
+                float(insert[0]) + math.sin(angle) * drop * height,
+                float(insert[1]) - math.cos(angle) * drop * height,
             ],
-            "height": height,
-            "text": line,
+            "height": height * line.height_factor,
+            "text": line.text,
         }
+        if horizontal in ("center", "right"):
+            text_entity["halign"] = horizontal
         for key in ("rotation", "style"):
             if key in entity:
                 text_entity[key] = entity[key]
-        # The width factor an MTEXT carries itself (EXB, SXF, MI) is the one of
-        # every TEXT it becomes.
-        width_factor = entity.get("width_factor")
-        if (
-            isinstance(width_factor, (int, float))
-            and not isinstance(width_factor, bool)
-            and math.isfinite(width_factor)
-            and width_factor > 0.0
-        ):
-            text_entity["width_factor"] = float(width_factor)
+        if line.width_factor > 0.0 and abs(line.width_factor - 1.0) > 1e-9:
+            text_entity["width_factor"] = line.width_factor
         result.append(text_entity)
-    return result, formatting_changed or len(lines) > 1
-
-
-def _plain_mtext(text: str) -> tuple[str, bool]:
-    original = text
-    plain = text.replace("\\P", "\n").replace("\\~", " ")
-    plain = re.sub(
-        r"\\U\+([0-9A-Fa-f]{4})",
-        lambda match: chr(int(match.group(1), 16)),
-        plain,
-    )
-    plain = re.sub(r"\\[ACFHQTW][^;]*;", "", plain)
-    plain = re.sub(r"\\[LlOoKk]", "", plain)
-    plain = plain.replace("\\{", "{").replace("\\}", "}").replace("\\\\", "\\")
-    plain = plain.replace("{", "").replace("}", "")
-    return plain, plain != original
+    if not result:
+        result.append(
+            {
+                **_entity_common_values(entity),
+                "kind": "TEXT",
+                "insert": [float(insert[0]), float(insert[1])],
+                "height": height,
+                "text": "",
+            }
+        )
+    formatting_changed = mtext_plain(source) != source or len(lines) > 1
+    return result, formatting_changed
 
 
 def _ellipse_is_closed(entity: dict[str, Any]) -> bool:
@@ -6822,6 +6891,40 @@ def _bspline_basis(
                     )
         basis = next_basis
     return basis
+
+
+def _generic_dimension_block_components(
+    entity: dict[str, Any], tables: _ExportTables | None
+) -> list[dict[str, Any]] | None:
+    """The drawn geometry of a GENERIC dimension, when it has a block of it.
+
+    A dimension whose kind the importer could not tell still carries the lines,
+    arrows and text the source drew it with (``definition.block``, in drawing
+    coordinates). They are what the dimension looks like, so they are written
+    in place of the bare line and text ``_generic_dimension_components`` builds.
+    ``None`` when there is no such block.
+    """
+    definition = entity.get("definition")
+    name = definition.get("block") if isinstance(definition, dict) else None
+    block = tables.blocks.get(str(name)) if tables is not None and name else None
+    members = block.get("entities") if isinstance(block, dict) else None
+    if not isinstance(members, list) or not members:
+        return None
+    base = block.get("base_point") or [0.0, 0.0]
+    if not _point_like(base) or float(base[0]) != 0.0 or float(base[1]) != 0.0:
+        return None
+    layer = entity.get("layer")
+    components: list[dict[str, Any]] = []
+    for member in members:
+        if not isinstance(member, dict) or member.get("visible") is False:
+            continue
+        component = dict(member)
+        # The geometry of a dimension is drawn on layer 0 and follows the layer
+        # of the dimension.
+        if layer is not None and str(component.get("layer", "0")) == "0":
+            component["layer"] = layer
+        components.append(component)
+    return components or None
 
 
 def _generic_dimension_components(
