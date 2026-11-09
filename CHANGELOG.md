@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.17.8
+
+- EXB importer: a hatch or solid boundary arc or ellipse whose stored sweep,
+  radius or angles are not finite no longer aborts the conversion with
+  `OverflowError: cannot convert float infinity to integer`; the curve is
+  skipped, and a sweep beyond a full turn is sampled as one turn.
+
 ## 0.17.7
 
 - DWG importer: strings every entity repeats are one object each: the layer

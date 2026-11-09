@@ -32,6 +32,8 @@ from cad2d_ir.importers.exb import (
     VERIFIED_TEXT_ALIGNMENTS,
     _arc_angles,
     _colorref_hex,
+    _sample_circular,
+    _sample_ellipse,
     normalize_text,
 )
 from cad2d_ir.schema import validate_ir
@@ -421,3 +423,24 @@ def test_unverified_product_build_is_an_info_not_a_partial_read(monkeypatch) -> 
     codes = _codes(result)
     assert codes["EXB_PRODUCT_BUILD_UNVERIFIED"] == 1
     assert codes["EXB_PARTIAL_READ"] == 1
+
+
+def test_boundary_arcs_with_non_finite_or_oversized_sweeps_do_not_overflow() -> None:
+    # A stored boundary arc carried an infinite sweep angle; the segment count
+    # overflowed (`cannot convert float infinity to integer`) and the whole
+    # drawing failed. Such a curve is skipped, a sweep beyond a full turn is
+    # sampled as one turn, and ordinary arcs are unchanged.
+    center, x_axis, y_axis = (0.0, 0.0), (1.0, 0.0), (0.0, 1.0)
+    assert _sample_circular(center, 1.0, x_axis, y_axis, math.inf, 32) == []
+    assert _sample_circular(center, 1.0, x_axis, y_axis, math.nan, 32) == []
+    assert _sample_circular(center, math.inf, x_axis, y_axis, math.pi, 32) == []
+    full_turn = _sample_circular(center, 1.0, x_axis, y_axis, 2.0 * math.pi, 32)
+    assert len(_sample_circular(center, 1.0, x_axis, y_axis, 50.0 * math.pi, 32)) == len(
+        full_turn
+    )
+    half = _sample_circular(center, 1.0, x_axis, y_axis, math.pi, 32)
+    assert len(half) == 17
+    assert half[-1] == pytest.approx([-1.0, 0.0])
+    assert _sample_ellipse(center, x_axis, y_axis, 2.0, 1.0, 0.0, math.inf, 0.0, 32) == []
+    assert _sample_ellipse(center, x_axis, y_axis, math.nan, 1.0, 0.0, 1.0, 0.0, 32) == []
+    assert len(_sample_ellipse(center, x_axis, y_axis, 2.0, 1.0, 0.0, 9.0 * math.pi, 0.0, 32)) == 33

@@ -1250,8 +1250,11 @@ def _sample_circular(
     sweep: float,
     segments: int,
 ) -> list[list[float]]:
-    if abs(sweep) < _EPSILON:
-        sweep = _TAU
+    # A stored arc with a non-finite sweep or radius cannot be sampled (the
+    # segment count overflowed on such a file); the curve contributes nothing.
+    if not (math.isfinite(sweep) and math.isfinite(radius)):
+        return []
+    sweep = _bounded_sweep(sweep)
     count = max(2, int(math.ceil(segments * abs(sweep) / _TAU)))
     points = []
     for index in range(count + 1):
@@ -1277,12 +1280,12 @@ def _sample_ellipse(
     rotation: float,
     segments: int,
 ) -> list[list[float]]:
+    if not all(math.isfinite(value) for value in (major, minor, start, end, rotation)):
+        return []
     cos_r, sin_r = math.cos(rotation), math.sin(rotation)
     ux = (cos_r * x_axis[0] - sin_r * x_axis[1], cos_r * x_axis[1] + sin_r * x_axis[0])
     uy = (cos_r * y_axis[0] - sin_r * y_axis[1], cos_r * y_axis[1] + sin_r * y_axis[0])
-    sweep = end - start
-    if abs(sweep) < _EPSILON:
-        sweep = _TAU
+    sweep = _bounded_sweep(end - start)
     count = max(8, int(math.ceil(segments * abs(sweep) / _TAU)))
     points = []
     for index in range(count + 1):
@@ -1295,6 +1298,13 @@ def _sample_ellipse(
             ]
         )
     return points
+
+
+def _bounded_sweep(sweep: float) -> float:
+    """A finite sweep as one turn at most; a zero sweep means a full turn."""
+    if abs(sweep) < _EPSILON:
+        return _TAU
+    return math.copysign(min(abs(sweep), _TAU), sweep)
 
 
 def _de_boor(
