@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.17.15
+
+- JWW import: an entity's `color` is the ACI Jw_cad writes for its pen color when
+  it exports a DXF, the ACI closest to the pen's printer color recorded in the
+  file (`header.metadata.jww.pens`), with pen color 2 always 7. The pen colors
+  101-356 (the SXF colors and the user colors) take their printer colors the same
+  way. Before, the pen colors 1-9 followed a fixed table that does not match
+  Jw_cad (pen color 2, black, was 5, blue), and the pen colors 101-356 were taken
+  as ACI numbers themselves, so a drawing in SXF black (101) came out in a pale
+  green. Black and white are 7, where Jw_cad writes SXF black as 250. Without a
+  pen table the numbers for Jw_cad's default colors are used. See
+  `docs/IMPORTERS.md`.
+
 ## 0.17.14
 
 - DXF R2010 export: the file has the structure AutoCAD and ODA read a DXF

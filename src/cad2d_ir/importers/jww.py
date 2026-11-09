@@ -313,6 +313,135 @@ def _pen_widths_mm(table: Mapping[str, Any] | None) -> dict[int, float]:
     return widths
 
 
+# Colors. Jw_cad writes a pen color into a DXF as the color number (ACI) closest to
+# the pen's printer color (基本設定 > 色・画面 > プリンタ出力要素), except pen color 2,
+# which is always 7 (Jw_cad Third-Party-Network FAQ 008020 lists the numbers for the
+# default colors). Entities get the same numbers here, so a drawing carries the
+# colors Jw_cad's own DXF export gives it, and the color-dependent plot styles of the
+# CAD that receives it apply as they would to that DXF.
+#
+# The ACI palette below is the one that reproduces those numbers: the 24 hues of
+# 10-249 at the levels 255, 204, 153, 127 and 76, the odd numbers half-way to white,
+# and the grey ramp 250-255.
+_ACI_LEVELS = (255, 204, 153, 127, 76)
+_ACI_GREYS = (51, 80, 105, 130, 190, 255)
+# The numbers Jw_cad writes for its default printer colors, used for a pen the file
+# records no color for (a symbol has no pen table, nor has a header ezjww could not
+# read the pens of): pen colors 1-9, and the SXF colors 1-16 (pen colors 101-116).
+_DEFAULT_PEN_ACI = {1: 4, 2: 7, 3: 3, 4: 2, 5: 6, 6: 5, 7: 136, 8: 1, 9: 9}
+# SXF black is 7 rather than Jw_cad's 250: see _nearest_aci.
+_SXF_DEFAULT_PEN_ACI = {
+    101: 7,
+    102: 1,
+    103: 3,
+    104: 5,
+    105: 2,
+    106: 6,
+    107: 4,
+    108: 7,
+    109: 222,
+    110: 23,
+    111: 30,
+    112: 83,
+    113: 150,
+    114: 171,
+    115: 9,
+    116: 8,
+}
+
+
+def _aci_palette() -> dict[int, tuple[int, int, int]]:
+    """RGB of the ACI numbers 1-255 (see the note above ``_ACI_LEVELS``)."""
+    table: dict[int, tuple[int, int, int]] = {
+        1: (255, 0, 0),
+        2: (255, 255, 0),
+        3: (0, 255, 0),
+        4: (0, 255, 255),
+        5: (0, 0, 255),
+        6: (255, 0, 255),
+        7: (255, 255, 255),
+        8: (128, 128, 128),
+        9: (192, 192, 192),
+    }
+    for number in range(10, 250):
+        sector, fraction = divmod((number - 10) // 10 * 15.0 / 60.0, 1.0)
+        rise, fall = 255.0 * fraction, 255.0 * (1.0 - fraction)
+        full = (
+            (255.0, rise, 0.0),
+            (fall, 255.0, 0.0),
+            (0.0, 255.0, rise),
+            (0.0, fall, 255.0),
+            (rise, 0.0, 255.0),
+            (255.0, 0.0, fall),
+        )[int(sector)]
+        if number % 2:
+            full = tuple((channel + 255.0) / 2.0 for channel in full)
+        level = _ACI_LEVELS[(number % 10) // 2]
+        red, green, blue = (int(channel * level / 255.0) for channel in full)
+        table[number] = (red, green, blue)
+    for number, grey in zip(range(250, 256), _ACI_GREYS):
+        table[number] = (grey, grey, grey)
+    return table
+
+
+_ACI_RGB = _aci_palette()
+# Searched in this order, so that the named colors win over the numbers of 10-249
+# that repeat them (10 is the red of 1). 7 and 255 (white) are left to the neutral
+# rule of _nearest_aci.
+_ACI_CANDIDATES = (*range(1, 7), 8, 9, *range(10, 255))
+
+
+def _hex_rgb(value: Any) -> tuple[int, int, int] | None:
+    if not isinstance(value, str) or len(value) != 7 or not value.startswith("#"):
+        return None
+    try:
+        return (int(value[1:3], 16), int(value[3:5], 16), int(value[5:7], 16))
+    except ValueError:
+        return None
+
+
+def _nearest_aci(rgb: tuple[int, int, int]) -> int:
+    """The ACI closest to an RGB color, with black and white as 7.
+
+    7 is the drawing color: black on a white background and white on a black one.
+    Jw_cad writes black as 250, a dark grey that all but disappears on the black
+    model space of AutoCAD, so black stays 7 here, as for the other formats.
+    """
+    high, low = max(rgb), min(rgb)
+    if high - low < 24 and (high < 40 or low > 215):
+        return 7
+    return min(
+        _ACI_CANDIDATES,
+        key=lambda number: sum(
+            (channel - target) ** 2 for channel, target in zip(rgb, _ACI_RGB[number])
+        ),
+    )
+
+
+def _pen_colors(table: Mapping[str, Any] | None) -> dict[int, int]:
+    """The ACI of every pen color number an entity can use (1-9, 101-356).
+
+    From the printer colors of a ``_pen_table``, else Jw_cad's numbers for the
+    default colors. Pen color 2 is 7 whatever its printer color, as Jw_cad writes
+    it; a number the table leaves out (0 the background, 10 an arbitrary solid
+    color, 100 the spare slot) is left to the caller.
+    """
+    colors = {**_DEFAULT_PEN_ACI, **_SXF_DEFAULT_PEN_ACI}
+    sections = (table.get("printer"), table.get("extended")) if table else ()
+    for pens in sections:
+        if not isinstance(pens, Mapping):
+            continue
+        for key, pen in pens.items():
+            number = int(key)
+            if not (1 <= number <= 9 or 101 <= number <= 356):
+                continue
+            rgb = _hex_rgb(pen.get("color")) if isinstance(pen, Mapping) else None
+            if rgb is not None:
+                colors[number] = _nearest_aci(rgb)
+    colors[2] = 7
+    return colors
+
+
 def _used_linetype_table(
     table: Mapping[str, dict[str, Any]], used: set[str]
 ) -> dict[str, dict[str, Any]]:
@@ -352,6 +481,9 @@ class _ConversionContext:
     # width, so such entities get that width as lineweight_mm.
     pen_widths: dict[int, float] = field(default_factory=dict)
     pen_width_entities: int = 0
+    # ACI per pen color number (_pen_colors): the printer color's nearest ACI, as
+    # Jw_cad writes the color into a DXF.
+    pen_colors: dict[int, int] = field(default_factory=lambda: _pen_colors(None))
 
     @property
     def label(self) -> str:
@@ -513,6 +645,7 @@ def _jw_document_to_ir(
         source_format=source_format,
         group_scales=_symbol_group_scales(header) if is_symbol else None,
         pen_widths=_pen_widths_mm(pen_table),
+        pen_colors=_pen_colors(pen_table),
     )
 
     context.images = _embedded_images(jw_document)
@@ -991,7 +1124,9 @@ def _entity_common(
         "id": context.allocate_id(),
         "layer": layer_name,
         "linetype": linetype,
-        "color": _map_color(int(base.get("pen_color", 0))),
+        # A pen color without a color of its own (0 the background, 10 a solid whose
+        # color follows below, 100 the spare slot) draws in 7
+        "color": context.pen_colors.get(int(base.get("pen_color", 0)), 7),
     }
     if context.options.entity_provenance:
         common["source"] = {
@@ -1796,20 +1931,6 @@ def _ccw_span(start: float, span: float) -> tuple[float, float]:
 def _normalize_degrees(value: float) -> float:
     normalized = value % 360.0
     return 0.0 if math.isclose(normalized, 360.0, abs_tol=1e-12) else normalized
-
-
-def _map_color(pen_color: int) -> int:
-    return {
-        1: 7,
-        8: 7,
-        2: 5,
-        3: 1,
-        4: 6,
-        5: 3,
-        6: 4,
-        7: 2,
-        9: 8,
-    }.get(pen_color, max(pen_color % 255, 1))
 
 
 def _unique_name(candidate: str, fallback: str, used: Mapping[str, Any]) -> str:

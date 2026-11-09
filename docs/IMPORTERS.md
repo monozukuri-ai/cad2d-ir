@@ -54,6 +54,15 @@ Line widths: an entity pen width above 0 becomes `lineweight_mm` (1/100 mm). The
 
 `width_mm` is the printed width: the stored value when the file uses 1/100 mm (`unit: "hundredth_mm"`, `max_draw_width` below 0, the "線幅を1/100mm単位とする" setting), or dots over `printer_dpi` (`unit: "dot"`); it is `null` when the width is 0 or the dpi is not recorded. Every stored pen is listed, with its raw `width` and the screen widths, so that a JWW writer can restore the table unchanged: 0 is the background, 9 the construction line color and 100 a spare slot; entities use 1-9 and 101-356.
 
+Colors: an entity's `color` is the ACI Jw_cad itself writes for its pen color when it exports a DXF, the ACI closest to the pen's printer color in the table above (基本設定 > 色・画面 > プリンタ出力要素). Pen color 2 is always 7, as Jw_cad writes it. The pen colors 101-356 (the SXF colors 1-16 and the user colors) take their printer colors from `extended` the same way. With the default colors this gives:
+
+| Pen color | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 (construction gray) |
+|---|---|---|---|---|---|---|---|---|---|
+| Printer color | cyan | black | green | yellow | magenta | blue | dark cyan | red | light gray |
+| ACI | 4 | 7 | 3 | 2 | 6 | 5 | 136 | 1 | 9 |
+
+and for the SXF colors 1-16 (pen colors 101-116): black 7, red 1, green 3, blue 5, yellow 2, magenta 6, cyan 4, white 7, deeppink 222, brown 23, orange 30, lightgreen 83, lightblue 150, lavender 171, lightgray 9, darkgray 8. A file printed in monochrome usually has black printer colors, and its entities are then 7. Black and white are 7, the drawing color; Jw_cad writes SXF black as 250, a dark gray that all but disappears on a black background. The nearest color is searched in the ACI palette whose levels are 255, 204, 153, 127 and 76, the one that reproduces Jw_cad's numbers. Without a pen table (a symbol, or an `ezjww` before 0.7.1) the numbers for the default colors above are used, and a pen color without a color of its own (0, 10 for a solid that carries its own color, 100) is 7.
+
 The entity pen style is the Jw_cad line type number:
 
 | Pen style | Jw_cad line type | IR linetype | `pattern_mm` |

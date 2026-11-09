@@ -1002,6 +1002,173 @@ def test_jww_without_a_pen_table_has_no_pens_metadata() -> None:
     assert "extended" not in metadata["pens"] and len(metadata["pens"]["printer"]) == 10
 
 
+# ---------------------------------------------------------------------------
+# Pen colors: the ACI Jw_cad writes into a DXF (nearest to the printer color)
+
+# Jw_cad's default printer colors of pen colors 0-9, and the SXF colors 1-16
+_JW_DEFAULT_PRINTER = [
+    "#FFFFFF",
+    "#00FFFF",
+    "#000000",
+    "#00FF00",
+    "#FFFF00",
+    "#FF00FF",
+    "#0000FF",
+    "#008080",
+    "#FF0000",
+    "#C0C0C0",
+]
+_SXF_COLORS = [
+    "#000000",
+    "#FF0000",
+    "#00FF00",
+    "#0000FF",
+    "#FFFF00",
+    "#FF00FF",
+    "#00FFFF",
+    "#FFFFFF",
+    "#C00080",
+    "#C08040",
+    "#FF8000",
+    "#80C080",
+    "#0080FF",
+    "#8040FF",
+    "#C0C0C0",
+    "#808080",
+]
+
+
+def _colorref(rgb: str) -> int:
+    """``#RRGGBB`` as the COLORREF (``0x00BBGGRR``) ezjww reports."""
+    red, green, blue = (int(rgb[index : index + 2], 16) for index in (1, 3, 5))
+    return blue << 16 | green << 8 | red
+
+
+def _pen_color_document(
+    pen_colors: list[int],
+    *,
+    printer: list[str] | None = None,
+    extended: dict[int, str] | None = None,
+) -> dict:
+    """One line per pen color, with the printer colors given (no pen table if None)."""
+    document = _document()
+    document["entities"] = [
+        {
+            "type": "LINE",
+            "base": {**_base(), "pen_color": pen_color},
+            "start_x": 0.0,
+            "start_y": float(index),
+            "end_x": 10.0,
+            "end_y": float(index),
+        }
+        for index, pen_color in enumerate(pen_colors)
+    ]
+    document["block_defs"] = []
+    if printer is not None:
+        header = _pens_header()
+        header["printer"] = [
+            {"color": _colorref(color), "width": 20, "point_radius": 0.3}
+            for color in printer
+        ]
+        colors = {101 + index: color for index, color in enumerate(_SXF_COLORS)}
+        colors.update(extended or {})
+        header["extended_printer"] = [
+            {
+                "color": _colorref(colors.get(100 + offset, "#000000")),
+                "width": 18,
+                "point_radius": 0.18,
+            }
+            for offset in range(257)
+        ]
+        document["header"]["pens"] = header
+    return document
+
+
+def _colors_by_pen(document: dict) -> dict[int, object]:
+    result = jww_document_to_ir(document)
+    validate_ir(result.document)
+    return {
+        entity["metadata"]["jww"]["pen_color"]: entity["color"]
+        for entity in result.document["entities"]
+    }
+
+
+def test_jww_default_pen_colors_are_the_numbers_jw_cad_writes_into_a_dxf() -> None:
+    """Jw_cad Third-Party-Network FAQ 008020 (default colors): 1→4, 2→7, 3→3,
+    4→2, 5→6, 6→5, 7→136, 8→1, construction gray→9, and the SXF colors 1-16."""
+    pens = [*range(1, 10), *range(101, 117)]
+    colors = _colors_by_pen(_pen_color_document(pens, printer=_JW_DEFAULT_PRINTER))
+    assert colors == {
+        1: 4,
+        2: 7,
+        3: 3,
+        4: 2,
+        5: 6,
+        6: 5,
+        7: 136,
+        8: 1,
+        9: 9,
+        # SXF black is 7, the drawing color (Jw_cad writes 250, a dark grey that
+        # all but disappears on AutoCAD's black model space)
+        101: 7,
+        102: 1,
+        103: 3,
+        104: 5,
+        105: 2,
+        106: 6,
+        107: 4,
+        108: 7,
+        109: 222,
+        110: 23,
+        111: 30,
+        112: 83,
+        113: 150,
+        114: 171,
+        115: 9,
+        116: 8,
+    }
+    # Without a pen table (a symbol, an older ezjww) the same numbers are assumed
+    assert _colors_by_pen(_pen_color_document(pens)) == colors
+
+
+def test_jww_pen_colors_follow_the_printer_colors_of_the_file() -> None:
+    # A file set up for monochrome printing: every printer color black
+    printer = ["#FFFFFF", *(["#000000"] * 8), "#808080"]
+    printer[1] = "#FF0000"  # pen color 1 printed red
+    printer[2] = "#FF0000"  # pen color 2 is 7 whatever its printer color
+    extended = {117: "#FF8000", 118: "#000000", 119: "#FFFFFF", 120: "#7F7F7F"}
+    colors = _colors_by_pen(
+        _pen_color_document(
+            [1, 2, 3, 8, 9, 117, 118, 119, 120], printer=printer, extended=extended
+        )
+    )
+    assert colors == {
+        1: 1,
+        2: 7,
+        3: 7,
+        8: 7,
+        9: 8,
+        117: 30,
+        118: 7,
+        119: 7,
+        120: 8,
+    }
+
+
+def test_jww_pen_colors_without_a_color_draw_in_7() -> None:
+    # 0 is the background, 10 an arbitrary solid color (the solid carries its own
+    # color), 100 the spare slot; a user color needs the file's table
+    colors = _colors_by_pen(_pen_color_document([0, 10, 100, 200]))
+    assert colors == {0: 7, 10: 7, 100: 7, 200: 7}
+    # with the table, user color 200 takes its printer color
+    colors = _colors_by_pen(
+        _pen_color_document(
+            [200], printer=_JW_DEFAULT_PRINTER, extended={200: "#00FF00"}
+        )
+    )
+    assert colors == {200: 3}
+
+
 def _layer_states_document() -> dict:
     document = _document()
     document["header"]["layer_groups"] = [
