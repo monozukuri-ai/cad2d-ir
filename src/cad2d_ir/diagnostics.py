@@ -538,7 +538,7 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "warning",
         None,
         "EXB import",
-        "`ezexb` read the drawing in partial mode: some records could not be decoded and the dimension semantics are not decoded.",
+        "`ezexb` read the drawing in partial mode: some records could not be decoded and the dimension semantics are not decoded. For a legacy drawing: part of the content could not be decoded (the message quotes `ezexb`'s findings).",
     ),
     "EXB_UNSUPPORTED_ENTITY": DiagnosticCode(
         "warning",
@@ -605,6 +605,12 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "preserved_metadata",
         "EXB import",
         "The CAXA hatch pattern name, angle, scale and stored line definitions are kept in `metadata.exb.hatch`; the pattern lines are not regenerated.",
+    ),
+    "EXB_LEGACY_FORMAT": DiagnosticCode(
+        "info",
+        "flattened",
+        "EXB import",
+        "A legacy drawing (signature `CaxaEbForWindows`, `details.container_version`) was read with `ezexb`'s legacy profile: blocks, dimensions and tables are flattened into lines, arcs and text in one model space. `details.notes` lists what `ezexb` did not decode behind geometry it kept.",
     ),
     "EXB_LINE_WIDTH_PRESET": DiagnosticCode(
         "info",

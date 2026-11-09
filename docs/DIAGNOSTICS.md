@@ -108,9 +108,10 @@ entity/source identifiers and structured details.
 | `EXB_HATCH_PATTERN_PRESERVED` | info | preserved_metadata | EXB import | The CAXA hatch pattern name, angle, scale and stored line definitions are kept in `metadata.exb.hatch`; the pattern lines are not regenerated. |
 | `EXB_LAYOUTS_PRESERVED` | info | preserved_metadata | EXB import | Spaces after the first were kept as `layouts`. |
 | `EXB_LAYOUT_PROMOTED` | warning | normalized | EXB import | The first space had no entities; the space with the most entities became the model entities. |
+| `EXB_LEGACY_FORMAT` | info | flattened | EXB import | A legacy drawing (signature `CaxaEbForWindows`, `details.container_version`) was read with `ezexb`'s legacy profile: blocks, dimensions and tables are flattened into lines, arcs and text in one model space. `details.notes` lists what `ezexb` did not decode behind geometry it kept. |
 | `EXB_LINE_WIDTH_PRESET` | info | assumed | EXB import | Symbolic CAXA line widths (thin / mid / wide / double wide) were mapped to the default 0.25 / 0.35 / 0.5 / 0.7 mm. |
 | `EXB_PAPER_DETECTED` | info | detected | EXB import | The paper size was measured from the `*FRAME…` block placed in the space and recorded in `header.metadata.exb.paper`. |
-| `EXB_PARTIAL_READ` | warning | - | EXB import | `ezexb` read the drawing in partial mode: some records could not be decoded and the dimension semantics are not decoded. |
+| `EXB_PARTIAL_READ` | warning | - | EXB import | `ezexb` read the drawing in partial mode: some records could not be decoded and the dimension semantics are not decoded. For a legacy drawing: part of the content could not be decoded (the message quotes `ezexb`'s findings). |
 | `EXB_POLYLINE_WIDTH_DROPPED` | warning | approximated | EXB import | A polyline had segment widths, which the IR polyline does not carry. |
 | `EXB_PRODUCT_BUILD_UNVERIFIED` | info | assumed | EXB import | The CAXA product build was not verified against a native sample; `ezexb` read the stored entities with the rules of its major version (`details.product_build`). |
 | `EXB_TEXT_ALIGNMENT_ASSUMED` | info | assumed | EXB import | Texts use an alignment code that was not verified against CAXA: 2 (top-right by the 3×3 grid) or an unknown code read as top-left. |

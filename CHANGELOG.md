@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.17.9
+
+- EXB importer: drawings written before the compound-document format
+  (signature `CaxaEbForWindows`, CAXA 2005 and earlier) are imported instead
+  of being rejected with "Unsupported legacy EXB file". They are read with the
+  legacy profile of `ezexb` 0.3.3: one model space of `LINE`, `CIRCLE`, `ARC`,
+  `LWPOLYLINE`, `POINT` and `TEXT` / `MTEXT` in which blocks, dimensions,
+  tables and hatches are already flattened, with layers, colours, linetypes,
+  line widths, text alignment, rotation, fit-to-box and text styles
+  (`EXB_LEGACY_FORMAT`). `EXB_PARTIAL_READ` is reported for such a drawing only
+  when content was lost. The `exb` extra now needs `ezexb>=0.3.3`.
+- EXB importer: a colour, linetype or line width whose source is ByBlock is
+  written on the entity when `ezexb` supplies its value (the members of a
+  flattened legacy group); a ByBlock entity inside a block definition is
+  unchanged.
+- EXB importer: POINT records become `POINT` entities instead of an
+  `EXB_UNSUPPORTED_ENTITY` warning.
+
 ## 0.17.8
 
 - EXB importer: a hatch or solid boundary arc or ellipse whose stored sweep,

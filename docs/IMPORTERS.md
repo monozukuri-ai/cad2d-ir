@@ -415,13 +415,30 @@ and with resource budgets raised far above its defaults
 as `parse_options` to change them). `ezexb` 0.1 decodes five observed product
 builds (`10.0.0.0000`, `11.7.0.5203`, `15.0.0.5681`, `16.4.0.13104`,
 `18.0.0.18159`); any other build raises `ImporterError` ("Unsupported EXB
-product build …"), as do legacy pre-2007 files (signature
-`CaxaEbForWindows`) and compound documents without EXB streams.
+product build …"), as do compound documents without EXB streams.
+
+A file written before the compound-document format (signature
+`CaxaEbForWindows`, CAXA 2005 and earlier) is read with `ezexb`'s legacy
+profile (`ezexb` 0.3.3 or later; `EXB_LEGACY_FORMAT`). It has one model space
+in which blocks, dimensions, tables and hatches are already flattened into
+`LINE`, `CIRCLE`, `ARC`, `LWPOLYLINE`, `POINT` and `TEXT` / `MTEXT`; there are
+no `INSERT`, `DIMENSION` or `HATCH` entities, no paper and no drawing scale
+(`paper_scale` is 1). Colours, linetypes, widths and text (alignment, rotation,
+fit-to-box, style) map as in the table below; `ezexb` resolves the legacy
+palette and line styles, and the value a flattened member inherits from its
+group (ByBlock) is written on the entity. `EXB_PARTIAL_READ` is reported only
+when drawing content was lost (bytes that are not a readable record, a missing
+table); fields that are not decoded behind kept geometry (dimension values,
+table data, spline and ellipse definitions, whose stored sample points become
+an `LWPOLYLINE`) are listed in `EXB_LEGACY_FORMAT`'s `details.notes`. A container
+version `ezexb` does not read raises `ImporterError` ("Unsupported legacy EXB
+container version …").
 
 | EXB | IR | Notes |
 | --- | --- | --- |
 | first space (`model` / `Paper1`, id -7) | `entities` | the fullest space is promoted when the first is empty (`EXB_LAYOUT_PROMOTED`); further spaces become `layouts` (`EXB_LAYOUTS_PRESERVED`) |
 | stored coordinates | millimetres at real size | `EXB_UNITS_ASSUMED_MM`; `header.metadata.exb.paper_scale` is the drawing scale (1:3 is `3.0`, 2:1 is `0.5`) and `header.metadata.exb.paper` the sheet measured from the `*FRAME…` block (`EXB_PAPER_DETECTED`) |
+| POINT | `POINT` | |
 | LINE / CIRCLE / ARC | `LINE` / `CIRCLE` / `ARC` | arc direction from the basis handedness and the sweep sign |
 | POLYLINE | `LWPOLYLINE` with bulges | segment widths dropped (`EXB_POLYLINE_WIDTH_DROPPED`) |
 | TEXT | `TEXT`, or `MTEXT` when it has `\P` or formatting | height = stored height × drawing scale; alignment code on a 3×3 grid (0 top-left … 8 bottom-right, verified against the CAXA viewer except 2; `EXB_TEXT_ALIGNMENT_ASSUMED` for 2 and unknown codes); `%c %d %p %x` and tolerance escapes normalised (`EXB_TEXT_ESCAPE_NORMALIZED`), roughness symbols dropped (`EXB_TEXT_SYMBOL_DROPPED`); fit-to-box texts get a `width_factor` (`EXB_TEXT_FIT_WIDTH_FACTOR`) |
@@ -435,7 +452,8 @@ product build …"), as do legacy pre-2007 files (signature
 
 Explicit entity colours are the low 24 bits of the stored value read as a
 COLORREF (`0x00BBGGRR`); ByLayer and ByBlock colours, widths and line types are
-left to the layer. Entity ids are `EXB_E…`; `source.metadata` keeps the record
+left to the layer, except a ByBlock value `ezexb` resolved for a flattened
+member of a legacy group. Entity ids are `EXB_E…`; `source.metadata` keeps the record
 type GUID, block id and stream path and `metadata.exb` the raw attribute values
 when `entity_provenance` is on.
 

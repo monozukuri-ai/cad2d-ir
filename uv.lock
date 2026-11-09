@@ -20,7 +20,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.17.8"
+version = "0.17.9"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
@@ -93,8 +93,8 @@ requires-dist = [
     { name = "ezdwf", marker = "extra == 'dwf'", specifier = ">=0.0.11,<0.1" },
     { name = "ezdwg", marker = "extra == 'all'", specifier = ">=0.11,<1" },
     { name = "ezdwg", marker = "extra == 'dwg'", specifier = ">=0.11,<1" },
-    { name = "ezexb", marker = "extra == 'all'", specifier = ">=0.3,<0.4" },
-    { name = "ezexb", marker = "extra == 'exb'", specifier = ">=0.3,<0.4" },
+    { name = "ezexb", marker = "extra == 'all'", specifier = ">=0.3.3,<0.4" },
+    { name = "ezexb", marker = "extra == 'exb'", specifier = ">=0.3.3,<0.4" },
     { name = "ezhpgl", marker = "extra == 'all'", specifier = ">=0.1.0a2,<0.2" },
     { name = "ezhpgl", marker = "extra == 'hpgl'", specifier = ">=0.1.0a2,<0.2" },
     { name = "ezjww", marker = "extra == 'all'", specifier = ">=0.2.6,<0.8" },
@@ -323,15 +323,15 @@ wheels = [
 
 [[package]]
 name = "ezexb"
-version = "0.3.0"
+version = "0.3.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e2/3f/172b2fed54b5df16330908e109dd7fca967eec41d86ef9b139d76e634a7b/ezexb-0.3.0.tar.gz", hash = "sha256:ff1897398ae536a419df188a4b16684605d45b268c1bfa89550c5ff8013100fd", size = 198242, upload-time = "2026-10-28T05:53:28.28Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/dc/22/a2dd60329cd849123125d336af453af83405d3f90baf3fbf4e34af4b43a5/ezexb-0.3.3.tar.gz", hash = "sha256:80d81c20cab3c70275a55a4260e8fc2c216ecaa8a8ca32be87552cb2c68445ef", size = 230640, upload-time = "2026-11-09T06:55:28.593Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8b/12/68d301258ba23dbf3506a14562a54a93bb9200c6eb9f4132708aaed09c8b/ezexb-0.3.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:38b0b2718100dfbdba754f4672bae2c0a50684e359ef595f8c18e907638b5e29", size = 634674, upload-time = "2026-10-28T05:53:21.403Z" },
-    { url = "https://files.pythonhosted.org/packages/b3/0a/ce9963d08c2657bcd5a29f781007f6e3d802f8afedd2411cccae640729dc/ezexb-0.3.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:8187c97bbe1d19e28ea0a95cc42f4e21ebc4d6558eefb1459e0973b3651a4c9a", size = 623398, upload-time = "2026-10-28T05:53:22.878Z" },
-    { url = "https://files.pythonhosted.org/packages/9f/09/4bef7e3993847594928b0df0f2862796f9a25cd7e7ac360980df64fd7f9f/ezexb-0.3.0-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:58879e3bc2c8b93a57945c8f73484471e2a2b6e18a38d71c734dcfb22cadf6b4", size = 660163, upload-time = "2026-10-28T05:53:24.248Z" },
-    { url = "https://files.pythonhosted.org/packages/64/d1/716705361d25191c989d7a2a85d02181197e045f59cdf551950630e1e538/ezexb-0.3.0-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:bbb75b4e7c89a922286c5b26f3f89a7755d2adf13290623a3d2fc8cf5513762b", size = 668000, upload-time = "2026-10-28T05:53:25.635Z" },
-    { url = "https://files.pythonhosted.org/packages/dd/15/e85015cbdccbb2149544800eaa2c65126d41c19aed6779b56e4ac95cb70f/ezexb-0.3.0-cp310-abi3-win_amd64.whl", hash = "sha256:833c06fee7f594e79f8a255e5ff90c23874cc0759a44ecc7cb44189eb21cd0a3", size = 547566, upload-time = "2026-10-28T05:53:26.984Z" },
+    { url = "https://files.pythonhosted.org/packages/a4/4b/df2c7dda4a7c4c9ea913676bcab439b8077c53f7ff9c5fae2ac6cfeff1c9/ezexb-0.3.3-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:b045d36d396a72296dc8a710ba3329196cbf67f167a29e75865cdc86a940ed26", size = 819807, upload-time = "2026-11-09T06:55:18.9Z" },
+    { url = "https://files.pythonhosted.org/packages/49/17/68925ce51e910f53e01afc16ee39fbcf14b2cb329d302341b9ade6e1a0bd/ezexb-0.3.3-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:f04110378f75f36facef663fe4143280f0f8ca4c3a0eb7207985e43ccda170ea", size = 810750, upload-time = "2026-11-09T06:55:20.963Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/d6/2a97fb17df53c1566270db9dd7d91215f6063f8cd91094fb17049ab1fe7d/ezexb-0.3.3-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:3dd2d0d17971efa580f908019a86133e2f5b41e5e721ec5f7f60c99bb040c35a", size = 849289, upload-time = "2026-11-09T06:55:22.834Z" },
+    { url = "https://files.pythonhosted.org/packages/63/14/8b5d11dd5c56b5a75215a7485eef5c348ac0b8a6ddd9f20130b508ebf6dc/ezexb-0.3.3-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:5ad42145e42342336826503314f5b690a7b701b7833cd72dfa6c93c5af7faecd", size = 857044, upload-time = "2026-11-09T06:55:24.75Z" },
+    { url = "https://files.pythonhosted.org/packages/ec/58/68cba895e0ae7d6b232baa41fdcf7264c53f98f3fd3ded915a1bde636079/ezexb-0.3.3-cp310-abi3-win_amd64.whl", hash = "sha256:0a0921539dda9e011f8daa0f55c1f18c8c7f2463edf8b0d5c62e970501829280", size = 736313, upload-time = "2026-11-09T06:55:26.473Z" },
 ]
 
 [[package]]

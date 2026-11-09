@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import os
+import struct
 from pathlib import Path
 
 import pytest
@@ -300,9 +301,10 @@ def test_tables_of_codes_are_complete() -> None:
 
 
 def test_non_exb_inputs_raise_importer_errors(tmp_path: Path, monkeypatch) -> None:
+    # the legacy signature with a container version ezexb does not read
     legacy = tmp_path / "old.exb"
     legacy.write_bytes(b"\x10CaxaEbForWindows" + bytes(200))
-    with pytest.raises(ImporterError, match="legacy EXB"):
+    with pytest.raises(ImporterError, match="Unsupported legacy EXB container version"):
         convert_exb_file_to_ir(legacy)
 
     text = tmp_path / "text.exb"
@@ -335,6 +337,250 @@ def test_non_exb_inputs_raise_importer_errors(tmp_path: Path, monkeypatch) -> No
         convert_exb_file_to_ir(FIXTURES / "document-10.exb")
     assert "Unsupported EXB product build '12.70.0.5534 (x86)'" in str(excinfo.value)
     assert "10.0.0.0000" in str(excinfo.value)
+
+
+# ---------------------------------------------------------------------------
+# Legacy drawings (signature CaxaEbForWindows), on synthetic streams
+
+_BY_LAYER, _BY_BLOCK = 0xFB, 0xFC
+_LEGACY_TRAILER = bytes.fromhex("00000000ffff00000000")
+
+
+def _counted(value: bytes) -> bytes:
+    return bytes([len(value)]) + value
+
+
+def _legacy_prelude(version: int) -> bytes:
+    out = b"\x10CaxaEbForWindows" + struct.pack("<3I", version, 1, 0) + _counted(b"p")
+    out += struct.pack("<5I", 3, 0, 50, 2, 256) + bytes(4)
+    layers = [(b"0", b"", 47, 0), (b"1", "中心线层".encode("gbk"), 8, 3)]
+    out += struct.pack("<I", len(layers))
+    for key, description, color, line_style in layers:
+        out += _counted(key) + _counted(description) + bytes([1, color, line_style])
+        out += bytes([0, 1, 1]) if version >= 1070 else bytes([1])
+    # no stored line style, sixteen custom colours, 64 flags
+    out += bytes([2]) + struct.pack("<I", 24)
+    out += bytes([0]) + struct.pack("<16I", *([0x00FFFFFF] * 16)) + bytes([1]) * 64
+    if version >= 1060:
+        out += struct.pack("<3I", 1, 10000, 10000)
+        out += (
+            _counted(b"Standard") + _counted(b"Arial") + _counted("宋体".encode("gbk"))
+        )
+        out += struct.pack("<7d", 3.5, 0.0, 0.1, 0.4, 0.667, 0.667, 0.0)
+    return out
+
+
+def _legacy_header(
+    kind: int, layer: int, color: int, style: int, tags: int = 0
+) -> bytes:
+    return bytes([kind, kind, layer, color, style, 0, 0xFF, 0xFF]) + struct.pack(
+        "<I", tags
+    )
+
+
+def _legacy_line(
+    ends: tuple[float, float, float, float],
+    layer: int = 0,
+    color: int = _BY_LAYER,
+    style: int = _BY_LAYER,
+) -> bytes:
+    return _legacy_header(0x02, layer, color, style) + struct.pack("<4d", *ends)
+
+
+def _legacy_text(contents: bytes, area_width: float, flags: int) -> bytes:
+    """Centred in an area of ``area_width`` × 10 whose top-left corner is (10, 20)."""
+    out = _legacy_header(0x06, 0, _BY_LAYER, _BY_LAYER, tags=1)
+    out += bytes([0x29, 0x29]) + struct.pack("<d", area_width)
+    out += struct.pack("<5d", 10.0, 20.0, 10.0 + area_width, 10.0, 3.5) + _counted(
+        contents
+    )
+    return out + struct.pack("<IdIBB", 10000, math.pi / 2, 0, 5, flags)
+
+
+def _write_legacy(tmp_path: Path, version: int, count: int, records: bytes) -> Path:
+    path = tmp_path / f"legacy-{version}.exb"
+    path.write_bytes(
+        _legacy_prelude(version) + struct.pack("<I", count) + records + _LEGACY_TRAILER
+    )
+    return path
+
+
+def test_legacy_drawing_is_imported_with_its_styles(tmp_path: Path) -> None:
+    records = _legacy_line((1.0, 2.0, 4.0, 6.0), layer=1)
+    # a circle with its own colour (yellow) and the thick line style
+    records += _legacy_header(0x03, 0, 9, 0)
+    records += struct.pack("<8d", 10.0, 10.0, 11.0, 10.0, 10.0, 11.0, math.tau, 5.0)
+    records += _legacy_text(b"ABC", 40.0, 0x00)
+    records += _legacy_text("压缩文字压缩文字".encode("gbk"), 8.0, 0x20)
+    records += _legacy_header(0x01, 0, _BY_LAYER, _BY_LAYER) + struct.pack(
+        "<2d", 7.0, 8.0
+    )
+    # a block with its own colour and the centre line style; its member is ByBlock
+    records += _legacy_header(0x08, 0, 28, 3) + struct.pack("<I", 1)
+    records += _legacy_line((0.0, 0.0, 1.0, 0.0), color=_BY_BLOCK, style=_BY_BLOCK)
+    path = _write_legacy(tmp_path, 1070, 6, records)
+
+    result = convert_exb_file_to_ir(path)
+    document = result.document
+    validate_ir(document)
+    assert document["source"]["version"] == "CaxaEbForWindows 1070"
+    exb = document["header"]["metadata"]["exb"]
+    assert exb["profile"] == "exb-legacy-planar-v1"
+    assert exb["paper"] is None and exb["paper_scale"] == 1.0
+    assert "layouts" not in document and "blocks" not in document["tables"]
+
+    layers = document["tables"]["layers"]
+    assert list(layers) == ["0", "中心线层"]
+    assert (layers["0"]["color"], layers["0"]["linetype"]) == (
+        "#FFFFFF",
+        "LEGACY_THICK",
+    )
+    assert layers["0"]["lineweight_mm"] == 0.5
+    centre = layers["中心线层"]
+    assert (centre["color"], centre["linetype"], centre["lineweight_mm"]) == (
+        "#FF0000",
+        "LEGACY_CENTER",
+        0.25,
+    )
+    linetypes = document["tables"]["linetypes"]
+    assert linetypes["LEGACY_CENTER"]["pattern_mm"] == [12.0, 2.0, 2.0, 2.0]
+    assert linetypes["LEGACY_THICK"]["pattern_mm"] == []
+    assert document["tables"]["text_styles"]["Standard"]["font"] == "宋体"
+
+    line, circle, text, fitted, point, member = document["entities"]
+    assert [entity["kind"] for entity in document["entities"]] == [
+        "LINE",
+        "CIRCLE",
+        "TEXT",
+        "TEXT",
+        "POINT",
+        "LINE",
+    ]
+    assert (line["layer"], line["p1"], line["p2"]) == (
+        "中心线层",
+        [1.0, 2.0],
+        [4.0, 6.0],
+    )
+    assert not {"color", "linetype", "lineweight_mm"} & set(line)  # left to the layer
+    assert (circle["color"], circle["linetype"], circle["lineweight_mm"]) == (
+        "#FFFF00",
+        "LEGACY_THICK",
+        0.5,
+    )
+    # the alignment point of the area, the rotation and the style's width factor
+    assert (text["insert"], text["halign"], text["valign"]) == (
+        [30.0, 15.0],
+        "center",
+        "middle",
+    )
+    assert (text["height"], text["style"], text["width_factor"]) == (
+        3.5,
+        "Standard",
+        0.667,
+    )
+    assert text["rotation"] == pytest.approx(90.0)
+    # a fit-to-box text is compressed to its 8 mm area: 8 / (8 chars × 3.5 mm)
+    assert fitted["insert"] == [14.0, 15.0]
+    assert fitted["width_factor"] == pytest.approx(8.0 / 28.0, abs=1e-6)
+    assert point["position"] == [7.0, 8.0]
+    # the member takes the colour, linetype and width of the block it was in
+    assert (member["color"], member["linetype"], member["lineweight_mm"]) == (
+        "#0000FF",
+        "LEGACY_CENTER",
+        0.25,
+    )
+    assert member["metadata"]["exb"]["color_source"] == "by_block"
+    assert line["source"]["metadata"]["type_id"] == "legacy:line"
+
+    codes = _codes(result)
+    assert codes["EXB_LEGACY_FORMAT"] == 1 and codes["EXB_TEXT_FIT_WIDTH_FACTOR"] == 1
+    assert "EXB_PARTIAL_READ" not in codes and "EXB_UNSUPPORTED_ENTITY" not in codes
+    legacy = next(d for d in result.diagnostics if d.code == "EXB_LEGACY_FORMAT")
+    assert (legacy.severity, legacy.details["container_version"]) == ("info", "1070")
+    assert legacy.details["notes"] == [] and legacy.details["read_diagnostics"] == {}
+    assert result.statistics["read_complete"] is True
+    assert result.statistics["converted_entity_counts"] == {
+        "CIRCLE": 1,
+        "LINE": 2,
+        "POINT": 1,
+        "TEXT": 2,
+    }
+    # the registry and the DXF export take it like any other EXB
+    assert convert_file_to_ir(path).document["entities"][0]["kind"] == "LINE"
+    exported = convert_ir_to_dxf_text(document, target_version="AC1024")
+    assert "LEGACY_CENTER" in exported.dxf_text and "中心线层" in exported.dxf_text
+
+
+def test_legacy_undecoded_fields_are_notes_and_lost_content_is_a_warning(
+    tmp_path: Path,
+) -> None:
+    # A dimension group in the plain header form keeps its members; the fields
+    # behind them are not decoded, which is a note and not a partial read.
+    dimension = bytes([0x05, 0, _BY_LAYER, _BY_LAYER, 0, 0xFF, 0xFF]) + struct.pack(
+        "<2I", 0, 1
+    )
+    dimension += _legacy_line((0.0, 0.0, 10.0, 0.0)) + bytes([0xAA]) * 9
+    records = (
+        _legacy_line((5.0, 5.0, 6.0, 6.0))
+        + dimension
+        + _legacy_line((1.0, 1.0, 2.0, 2.0))
+    )
+    result = convert_exb_file_to_ir(_write_legacy(tmp_path, 1070, 3, records))
+    codes = _codes(result)
+    assert len(result.document["entities"]) == 3
+    assert "EXB_PARTIAL_READ" not in codes
+    legacy = next(d for d in result.diagnostics if d.code == "EXB_LEGACY_FORMAT")
+    assert legacy.details["read_diagnostics"] == {"legacy_record_tail_skipped": 1}
+    assert (
+        len(legacy.details["notes"]) == 1 and "dimension" in legacy.details["notes"][0]
+    )
+    assert result.statistics["read_complete"] is False
+
+    # Bytes that are not a readable record are lost content.
+    records = _legacy_line((0.0, 0.0, 1.0, 0.0)) + bytes([0xEE]) * 6
+    records += _legacy_line((1.0, 0.0, 2.0, 0.0))
+    result = convert_exb_file_to_ir(_write_legacy(tmp_path, 1060, 2, records))
+    partial = next(d for d in result.diagnostics if d.code == "EXB_PARTIAL_READ")
+    assert partial.severity == "warning" and "6 bytes" in partial.message
+    assert partial.details["read_diagnostics"] == {"legacy_records_skipped": 1}
+    assert len(result.document["entities"]) == 2
+
+    # A spline is its stored sample polyline, also in the oldest layout; the
+    # definition behind the points is a note.
+    spline = _legacy_header(0x10, 0, _BY_LAYER, _BY_LAYER) + struct.pack("<I", 2)
+    spline += struct.pack("<6d", 0.0, 0.0, 1.0, 1.0, 2.0, 0.0) + bytes([0xAA]) * 12
+    records = (
+        _legacy_line((0.0, 0.0, 1.0, 0.0)) + spline + _legacy_line((1.0, 0.0, 2.0, 0.0))
+    )
+    result = convert_exb_file_to_ir(_write_legacy(tmp_path, 1050, 3, records))
+    codes = _codes(result)
+    assert "EXB_PARTIAL_READ" not in codes and "EXB_UNSUPPORTED_ENTITY" not in codes
+    assert [entity["kind"] for entity in result.document["entities"]] == [
+        "LINE",
+        "LWPOLYLINE",
+        "LINE",
+    ]
+    assert result.document["entities"][1]["vertices"] == [
+        [0.0, 0.0],
+        [1.0, 1.0],
+        [2.0, 0.0],
+    ]
+    legacy = next(d for d in result.diagnostics if d.code == "EXB_LEGACY_FORMAT")
+    assert set(legacy.details["read_diagnostics"]) == {
+        "legacy_record_tail_skipped",
+        "legacy_curve_approximated",
+    }
+
+
+def test_legacy_drawing_needs_a_reader_that_knows_the_format(
+    tmp_path: Path, monkeypatch
+) -> None:
+    path = _write_legacy(tmp_path, 1070, 1, _legacy_line((0.0, 0.0, 1.0, 0.0)))
+    capabilities = dict(ezexb.capabilities())
+    del capabilities["legacy_profile"]
+    monkeypatch.setattr(ezexb, "capabilities", lambda: capabilities)
+    with pytest.raises(ImporterError, match=r"need ezexb 0\.3\.3 or later"):
+        convert_exb_file_to_ir(path)
 
 
 # ---------------------------------------------------------------------------
@@ -435,12 +681,23 @@ def test_boundary_arcs_with_non_finite_or_oversized_sweeps_do_not_overflow() -> 
     assert _sample_circular(center, 1.0, x_axis, y_axis, math.nan, 32) == []
     assert _sample_circular(center, math.inf, x_axis, y_axis, math.pi, 32) == []
     full_turn = _sample_circular(center, 1.0, x_axis, y_axis, 2.0 * math.pi, 32)
-    assert len(_sample_circular(center, 1.0, x_axis, y_axis, 50.0 * math.pi, 32)) == len(
-        full_turn
-    )
+    assert len(
+        _sample_circular(center, 1.0, x_axis, y_axis, 50.0 * math.pi, 32)
+    ) == len(full_turn)
     half = _sample_circular(center, 1.0, x_axis, y_axis, math.pi, 32)
     assert len(half) == 17
     assert half[-1] == pytest.approx([-1.0, 0.0])
-    assert _sample_ellipse(center, x_axis, y_axis, 2.0, 1.0, 0.0, math.inf, 0.0, 32) == []
-    assert _sample_ellipse(center, x_axis, y_axis, math.nan, 1.0, 0.0, 1.0, 0.0, 32) == []
-    assert len(_sample_ellipse(center, x_axis, y_axis, 2.0, 1.0, 0.0, 9.0 * math.pi, 0.0, 32)) == 33
+    assert (
+        _sample_ellipse(center, x_axis, y_axis, 2.0, 1.0, 0.0, math.inf, 0.0, 32) == []
+    )
+    assert (
+        _sample_ellipse(center, x_axis, y_axis, math.nan, 1.0, 0.0, 1.0, 0.0, 32) == []
+    )
+    assert (
+        len(
+            _sample_ellipse(
+                center, x_axis, y_axis, 2.0, 1.0, 0.0, 9.0 * math.pi, 0.0, 32
+            )
+        )
+        == 33
+    )

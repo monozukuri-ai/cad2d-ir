@@ -24,7 +24,13 @@ adapter maps them to IR without going through DXF:
   decoded (``EXB_DIMENSION_FROM_CACHE``);
 * explicit colours are the low 24 bits of the stored value read as a
   COLORREF (``0x00BBGGRR``); symbolic line widths map to CAXA's default
-  millimetre widths (``EXB_LINE_WIDTH_PRESET``).
+  millimetre widths (``EXB_LINE_WIDTH_PRESET``);
+* a file written before the compound-document format (signature
+  ``CaxaEbForWindows``, CAXA 2005 and earlier) is read with ``ezexb``'s legacy
+  profile (``EXB_LEGACY_FORMAT``): one model space in which blocks,
+  dimensions and tables are already flattened into lines, arcs and text, with
+  the colour, linetype and width a member inherits from its group resolved by
+  ``ezexb``.
 """
 
 from __future__ import annotations
@@ -96,6 +102,22 @@ PRESET_WIDTH_MM: dict[str, float] = {
     "double_wide": 0.7,
 }
 _LAYER_WIDTH_FLAGS = {3: "thin", 4: "wide", 5: "mid", 6: "double_wide"}
+# Style sources whose value belongs on the entity itself.
+_OWN_VALUE_SOURCES = frozenset({"explicit", "by_block"})
+
+# ezexb's profile for files written before the compound-document format, and
+# the read diagnostics of that profile that mean drawing content was lost. The
+# others describe fields that are not decoded behind geometry that is kept.
+LEGACY_PROFILE = "exb-legacy-planar-v1"
+_LEGACY_LOSS_CODES = frozenset(
+    {
+        "legacy_records_skipped",
+        "legacy_entity_section_missing",
+        "legacy_layer_table_missing",
+        "legacy_style_tables_missing",
+        "legacy_color_unresolved",
+    }
+)
 
 # CAXA special characters (one percent sign, unlike AutoCAD's ``%%c``).
 SYMBOL_ESCAPES: dict[str, str] = {
@@ -189,13 +211,14 @@ def convert_exb_file_to_ir(
         signature = ezexb.probe(source_path, options=budgets).signature
     except ezexb.ExbError as exc:
         raise ImporterError(f"Failed to read EXB file {source_path}: {exc}") from exc
-    if signature == "legacy_caxa_candidate":
+    legacy = signature == "legacy_caxa_candidate"
+    if legacy and "legacy_profile" not in ezexb.capabilities():
         raise ImporterError(
             f"Unsupported legacy EXB file {source_path}: pre-2007 CAXA files "
-            "(signature CaxaEbForWindows) are not a compound document and cannot "
-            "be read; re-save the drawing with a current CAXA CAD."
+            "(signature CaxaEbForWindows) need ezexb 0.3.3 or later; this is "
+            f"ezexb {ezexb.__version__}."
         )
-    if signature != "cfb":
+    if not legacy and signature != "cfb":
         raise ImporterError(
             f"Not an EXB file {source_path}: the OLE2 compound document "
             "signature is missing."
@@ -203,6 +226,13 @@ def convert_exb_file_to_ir(
     try:
         document = ezexb.read(source_path, strict=False, options=budgets)
     except ezexb.UnsupportedFeatureError as exc:
+        if legacy:
+            versions = ezexb.capabilities()["legacy_container_versions"]
+            raise ImporterError(
+                f"Unsupported legacy EXB container version in {source_path}: {exc} "
+                f"(ezexb {ezexb.__version__} reads the CaxaEbForWindows versions "
+                f"{', '.join(str(version) for version in versions)})"
+            ) from exc
         build = _product_build(ezexb, source_path, budgets)
         raise ImporterError(
             f"Unsupported EXB product build {build!r} in {source_path}: {exc} "
@@ -661,6 +691,12 @@ def _convert_entity(entity: Any, context: _ConversionContext) -> list[dict[str, 
         context.counts["attribute_definitions"] += 1
         return []
     common = _entity_common(entity, context)
+    if kind == "Point":
+        return [
+            context.add_converted(
+                {**common, "kind": "POINT", "position": _xy(geometry.point)}
+            )
+        ]
     if kind == "Line":
         return [
             context.add_converted(
@@ -762,17 +798,27 @@ def _entity_common(entity: Any, context: _ConversionContext) -> dict[str, Any]:
     attributes = entity.attributes
     layer_name = _layer_name(style.layer_id, style.layer_name, context)
     result: dict[str, Any] = {"id": context.allocate_id(), "layer": layer_name}
-    if style.color_raw.source == "explicit" and style.color_raw.value is not None:
+    # A ByBlock value is only present when ezexb resolved it against the group
+    # the entity was flattened out of (legacy files); inside a block definition
+    # it has no value and stays with the INSERT.
+    if (
+        str(style.color_raw.source) in _OWN_VALUE_SOURCES
+        and style.color_raw.value is not None
+    ):
         result["color"] = _colorref_hex(int(style.color_raw.value))
     width_source = str(style.line_width.source)
-    if width_source == "explicit":
+    preset = width_source.removeprefix("by_block_")
+    if width_source in _OWN_VALUE_SOURCES:
         value = style.line_width.value
         if value is not None and math.isfinite(float(value)) and float(value) > 0:
             result["lineweight_mm"] = round(float(value), 4)
-    elif width_source in PRESET_WIDTH_MM:
-        result["lineweight_mm"] = PRESET_WIDTH_MM[width_source]
+    elif preset in PRESET_WIDTH_MM:
+        result["lineweight_mm"] = PRESET_WIDTH_MM[preset]
         context.counts["width_preset"] += 1
-    if style.linetype.source == "explicit" and style.linetype.value is not None:
+    if (
+        str(style.linetype.source) in _OWN_VALUE_SOURCES
+        and style.linetype.value is not None
+    ):
         linetype_name = context.linetype_names.get(int(style.linetype.value))
         if linetype_name is not None:
             result["linetype"] = linetype_name
@@ -1446,6 +1492,9 @@ def _append_summary_diagnostics(
                 details=dict(paper),
             )
         )
+    legacy = str(document.profile) == LEGACY_PROFILE
+    if legacy:
+        _append_legacy_diagnostics(document, diagnostics)
     # ezexb 0.3 reads product builds it has not verified against a native sample with the
     # rules of their major version and reports ``unverified_product_build``; that alone turns
     # ``report.complete`` off, which is not a partial read (no record was skipped)
@@ -1475,7 +1524,7 @@ def _append_summary_diagnostics(
             for d in report.diagnostics
         )
     )
-    if not report.complete and not only_unverified_build:
+    if not report.complete and not only_unverified_build and not legacy:
         diagnostics.append(
             ImportDiagnostic(
                 code="EXB_PARTIAL_READ",
@@ -1784,6 +1833,62 @@ def _append_summary_diagnostics(
                 source_kind="Text",
                 action="normalized",
                 details={"style_ids": sorted(context.unresolved_styles)},
+            )
+        )
+
+
+def _append_legacy_diagnostics(
+    document: Any, diagnostics: list[ImportDiagnostic]
+) -> None:
+    """``EXB_LEGACY_FORMAT`` and, when content was lost, ``EXB_PARTIAL_READ``."""
+    report = document.report
+    notes = [
+        str(diagnostic.message)
+        for diagnostic in report.diagnostics
+        if diagnostic.code not in _LEGACY_LOSS_CODES
+    ]
+    losses = [
+        str(diagnostic.message)
+        for diagnostic in report.diagnostics
+        if diagnostic.code in _LEGACY_LOSS_CODES
+    ]
+    read_diagnostics = dict(
+        Counter(str(diagnostic.code) for diagnostic in report.diagnostics)
+    )
+    diagnostics.append(
+        ImportDiagnostic(
+            code="EXB_LEGACY_FORMAT",
+            severity="info",
+            message=(
+                "A legacy CAXA drawing (CaxaEbForWindows, container version "
+                f"{document.file_info.stream_version.value}) read with ezexb's legacy "
+                "profile: blocks, dimensions and tables are flattened into their "
+                "lines, arcs and text in one model space; dimension values, table "
+                "data and spline definitions are not decoded."
+            ),
+            action="flattened",
+            details={
+                "container_version": str(document.file_info.stream_version.value),
+                "read_diagnostics": read_diagnostics,
+                "notes": notes,
+            },
+        )
+    )
+    if losses:
+        diagnostics.append(
+            ImportDiagnostic(
+                code="EXB_PARTIAL_READ",
+                severity="warning",
+                message=(
+                    "ezexb could not decode part of this legacy drawing: "
+                    + " ".join(losses)
+                ),
+                details={
+                    "decoded_entity_count": int(report.decoded_entity_count),
+                    "unsupported_entity_count": int(report.unsupported_entity_count),
+                    "top_level_record_count": int(report.top_level_record_count),
+                    "read_diagnostics": read_diagnostics,
+                },
             )
         )
 
