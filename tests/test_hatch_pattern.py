@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from typing import Any
 
 import pytest
 
@@ -156,16 +157,19 @@ def test_hatch_pattern_roundtrips_through_dxf() -> None:
     assert restored["pattern_lines"] == lines
 
 
-def test_pattern_hatch_without_definition_lines_still_exports() -> None:
-    text = ir_to_dxf(_document())
+def test_pattern_hatch_without_definition_lines_exports_its_boundary() -> None:
+    # AutoCAD and ODA drop a pattern HATCH whose pattern has no lines, so the
+    # boundary is written instead, as the DWG export and the display draw it.
+    diagnostics: list[Any] = []
+    text = ir_to_dxf(_document(), diagnostics=diagnostics)
 
-    groups = text.splitlines()
-    start = groups.index("HATCH")
-    tail = groups[start:]
-    assert tail[tail.index("78") + 1] == "0"
-    assert "53" not in tail[::2][1:] or tail.index("53") > tail.index("98")
-    restored = dxf_to_ir(text)["entities"][0]
-    assert "pattern_lines" not in restored and restored["solid"] is False
+    assert "\nHATCH\n" not in text
+    restored = dxf_to_ir(text)["entities"]
+    assert [entity["kind"] for entity in restored] == ["LWPOLYLINE"]
+    assert restored[0]["closed"] is True
+    assert [d.code for d in diagnostics if d.code.startswith("DXF_HATCH")] == [
+        "DXF_HATCH_PATTERN_EXPLODED"
+    ]
 
 
 @pytest.mark.parametrize("strict", [False, True])

@@ -14,7 +14,8 @@ width factor is the one that keeps the length of the line.
 The codes are the ones AutoCAD writes. Two forms CAXA writes in EXB drawings
 are read as well: a width factor for Latin characters and one for CJK
 characters (``\\W0.85^0.85;``, or ``\\W^0.8;`` for CJK alone), and a stack that
-names the height of its characters (``\\S\\H0.7x;2^;``).
+names the height of its characters (``\\S\\H0.7x;2^;``). ``mtext_dxf_codes``
+rewrites the CAXA forms as DXF codes.
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ __all__ = [
     "WIDTH_FACTOR_RANGE",
     "MTextLine",
     "mtext_baselines",
+    "mtext_dxf_codes",
     "mtext_layout",
     "mtext_lines",
     "mtext_plain",
@@ -271,6 +273,196 @@ def _height(token: str, current: float, entity_height: float | None) -> float:
     if entity_height is None or not entity_height > 0.0:
         return current
     return value / entity_height
+
+
+# Codes only CAXA writes: a width factor or a font for Latin and for CJK
+# characters (``\W0.8^0.7;``, ``\W^0.8;``, ``\fArial^SimSun||;``), and ``\A3;``.
+_CAXA_CODE_RE = re.compile(r"\\[Wf][^;\\{}\n]*\^|\\A3;")
+
+
+class _Override(NamedTuple):
+    """What a run of characters needs on top of the DXF state around it."""
+
+    #: ``None`` for the width in force, ``("abs", w)`` or ``("rel", k)``.
+    width: tuple[str, float] | None
+    #: ``None`` for the font in force, or the argument of ``\f`` (``Arial|b0|i0``).
+    font: str | None
+
+
+_INHERITED = _Override(None, None)
+
+
+def mtext_dxf_codes(text: str) -> str:
+    """The text of an ``MTEXT`` with the codes only CAXA writes made DXF codes.
+
+    CAXA gives Latin and CJK characters a width factor and a font each
+    (``\\W0.8^0.7;``, ``\\W^0.8;`` for CJK alone, ``\\fArial^SimSun||;``); DXF
+    has one of each. A pair with two equal sides becomes the one code, and
+    otherwise the characters of a script that differ from the rest are wrapped
+    in braces with their own code: ``\\W^0.8;中文AB`` becomes
+    ``{\\W0.8;中文}AB``. ``\\A3;``, which DXF does not have, is removed. Every
+    other code stays as written, and a text without these forms is returned as
+    it is; ``mtext_lines`` reads the result as it read the CAXA form.
+    """
+    if not _CAXA_CODE_RE.search(text):
+        return text
+    output: list[str] = []
+    # The override of Latin and of CJK characters; braces keep both.
+    narrow, wide = _INHERITED, _INHERITED
+    scopes: list[tuple[_Override, _Override]] = []
+    group: list[str] = []
+    group_override = _INHERITED
+
+    def flush() -> None:
+        nonlocal group, group_override
+        if not group:
+            return
+        body = "".join(group)
+        if group_override == _INHERITED:
+            output.append(body)
+        else:
+            codes = ""
+            if group_override.width is not None:
+                kind, value = group_override.width
+                codes += f"\\W{_format_factor(value)}{'x' if kind == 'rel' else ''};"
+            if group_override.font is not None:
+                codes += f"\\f{group_override.font};"
+            output.append("{" + codes + body + "}")
+        group = []
+        group_override = _INHERITED
+
+    def add(piece: str, is_wide: bool) -> None:
+        nonlocal group_override
+        override = wide if is_wide else narrow
+        if group and override != group_override:
+            flush()
+        group_override = override
+        group.append(piece)
+
+    def add_text(piece: str) -> None:
+        start = 0
+        for index in range(1, len(piece) + 1):
+            if index == len(piece) or _is_wide(piece[index]) != _is_wide(piece[start]):
+                add(piece[start:index], _is_wide(piece[start]))
+                start = index
+
+    position = 0
+    for match in _TOKEN_RE.finditer(text):
+        if match.start() > position:
+            add_text(text[position : match.start()])
+        position = match.end()
+        token = match.group(0)
+        kind = match.lastgroup
+        if kind == "width":
+            first, caret, second = match.group("width").partition("^")
+            if not caret:
+                flush()
+                output.append(token)
+                narrow, wide = _scaled(narrow, first), _scaled(wide, first)
+                continue
+            if first.strip() and _same_number(first, second):
+                flush()
+                output.append(f"\\W{first.strip()};")
+                narrow, wide = _scaled(narrow, first), _scaled(wide, first)
+                continue
+            if first.strip():
+                narrow = narrow._replace(width=_set_width(narrow.width, first))
+            if second.strip():
+                wide = wide._replace(width=_set_width(wide.width, second))
+            continue
+        if token[:2] == "\\f" and "^" in token:
+            names, _, flags = token[2:-1].partition("|")
+            flags = flags.strip("|")
+            western, _, eastern = names.partition("^")
+            if western and western == eastern:
+                flush()
+                output.append(f"\\f{_font_argument(western, flags)};")
+                narrow, wide = narrow._replace(font=None), wide._replace(font=None)
+                continue
+            if western:
+                narrow = narrow._replace(font=_font_argument(western, flags))
+            if eastern:
+                wide = wide._replace(font=_font_argument(eastern, flags))
+            continue
+        if token == "\\A3;":
+            continue
+        if kind == "brace":
+            flush()
+            output.append(token)
+            if token == "{":
+                scopes.append((narrow, wide))
+            elif scopes:
+                narrow, wide = scopes.pop()
+            continue
+        if kind in ("stack", "space", "literal"):
+            add(token, False)
+            continue
+        if kind == "unicode":
+            add(token, int(match.group("unicode"), 16) > _WIDE_FROM)
+            continue
+        if kind == "mif":
+            add(token, True)
+            continue
+        flush()
+        output.append(token)
+        if token[:2] == "\\f":
+            # A font for all characters: the CAXA fonts in force are replaced.
+            narrow, wide = narrow._replace(font=None), wide._replace(font=None)
+    if position < len(text):
+        add_text(text[position:])
+    flush()
+    return "".join(output)
+
+
+def _font_argument(name: str, flags: str) -> str:
+    """The argument of ``\\f`` for a TrueType font (bold and italic flags)."""
+    return f"{name}|{flags}" if flags else f"{name}|b0|i0"
+
+
+def _is_wide(character: str) -> bool:
+    return ord(character) > _WIDE_FROM
+
+
+def _same_number(first: str, second: str) -> bool:
+    return first.strip() == second.strip()
+
+
+def _set_width(
+    current: tuple[str, float] | None, token: str
+) -> tuple[str, float] | None:
+    """The width override after one side of ``\\Wa^b;``."""
+    value, relative = _number(token)
+    if value is None:
+        return current
+    if not relative:
+        low, high = WIDTH_FACTOR_RANGE
+        return ("abs", value) if low <= value <= high else current
+    if current is None:
+        return ("rel", value)
+    kind, base = current
+    return (kind, base * value)
+
+
+def _scaled(override: _Override, token: str) -> _Override:
+    """The override after ``\\Wv;`` for all characters.
+
+    An absolute value is the width in force for all characters, so no
+    override is left; a relative one scales an absolute override with it.
+    """
+    value, relative = _number(token)
+    if value is None or override.width is None:
+        return override
+    if not relative:
+        return override._replace(width=None)
+    kind, base = override.width
+    return override._replace(
+        width=(kind, base * value) if kind == "abs" else override.width
+    )
+
+
+def _format_factor(value: float) -> str:
+    text = f"{value:.6f}".rstrip("0").rstrip(".")
+    return text or "0"
 
 
 def _stack(content: str) -> str:

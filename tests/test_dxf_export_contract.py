@@ -170,8 +170,11 @@ def test_r2010_handles_and_entity_map_roundtrip_for_supported_entities() -> None
     for index, pair in enumerate(pairs):
         if pair[0] == 0 and pair[1] not in structural:
             handle_index = index + 2 if pair[1] == "TABLE" else index + 1
-            assert pairs[handle_index][0] == 5
+            # A DIMSTYLE record carries its handle in group 105.
+            assert pairs[handle_index][0] == (105 if pair[1] == "DIMSTYLE" else 5)
             record_handles.append(pairs[handle_index][1])
+            # Every record names its owner right behind its handle.
+            assert pairs[handle_index + 1][0] == 330
     handseed_index = pairs.index((9, "$HANDSEED"))
     handseed = pairs[handseed_index + 1][1]
     assert len(record_handles) == len(set(record_handles))
@@ -552,9 +555,12 @@ def test_long_mtext_is_written_in_chunks() -> None:
     lines = dxf.splitlines()
     codes, values = lines[0::2], lines[1::2]
     start = values.index("MTEXT")
+    end = next(
+        index for index in range(start + 1, len(codes)) if codes[index].strip() == "0"
+    )
     chunks = [
         (int(code), value)
-        for code, value in zip(codes[start:], values[start:])
+        for code, value in zip(codes[start:end], values[start:end])
         if int(code) in (1, 3)
     ]
     # 250 characters in every group 3, the rest in group 1

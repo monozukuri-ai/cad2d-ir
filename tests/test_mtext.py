@@ -8,6 +8,7 @@ from cad2d_ir.mtext import (
     LINE_PITCH,
     MTextLine,
     mtext_baselines,
+    mtext_dxf_codes,
     mtext_layout,
     mtext_lines,
     mtext_plain,
@@ -83,7 +84,10 @@ def test_caxa_width_code_has_a_value_for_latin_and_one_for_cjk() -> None:
 def test_height_code_sets_the_height_of_a_line() -> None:
     # A relative height multiplies the one in force.
     assert mtext_lines(r"\H2x;big") == [("big", 1.0, 2.0)]
-    assert mtext_lines(r"\H2x;{\H0.5x;same}\Pbig") == [("same", 1.0, 1.0), ("big", 1.0, 2.0)]
+    assert mtext_lines(r"\H2x;{\H0.5x;same}\Pbig") == [
+        ("same", 1.0, 1.0),
+        ("big", 1.0, 2.0),
+    ]
     # An absolute height is measured against the height of the entity,
     assert mtext_lines(r"\H7;title", height=3.5) == [("title", 1.0, 2.0)]
     # and ignored when that one is not known.
@@ -164,3 +168,28 @@ def test_layout_keeps_the_room_of_an_empty_line_between_lines() -> None:
         pytest.approx(0.5)
     ]
     assert mtext_layout(mtext_lines(r"\P\P"), "top") == []
+
+
+@pytest.mark.parametrize(
+    ("caxa", "dxf"),
+    [
+        # Two equal sides are the one code.
+        (r"\W0.667^0.667;技术要求", r"\W0.667;技术要求"),
+        (r"\fSimSun^SimSun||;AB中文", r"\fSimSun|b0|i0;AB中文"),
+        # Otherwise the characters of a script get their own code in braces.
+        (r"\W^0.8;中文AB中文", r"{\W0.8;中文}AB{\W0.8;中文}"),
+        (r"\W0.8^0.6;AB中文", r"{\W0.8;AB}{\W0.6;中文}"),
+        (r"\f^simsun|b0|i0;中文AB", r"{\fsimsun|b0|i0;中文}AB"),
+        # \A3; has no meaning in DXF; the other codes and the stacks stay.
+        (r"\A3;{\H0.7x;\S+0.1^-0.2;}\P第二行", r"{\H0.7x;\S+0.1^-0.2;}\P第二行"),
+        (r"\A2;PLAIN \S1^2;", r"\A2;PLAIN \S1^2;"),
+    ],
+)
+def test_caxa_codes_become_dxf_codes(caxa: str, dxf: str) -> None:
+    assert mtext_dxf_codes(caxa) == dxf
+    # The lines read the same, whatever the width factor of the entity.
+    for width_factor in (1.0, 0.7):
+        assert mtext_lines(dxf, width_factor=width_factor, height=2.5) == mtext_lines(
+            caxa, width_factor=width_factor, height=2.5
+        )
+    assert mtext_dxf_codes(dxf) == dxf

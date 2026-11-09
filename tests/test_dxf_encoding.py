@@ -500,6 +500,52 @@ def test_r12_font_files_lose_characters_without_a_number() -> None:
     assert result.dxf_text.count("\n__.ttf\n") == 2
 
 
+@pytest.mark.parametrize("target_version", ["AC1009", "AC1024"])
+def test_percent_signs_that_are_no_control_code_stay_percent_signs(
+    target_version: str,
+) -> None:
+    from cad2d_ir import convert_ir_to_dxf_text
+
+    # "%%" starts a control code; one that is none is two percent signs, which
+    # AutoCAD and ODA would drop. They are written as "%%%" each. Control codes
+    # read from DXF stay as they are.
+    document = _texts_document("120±5%%", "50%% off", "%%c10 %%%", "%%u%%123")
+    result = convert_ir_to_dxf_text(document, target_version=target_version)
+    lines = result.dxf_text.splitlines()
+    texts, record = [], ""
+    for index in range(0, len(lines) - 1, 2):
+        code, value = lines[index].strip(), lines[index + 1]
+        if code == "0":
+            record = value
+        elif code == "1" and record == "TEXT":
+            texts.append(value)
+    assert texts == ["120±5%%%%%%", "50%%%%%% off", "%%c10 %%%", "%%u%%123"]
+
+
+@pytest.mark.parametrize("target_version", ["AC1009", "AC1024"])
+def test_names_lose_the_characters_autocad_does_not_allow(target_version: str) -> None:
+    from cad2d_ir import convert_ir_to_dxf_text
+
+    # Applications keep layers named "*…" in DWG; AutoCAD and ODA reject such a
+    # name in DXF, and the entities on the layer were not shown.
+    document = _texts_document("A", "B", **{"*SYSTEM": {}, "_SYSTEM": {}})
+    document["entities"][0]["layer"] = "*SYSTEM"
+    document["entities"][1]["layer"] = "_SYSTEM"
+    result = convert_ir_to_dxf_text(document, target_version=target_version)
+    lines = result.dxf_text.splitlines()
+    layers = [
+        lines[index + 1]
+        for index in range(0, len(lines) - 1, 2)
+        if lines[index].strip() == "8"
+    ]
+    # The renamed layer keeps apart from the one that already had the name.
+    assert "*SYSTEM" not in result.dxf_text
+    assert "_SYSTEM_2" in layers and "_SYSTEM" in layers
+    assert [
+        d.code for d in result.diagnostics if d.code == "DXF_SYMBOL_NAME_NORMALIZED"
+    ] == ["DXF_SYMBOL_NAME_NORMALIZED"]
+
+
 def test_carets_and_line_breaks_use_the_caret_notation() -> None:
     from cad2d_ir import convert_ir_to_dxf_text, dxf_to_ir
 

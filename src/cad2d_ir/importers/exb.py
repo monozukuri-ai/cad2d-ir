@@ -50,7 +50,7 @@ from cad2d_ir.importers.base import (
     ImportResult,
     MissingOptionalDependencyError,
 )
-from cad2d_ir.mtext import mtext_lines
+from cad2d_ir.mtext import mtext_dxf_codes, mtext_lines
 from cad2d_ir.schema import validate_ir
 
 _TAU = 2.0 * math.pi
@@ -135,8 +135,10 @@ SYMBOL_ESCAPES: dict[str, str] = {
 # ``50\V\H0.707x;H7^m6|a;``; both become the DXF stack ``\S上^下;``. Either one
 # ends with ``|a;`` or ``|b;``. A roughness symbol
 # ``\R\H0.707x;0^0^7^^0.2^^^^;`` has no text form.
-_DEVIATION_RE = re.compile(r"\\D\\H[0-9.]+x;([^^|;]*)\^([^|;]*)\|[ab];")
-_FIT_RE = re.compile(r"\\V\\H[0-9.]+x;([^^|;]*)\^([^|;]*)\|[ab];")
+# The letter behind ``|`` (``a``, ``b``, ``c``) does not change that CAXA draws
+# the two values one above the other.
+_DEVIATION_RE = re.compile(r"\\D\\H[0-9.]+x;([^^|;]*)\^([^|;]*)\|[a-z];")
+_FIT_RE = re.compile(r"\\V\\H[0-9.]+x;([^^|;]*)\^([^|;]*)\|[a-z];")
 # A superscript, subscript or stack ``m\S\H0.7x;2^;`` carries the height of its
 # characters behind ``\S``; the DXF stack has none there (``m\S2^;``).
 _STACK_RE = re.compile(r"\\S\\H[0-9.]+x;([^;\\{}]*);")
@@ -992,7 +994,12 @@ def _text_fields(text: Any, context: _ConversionContext) -> dict[str, Any] | Non
         fields["width_factor"] = round(width_factor, 6)
     if _MTEXT_ESCAPE_RE.search(contents) or "\n" in contents:
         fields["kind"] = "MTEXT"
-        fields["text"] = contents
+        # The width factors and fonts CAXA gives Latin and CJK characters apart,
+        # and its \A3;, as DXF codes (the text keeps the kind it was read as).
+        dxf_codes = mtext_dxf_codes(contents)
+        if dxf_codes != contents:
+            context.counts["text_codes_rewritten"] += 1
+        fields["text"] = dxf_codes
         fields["attach"] = f"{valign}_{halign}"
     else:
         fields["kind"] = "TEXT"
@@ -1654,6 +1661,7 @@ def _append_summary_diagnostics(
         + counts["text_deviation_stacked"]
         + counts["text_fit_stacked"]
         + counts["text_stack_normalized"]
+        + counts["text_codes_rewritten"]
     )
     if escaped:
         diagnostics.append(
@@ -1663,7 +1671,8 @@ def _append_summary_diagnostics(
                 message=(
                     "CAXA text escapes were rewritten: %c/%d/%p/%x as ⌀ ° ± ×, deviation "
                     "and fit tolerances, superscripts and subscripts as DXF-style \\S "
-                    "stacks."
+                    "stacks, width factors and fonts for Latin and CJK characters as "
+                    "DXF \\W and \\f codes."
                 ),
                 source_kind="Text",
                 action="normalized",
@@ -1672,6 +1681,7 @@ def _append_summary_diagnostics(
                     "deviation_tolerances": counts["text_deviation_stacked"],
                     "fit_tolerances": counts["text_fit_stacked"],
                     "stacks": counts["text_stack_normalized"],
+                    "texts_with_script_codes": counts["text_codes_rewritten"],
                 },
             )
         )

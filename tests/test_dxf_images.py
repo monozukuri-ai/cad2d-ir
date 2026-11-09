@@ -490,7 +490,7 @@ def test_dxf_image_definition_names_stay_unique_and_valid() -> None:
     assert _values(image_dict, 3) == ["plan", "plan_2", "PLAN_3", "what_is_this_"]
 
 
-def test_dxf_r12_skips_images_and_a_file_without_images_keeps_its_sections() -> None:
+def test_dxf_r12_skips_images_and_a_file_without_images_has_no_image_objects() -> None:
     line = {"id": "L1", "kind": "LINE", "p1": [0.0, 0.0], "p2": [1.0, 0.0]}
     document = _document(
         _image(
@@ -514,8 +514,13 @@ def test_dxf_r12_skips_images_and_a_file_without_images_keeps_its_sections() -> 
     entry = next(entry for entry in result.entity_map if entry["ir_id"] == "I1")
     assert entry["reason_code"] == "DXF_IMAGE_SKIPPED" and entry["dxf_type"] is None
 
+    # R2010 always has CLASSES and the named object dictionary with ACAD_GROUP;
+    # without images there are no image classes or objects.
     plain = convert_ir_to_dxf_text(_document(line))
-    assert "\nCLASSES\n" not in plain.dxf_text and "\nOBJECTS\n" not in plain.dxf_text
+    assert [name for name, _ in _records(plain.dxf_text, "CLASSES")] == []
+    objects = _records(plain.dxf_text, "OBJECTS")
+    assert [name for name, _ in objects] == ["DICTIONARY", "DICTIONARY"]
+    assert [value for code, value in objects[0][1] if code == 3] == ["ACAD_GROUP"]
     assert "$HANDSEED" in plain.dxf_text
 
     # Without validation an image of no size is skipped, not written.
@@ -527,7 +532,7 @@ def test_dxf_r12_skips_images_and_a_file_without_images_keeps_its_sections() -> 
         ("DXF_IMAGE_SKIPPED", "Z")
     ]
     assert "no positive width" in image_diagnostics[0].message
-    assert "\nIMAGE\n" not in text and "\nOBJECTS\n" not in text
+    assert "\nIMAGE\n" not in text and "ACAD_IMAGE_DICT" not in text
 
 
 def test_dxf_images_inside_blocks_and_on_layouts_round_trip() -> None:

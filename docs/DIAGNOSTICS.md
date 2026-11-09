@@ -66,7 +66,8 @@ entity/source identifiers and structured details.
 | `DXF_HATCH_EDGE_APPROXIMATED` | warning | approximated | DXF import | HATCH ellipse/spline boundary edges were approximated by polyline segments (line and arc edges stay exact). |
 | `DXF_HATCH_LOOP_SKIPPED` | warning | skipped | DXF import | A HATCH boundary loop could not be reconstructed (unknown edge type or too few vertices) and was skipped. |
 | `DXF_IMPORT_WARNING` | warning | - | DXF import | Legacy wrapper for a DXF parser warning. |
-| `DXF_INSERT_TRANSFORM_OMITTED` | warning | skipped | DXF export | An affine INSERT transform was omitted. |
+| `DXF_SYMBOL_NAME_NORMALIZED` | warning | normalized | DXF export | Layer, linetype or style names with characters AutoCAD does not allow in a name (`<>/\":;?*\|,=` and control characters, as in the `*…` layers some applications keep) were written with `_` in their place; AutoCAD and ODA reject such a table record, and the entities on the layer were not shown. Names stay apart. |
+| `DXF_INSERT_TRANSFORM_OMITTED` | warning | approximated | DXF export | An affine INSERT `transform` that shears the block was written with its rotation and scale only (a DXF INSERT has a rotation and two scale factors); one that collapses the block was omitted (`skipped`). A transform without shear is written exactly. |
 | `DXF_LAYOUT_OMITTED` | warning | skipped | DXF export | A paper-space layout other than the written one was omitted: the output holds one paper space (the active layout). |
 | `DXF_LAYOUT_PROMOTED` | info | promoted | DXF import | Model space holds no entity, so the active paper-space layout (or the first one with entities) became `entities`; `header.metadata.dxf.promoted_layout` names it. |
 | `DXF_LEADER_APPROXIMATED` | warning | approximated | DXF import | A LEADER entity was imported as an open polyline through its vertices; the arrowhead and the link to its annotation were omitted. |
@@ -75,6 +76,7 @@ entity/source identifiers and structured details.
 | `DXF_PAPERSPACE_LAYOUT_PRESERVED` | info | preserved_layout | DXF import | Paper-space entities (group 67 = 1, and the bodies of `*Paper_Space<n>` blocks) and viewports were kept in `layouts`, apart from the model-space `entities`. |
 | `DXF_POLYLINE_3D_PROJECTED` | warning | projected | DXF import | A 3D `POLYLINE` whose vertices leave the XY plane was projected to XY. |
 | `DXF_R12_ELLIPSE_APPROXIMATED` | warning | approximated | DXF R12 export | ELLIPSE was approximated by a polyline. |
+| `DXF_HATCH_PATTERN_EXPLODED` | warning | exploded | DXF R2010 export | A pattern HATCH without the lines of its pattern (`pattern_lines`) was written as its boundary polylines; AutoCAD and ODA drop a HATCH whose pattern has no lines. |
 | `DXF_R12_HATCH_EXPLODED` | warning | exploded | DXF R12 export | HATCH was emitted as boundary polylines. |
 | `DXF_R12_CHARACTERS_REPLACED` | warning | approximated | DXF R12 export | Characters the code page of the file cannot store were written as a similar character where it has one (`2` for `²`) or as `?` (`_` in the name of a layer, block, linetype or text style and in a font file; names that would become the same get a number). |
 | `DXF_R12_CODEPAGE_SELECTED` | info | normalized | DXF R12 export | The text was stored in a code page other than ANSI_932, which the characters of the drawing asked for (ANSI_936 for simplified Chinese, for example); `$DWGCODEPAGE` names it. |
@@ -117,7 +119,7 @@ entity/source identifiers and structured details.
 | `EXB_POLYLINE_WIDTH_DROPPED` | warning | approximated | EXB import | A polyline had segment widths, which the IR polyline does not carry. |
 | `EXB_PRODUCT_BUILD_UNVERIFIED` | info | assumed | EXB import | The CAXA product build was not verified against a native sample; `ezexb` read the stored entities with the rules of its major version (`details.product_build`). |
 | `EXB_TEXT_ALIGNMENT_ASSUMED` | info | assumed | EXB import | Texts use an alignment code that was not verified against CAXA: 2 (top-right by the 3×3 grid) or an unknown code read as top-left. |
-| `EXB_TEXT_ESCAPE_NORMALIZED` | info | normalized | EXB import | CAXA text escapes were rewritten: `%c` / `%d` / `%p` / `%x` as ⌀ ° ± ×, deviation (`\D…\|b;`) and fit (`\V…\|a;`) tolerances and stacks with a height code (`\S\H…;上^下;`) as DXF-style `\S上^下;` stacks. |
+| `EXB_TEXT_ESCAPE_NORMALIZED` | info | normalized | EXB import | CAXA text escapes were rewritten: `%c` / `%d` / `%p` / `%x` as ⌀ ° ± ×, deviation (`\D…\|a;`, `\|b;`, `\|c;`) and fit (`\V…\|a;`) tolerances and stacks with a height code (`\S\H…;上^下;`) as DXF-style `\S上^下;` stacks; width factors and fonts for Latin and CJK characters (`\W0.8^0.7;`, `\W^0.8;`, `\fArial^SimSun\|\|;`) as DXF `\W` and `\f` codes (characters of one script in braces with their own code), and `\A3;` removed. `details.texts_with_script_codes` counts those texts. |
 | `EXB_TEXT_FIT_WIDTH_FACTOR` | info | approximated | EXB import | A fit-to-box text got a `width_factor` derived from its stored box width, since CAXA compresses the glyphs to the box. |
 | `EXB_TEXT_STYLE_UNRESOLVED` | warning | normalized | EXB import | Texts reference text style ids missing from the text style table; no style was assigned. |
 | `EXB_TEXT_SYMBOL_DROPPED` | warning | skipped | EXB import | A surface roughness symbol embedded in text (`\R…;`) has no text form and was removed. |

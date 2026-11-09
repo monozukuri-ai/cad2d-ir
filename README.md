@@ -149,7 +149,9 @@ itself stays two-dimensional. See `docs/IMPORTERS.md`, "3D side channel".
 
 ## Export behavior
 
-- `TABLES` contains LAYER, LTYPE, and STYLE records from IR tables.
+- `TABLES` contains LAYER, LTYPE, and STYLE records from IR tables; R2010
+  output also has the other symbol tables, the block records, the owners and
+  the named object dictionary AutoCAD and ODA need to read DXF R2000+.
 - GENERIC dimensions expand to their preserved visual primitives by default.
 - R12 text is stored in the Windows code page its characters ask for, named
   in `$DWGCODEPAGE` (ANSI_932 for Japanese and plain ASCII drawings, ANSI_936

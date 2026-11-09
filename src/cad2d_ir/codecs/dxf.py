@@ -29,6 +29,7 @@ from cad2d_ir.layouts import (
 )
 from cad2d_ir.mtext import (
     WIDTH_FACTOR_RANGE,
+    mtext_dxf_codes,
     mtext_layout,
     mtext_lines,
     mtext_plain,
@@ -290,12 +291,17 @@ class _ImageRegistry:
             for definition in self.definitions.values()
         )
         pairs: list[DXFPair] = [(0, "SECTION"), (2, "CLASSES")]
-        for record, cpp_class, flags, count, is_entity in (
-            ("IMAGE", "AcDbRasterImage", 127, images, 1),
-            ("IMAGEDEF", "AcDbRasterImageDef", 0, len(self.definitions), 0),
-            ("IMAGEDEF_REACTOR", "AcDbRasterImageDefReactor", 1, images, 0),
-            ("RASTERVARIABLES", "AcDbRasterVariables", 0, 1, 0),
-        ):
+        classes = (
+            (
+                ("IMAGE", "AcDbRasterImage", 127, images, 1),
+                ("IMAGEDEF", "AcDbRasterImageDef", 0, len(self.definitions), 0),
+                ("IMAGEDEF_REACTOR", "AcDbRasterImageDefReactor", 1, images, 0),
+                ("RASTERVARIABLES", "AcDbRasterVariables", 0, 1, 0),
+            )
+            if self.definitions
+            else ()
+        )
+        for record, cpp_class, flags, count, is_entity in classes:
             pairs.extend(
                 [
                     (0, "CLASS"),
@@ -312,10 +318,10 @@ class _ImageRegistry:
         return pairs
 
     def objects_pairs(self, units_name: str) -> list[DXFPair]:
+        """OBJECTS: the named object dictionary with ACAD_GROUP, which every
+        DXF R2000+ file needs, and the image objects when there are images."""
         root = self.allocator.allocate()
         groups = self.allocator.allocate()
-        image_dict = self.allocator.allocate()
-        variables = self.allocator.allocate()
         pairs: list[DXFPair] = [
             (0, "SECTION"),
             (2, "OBJECTS"),
@@ -326,10 +332,30 @@ class _ImageRegistry:
             (281, "1"),
             (3, "ACAD_GROUP"),
             (350, groups),
-            (3, "ACAD_IMAGE_DICT"),
-            (350, image_dict),
-            (3, "ACAD_IMAGE_VARS"),
-            (350, variables),
+        ]
+        if not self.definitions:
+            pairs.extend(
+                [
+                    (0, "DICTIONARY"),
+                    (5, groups),
+                    (330, root),
+                    (100, "AcDbDictionary"),
+                    (281, "1"),
+                    (0, "ENDSEC"),
+                ]
+            )
+            return pairs
+        image_dict = self.allocator.allocate()
+        variables = self.allocator.allocate()
+        pairs.extend(
+            [
+                (3, "ACAD_IMAGE_DICT"),
+                (350, image_dict),
+                (3, "ACAD_IMAGE_VARS"),
+                (350, variables),
+            ]
+        )
+        pairs += [
             (0, "DICTIONARY"),
             (5, groups),
             (330, root),
@@ -397,6 +423,249 @@ class _ImageRegistry:
                 )
         pairs.append((0, "ENDSEC"))
         return pairs
+
+
+# ---------------------------------------------------------------------------
+# DXF R2000+ structure: what AutoCAD and ODA read besides the drawing itself
+# ---------------------------------------------------------------------------
+
+_R2010_TABLE_ORDER = (
+    "VPORT",
+    "LTYPE",
+    "LAYER",
+    "STYLE",
+    "VIEW",
+    "UCS",
+    "APPID",
+    "DIMSTYLE",
+    "BLOCK_RECORD",
+)
+_R2010_LINETYPES = (("ByBlock", ""), ("ByLayer", ""), ("Continuous", "Solid line"))
+_R2010_SPACES = ("*Model_Space", "*Paper_Space")
+# Records that belong to the entity before them (the attributes of an INSERT,
+# the vertices of a POLYLINE), and the entities that have such records.
+_R2010_SUBRECORDS = frozenset({"ATTRIB", "VERTEX", "SEQEND"})
+_R2010_SUBRECORD_OWNERS = frozenset({"INSERT", "POLYLINE"})
+
+
+def _r2010_structure(
+    table_pairs: list[DXFPair],
+    block_pairs: list[DXFPair],
+    entity_pairs: list[DXFPair],
+    *,
+    allocator: _HandleAllocator,
+) -> tuple[list[DXFPair], list[DXFPair], list[DXFPair]]:
+    """Complete the tables, blocks and entities of a DXF R2010 file.
+
+    AutoCAD and ODA read a DXF R2000 or later file as a database. Every symbol
+    table is there (VPORT, LTYPE, LAYER, STYLE, VIEW, UCS, APPID, DIMSTYLE,
+    BLOCK_RECORD), with the linetypes ByBlock, ByLayer and Continuous, the
+    application ACAD and the dimension styles the dimensions name; model space,
+    paper space and every block have a block record; the blocks *Model_Space
+    and *Paper_Space exist; and every table record and entity names its owner
+    in group 330. The handles given before stay as they are.
+    """
+    tables: dict[str, tuple[list[DXFPair], list[tuple[str, list[DXFPair]]]]] = {}
+    current: str | None = None
+    for kind, body in _pairs_to_records(table_pairs):
+        if kind == "TABLE":
+            current = (_first_string(body, 2) or "").upper()
+            tables[current] = (list(body), [])
+        elif kind == "ENDTAB":
+            current = None
+        elif current is not None:
+            tables[current][1].append((kind, list(body)))
+    for name in _R2010_TABLE_ORDER:
+        if name not in tables:
+            head: list[DXFPair] = [
+                (2, name),
+                (5, allocator.allocate()),
+                (100, "AcDbSymbolTable"),
+                (70, "0"),
+            ]
+            tables[name] = (head, [])
+
+    def names(table: str) -> set[str]:
+        return {
+            (_first_string(body, 2) or "").casefold() for _, body in tables[table][1]
+        }
+
+    def add(table: str, subclass: str, name: str, *fields: DXFPair) -> str:
+        handle = allocator.allocate()
+        code = 105 if table == "DIMSTYLE" else 5
+        tables[table][1].append(
+            (
+                table,
+                [
+                    (code, handle),
+                    (100, "AcDbSymbolTableRecord"),
+                    (100, subclass),
+                    (2, name),
+                    (70, "0"),
+                    *fields,
+                ],
+            )
+        )
+        return handle
+
+    linetypes = names("LTYPE")
+    for name, description in _R2010_LINETYPES:
+        if name.casefold() not in linetypes:
+            add(
+                "LTYPE",
+                "AcDbLinetypeTableRecord",
+                name,
+                (3, description),
+                (72, "65"),
+                (73, "0"),
+                (40, "0"),
+            )
+    if "acad" not in names("APPID"):
+        add("APPID", "AcDbRegAppTableRecord", "ACAD")
+    standard_style = next(
+        (
+            _first_string(body, 5)
+            for _, body in tables["STYLE"][1]
+            if (_first_string(body, 2) or "").casefold() == "standard"
+        ),
+        None,
+    )
+    dimension_styles = {"Standard"}
+    for kind, body in _pairs_to_records(block_pairs + entity_pairs):
+        if kind == "DIMENSION":
+            style = _first_string(body, 3)
+            if style:
+                dimension_styles.add(style)
+    known_styles = names("DIMSTYLE")
+    for name in sorted(dimension_styles, key=str.casefold):
+        if name.casefold() not in known_styles:
+            known_styles.add(name.casefold())
+            add(
+                "DIMSTYLE",
+                "AcDbDimStyleTableRecord",
+                name,
+                *([(340, standard_style)] if standard_style else []),
+            )
+
+    block_names = [
+        _first_string(body, 2) or ""
+        for kind, body in _pairs_to_records(block_pairs)
+        if kind == "BLOCK"
+    ]
+    record_handles: dict[str, str] = {
+        (_first_string(body, 2) or "").casefold(): _first_string(body, 5) or ""
+        for _, body in tables["BLOCK_RECORD"][1]
+    }
+    for name in [*_R2010_SPACES, *block_names]:
+        if name.casefold() not in record_handles:
+            record_handles[name.casefold()] = add(
+                "BLOCK_RECORD",
+                "AcDbBlockTableRecord",
+                name,
+                (280, "1"),
+                (281, "0"),
+            )
+
+    table_out: list[DXFPair] = [(0, "SECTION"), (2, "TABLES")]
+    for name in [
+        *_R2010_TABLE_ORDER,
+        *(n for n in tables if n not in _R2010_TABLE_ORDER),
+    ]:
+        head, records = tables[name]
+        table_handle = _first_string(head, 5) or allocator.allocate()
+        head = [pair for pair in head if pair[0] not in (5, 70, 330)]
+        position = 1 if head and head[0][0] == 2 else 0
+        head[position:position] = [(5, table_handle), (330, "0")]
+        head.append((70, str(len(records))))
+        if name == "DIMSTYLE":
+            head.extend([(100, "AcDbDimStyleTable"), (71, str(len(records)))])
+            head.extend((340, _first_string(body, 105) or "") for _, body in records)
+        table_out.extend([(0, "TABLE"), *head])
+        for kind, body in records:
+            table_out.extend([(0, kind), *_r2010_owned(body, table_handle)])
+        table_out.append((0, "ENDTAB"))
+    table_out.append((0, "ENDSEC"))
+
+    block_out: list[DXFPair] = [(0, "SECTION"), (2, "BLOCKS")]
+    # A document read from DXF may carry the (empty) *Model_Space block itself.
+    written = {name.casefold() for name in block_names}
+    for space in _R2010_SPACES:
+        if space.casefold() in written:
+            continue
+        owner = record_handles[space.casefold()]
+        paper = [(67, "1")] if space == "*Paper_Space" else []
+        block_out.extend(
+            [
+                (0, "BLOCK"),
+                (5, allocator.allocate()),
+                (330, owner),
+                (100, "AcDbEntity"),
+                *paper,
+                (8, "0"),
+                (100, "AcDbBlockBegin"),
+                (2, space),
+                (70, "0"),
+                (10, "0"),
+                (20, "0"),
+                (30, "0"),
+                (3, space),
+                (1, ""),
+                (0, "ENDBLK"),
+                (5, allocator.allocate()),
+                (330, owner),
+                (100, "AcDbEntity"),
+                *paper,
+                (8, "0"),
+                (100, "AcDbBlockEnd"),
+            ]
+        )
+    owner = ""
+    parent = ""
+    for kind, body in _pairs_to_records(block_pairs):
+        if kind in ("SECTION", "ENDSEC"):
+            continue
+        if kind == "BLOCK":
+            name = _first_string(body, 2) or ""
+            owner = record_handles.get(name.casefold(), "")
+            if name.startswith("*"):
+                # An anonymous block (*D for the geometry of a dimension).
+                body = [
+                    (70, "1") if code == 70 else (code, value) for code, value in body
+                ]
+        record_owner = parent if kind in _R2010_SUBRECORDS and parent else owner
+        if kind in _R2010_SUBRECORD_OWNERS:
+            parent = _first_string(body, 5) or ""
+        elif kind not in _R2010_SUBRECORDS:
+            parent = ""
+        block_out.extend([(0, kind), *_r2010_owned(body, record_owner)])
+    block_out.append((0, "ENDSEC"))
+
+    model = record_handles["*model_space"]
+    paper_space = record_handles["*paper_space"]
+    entity_out: list[DXFPair] = [(0, "SECTION"), (2, "ENTITIES")]
+    parent = ""
+    for kind, body in _pairs_to_records(entity_pairs):
+        if kind in ("SECTION", "ENDSEC"):
+            continue
+        space_owner = paper_space if (67, "1") in body else model
+        record_owner = parent if kind in _R2010_SUBRECORDS and parent else space_owner
+        if kind in _R2010_SUBRECORD_OWNERS:
+            parent = _first_string(body, 5) or ""
+        elif kind not in _R2010_SUBRECORDS:
+            parent = ""
+        entity_out.extend([(0, kind), *_r2010_owned(body, record_owner)])
+    entity_out.append((0, "ENDSEC"))
+    return table_out, block_out, entity_out
+
+
+def _r2010_owned(body: list[DXFPair], owner: str) -> list[DXFPair]:
+    """``body`` with its owner (group 330) behind its handle."""
+    if not owner or any(code == 330 for code, _ in body):
+        return body
+    for index, (code, _) in enumerate(body):
+        if code in (5, 105):
+            return [*body[: index + 1], (330, owner), *body[index + 1 :]]
+    return body
 
 
 _INSUNITS_TO_IR = {
@@ -985,11 +1254,15 @@ def ir_to_dxf(
     )
     entity_pairs.append((0, "ENDSEC"))
 
-    # Raster images need their classes and objects; a file without images keeps
-    # the sections it always had.
+    # DXF R2000+ is read as a database: the tables, blocks and owners it needs
+    # besides the drawing, CLASSES (the raster image classes when there are
+    # images) and the named object dictionary in OBJECTS.
     classes_pairs: list[DXFPair] = []
     objects_pairs: list[DXFPair] = []
-    if images is not None and images.definitions:
+    if allocator is not None and images is not None:
+        table_pairs, block_pairs, entity_pairs = _r2010_structure(
+            table_pairs, block_pairs, entity_pairs, allocator=allocator
+        )
         classes_pairs = images.classes_pairs()
         objects_pairs = images.objects_pairs(
             str(export_document.get("header", {}).get("units", "mm"))
@@ -1001,6 +1274,13 @@ def ir_to_dxf(
         handseed=allocator.handseed if allocator is not None else None,
         diagnostics=export_diagnostics,
         warnings=warnings,
+        codepage=(
+            _select_r12_codepage(
+                _non_ascii_characters(table_pairs + block_pairs + entity_pairs)
+            )
+            if target_version == "AC1024"
+            else None
+        ),
     )
 
     pairs = (
@@ -1012,6 +1292,10 @@ def ir_to_dxf(
         + objects_pairs
         + [(0, "EOF")]
     )
+    pairs = _valid_symbol_names(
+        pairs, diagnostics=export_diagnostics, warnings=warnings
+    )
+    pairs = _escape_literal_percents(pairs)
     if target_version == "AC1009":
         pairs = _store_r12_text(
             pairs, diagnostics=export_diagnostics, warnings=warnings
@@ -1069,6 +1353,117 @@ def _select_r12_codepage(characters: dict[str, int]) -> str:
         if best is None or lost < best[0]:
             best = (lost, codepage)
     return best[1] if best is not None else "ANSI_932"
+
+
+# Characters AutoCAD does not allow in the name of a layer, linetype, text style
+# or dimension style. ODA drops a table record named with one, and the entities
+# on such a layer are not shown.
+_SYMBOL_NAME_INVALID = re.compile(r'[<>/\\":;?*|,=`\x00-\x1f]')
+# Records whose group 2 is a name of that kind, and the groups that refer to one.
+_SYMBOL_TABLE_RECORDS = frozenset({"LAYER", "LTYPE", "STYLE", "DIMSTYLE"})
+_SYMBOL_REFERENCE_CODES = frozenset({6, 7, 8})
+
+
+def _valid_symbol_names(
+    pairs: list[DXFPair],
+    *,
+    diagnostics: list[ExportDiagnostic],
+    warnings: list[str] | None,
+) -> list[DXFPair]:
+    """Write ``_`` for the characters AutoCAD does not allow in symbol names.
+
+    A layer of a DWG can be named ``*…`` (applications keep their own layers
+    so), which AutoCAD and ODA reject in DXF. The names stay apart: one that
+    would become the name of another gets a number.
+    """
+    invalid: set[str] = set()
+    record = ""
+    for code, value in pairs:
+        if code == 0:
+            record = value
+        elif (
+            (code == 2 and record in _SYMBOL_TABLE_RECORDS)
+            or code in _SYMBOL_REFERENCE_CODES
+            or (code == 3 and record == "DIMENSION")
+        ) and _SYMBOL_NAME_INVALID.search(value):
+            invalid.add(value)
+    if not invalid:
+        return pairs
+    taken = {
+        value.casefold()
+        for code, value in pairs
+        if code in (2, 3, 6, 7, 8) and value not in invalid
+    }
+    renamed: dict[str, str] = {}
+    for name in sorted(invalid):
+        base = _SYMBOL_NAME_INVALID.sub("_", name)
+        candidate, serial = base, 1
+        while candidate.casefold() in taken:
+            serial += 1
+            candidate = f"{base}_{serial}"
+        taken.add(candidate.casefold())
+        renamed[name] = candidate
+    result: list[DXFPair] = []
+    record = ""
+    for code, value in pairs:
+        if code == 0:
+            record = value
+        elif value in renamed and (
+            (code == 2 and record in _SYMBOL_TABLE_RECORDS)
+            or code in _SYMBOL_REFERENCE_CODES
+            or (code == 3 and record == "DIMENSION")
+        ):
+            value = renamed[value]
+        result.append((code, value))
+    _diagnose(
+        diagnostics,
+        warnings,
+        code="DXF_SYMBOL_NAME_NORMALIZED",
+        severity="warning",
+        message=(
+            f"{len(renamed)} layer, linetype or style name(s) with characters "
+            'AutoCAD does not allow in a name (<>/\\":;?*|,=`) were written '
+            "with '_' in their place."
+        ),
+        action="normalized",
+    )
+    return result
+
+
+# ``%%`` starts a control code in DXF text: ``%%c``, ``%%d``, ``%%p``, ``%%o``,
+# ``%%u``, ``%%%`` (a percent sign) or ``%%nnn`` (a character code). Any other
+# ``%%`` is two percent signs, as CAXA and Jw_cad text has them, which AutoCAD
+# and ODA would drop.
+_DXF_PERCENT_RE = re.compile(r"%%(?:[cdpouCDPOU%]|[0-9]{3})|%%")
+_DXF_TEXT_VALUE_RECORDS = frozenset({"TEXT", "MTEXT", "ATTRIB", "ATTDEF", "DIMENSION"})
+
+
+def _escape_literal_percents(pairs: list[DXFPair]) -> list[DXFPair]:
+    """Write ``%%`` that is no control code as two ``%%%`` (one percent sign each)."""
+    result: list[DXFPair] = []
+    record = ""
+    for code, value in pairs:
+        if code == 0:
+            record = value
+        elif code in (1, 3) and record in _DXF_TEXT_VALUE_RECORDS and "%%" in value:
+            value = _DXF_PERCENT_RE.sub(
+                lambda match: "%%%%%%" if match.group(0) == "%%" else match.group(0),
+                value,
+            )
+        result.append((code, value))
+    return result
+
+
+def _non_ascii_characters(pairs: list[DXFPair]) -> dict[str, int]:
+    """How often each character outside ASCII occurs in the values of ``pairs``."""
+    characters: dict[str, int] = {}
+    for _, value in pairs:
+        if value.isascii():
+            continue
+        for character in value:
+            if character > "\x7f":
+                characters[character] = characters.get(character, 0) + 1
+    return characters
 
 
 def _encodable(text: str, codec: str) -> bool:
@@ -1311,6 +1706,7 @@ def _header_to_pairs(
     handseed: str | None,
     diagnostics: list[ExportDiagnostic],
     warnings: list[str] | None,
+    codepage: str | None = None,
 ) -> list[DXFPair]:
     header = ir_document.get("header", {})
     units_name = str(header.get("units", "mm"))
@@ -1321,6 +1717,10 @@ def _header_to_pairs(
         (9, "$ACADVER"),
         (1, target_version),
     ]
+    if target_version == "AC1024" and codepage is not None:
+        # The text is UTF-8; the code page is what a reader converts it to for
+        # an older format. ODA garbles MTEXT saved as R2000 without one.
+        pairs.extend([(9, "$DWGCODEPAGE"), (3, codepage)])
     linetype_scale = _linetype_scale_value(header.get("linetype_scale"))
     if linetype_scale is not None:
         pairs.extend([(9, "$LTSCALE"), (40, _num(linetype_scale))])
@@ -1407,18 +1807,19 @@ def _r2010_record_body(kind: str, body: list[DXFPair]) -> list[DXFPair]:
         ]
 
     if kind == "TEXT":
-        alignment_codes = {11, 21, 31, 72, 73}
-        text_data = [pair for pair in payload if pair[0] not in alignment_codes]
-        alignment = [pair for pair in payload if pair[0] in alignment_codes]
-        result = [
+        # The horizontal justification (72) and the second point (11, 21, 31)
+        # belong to the first AcDbText group, the vertical one (73) to the
+        # second; AutoCAD and ODA read them only there.
+        text_data = [pair for pair in payload if pair[0] != 73]
+        vertical = [pair for pair in payload if pair[0] == 73]
+        return [
             (100, "AcDbEntity"),
             *common,
             (100, "AcDbText"),
             *text_data,
+            (100, "AcDbText"),
+            *vertical,
         ]
-        if alignment:
-            result.extend([(100, "AcDbText"), *alignment])
-        return result
 
     if kind == "ATTRIB":
         attribute_codes = {2, 70, 73, 74, 280}
@@ -1458,6 +1859,18 @@ def _r2010_record_body(kind: str, body: list[DXFPair]) -> list[DXFPair]:
         }
         dimension = [pair for pair in payload if pair[0] in dimension_codes]
         subtype = [pair for pair in payload if pair[0] not in dimension_codes]
+        if dim_type == 0:
+            # A rotated (linear) dimension is an aligned one with a rotation: its
+            # points and angle are in AcDbAlignedDimension.
+            return [
+                (100, "AcDbEntity"),
+                *common,
+                (100, "AcDbDimension"),
+                *dimension,
+                (100, "AcDbAlignedDimension"),
+                *subtype,
+                (100, "AcDbRotatedDimension"),
+            ]
         return [
             (100, "AcDbEntity"),
             *common,
@@ -3864,7 +4277,19 @@ def _mtext_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
             chunks.append(value)
     entity["text"] = "".join(chunks)
 
-    rotation = _first_float(pairs, 50, default=0.0)
+    # AutoCAD and ODA give the direction of the text as a vector (11, 21, 31)
+    # and no angle; group 50 (degrees) is the older form.
+    rotation = _first_float(pairs, 50, default=0.0) or 0.0
+    direction_x = _first_float(pairs, 11, default=None)
+    direction_y = _first_float(pairs, 21, default=None)
+    if (
+        direction_x is not None
+        and direction_y is not None
+        and math.hypot(direction_x, direction_y) > 1e-12
+    ):
+        rotation = math.degrees(math.atan2(direction_y, direction_x))
+        if abs(rotation) < 1e-9:
+            rotation = 0.0
     if rotation != 0.0:
         entity["rotation"] = rotation
 
@@ -5125,7 +5550,8 @@ def _mtext_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     pairs.extend(_common_to_pairs(entity))
     # The text with its inline codes (a DWG MTEXT keeps them beside the text).
     # A line break inside MTEXT is the paragraph code in DXF.
-    text = _DXF_LINE_BREAK.sub(r"\\P", mtext_source_text(entity))
+    # A drawing CAXA saved as DWG or DXF has its own codes in the text as well.
+    text = _DXF_LINE_BREAK.sub(r"\\P", mtext_dxf_codes(mtext_source_text(entity)))
     text = _mtext_inline_width(entity.get("width_factor")) + text
     pairs.extend(
         [
@@ -5157,6 +5583,85 @@ def _mtext_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
         if attach_code is not None and attach_code != 1:
             pairs.append((71, str(attach_code)))
     return pairs
+
+
+def _insert_from_transform(
+    entity: dict[str, Any],
+    blocks: dict[str, Any],
+    *,
+    diagnostics: list[ExportDiagnostic],
+    warnings: list[str] | None,
+) -> dict[str, Any]:
+    """An INSERT with an affine ``transform`` as DXF writes it.
+
+    DXF places a block by its insertion point, one rotation and two signed
+    scale factors: ``p = insert + R(rotation) * S(sx, sy) * (q - base_point)``.
+    ``transform`` maps the block straight into the parent, so the two agree
+    when its columns are perpendicular (a rotation, scaling and mirroring);
+    the insertion point then is where the base point of the block lands. A
+    transform that also shears is written without the shear.
+    """
+    entity_id = str(entity.get("id", "")) or None
+    a, b, c, d, e, f = (float(value) for value in entity["transform"])
+    definition = (
+        blocks.get(str(entity.get("block"))) if isinstance(blocks, dict) else None
+    )
+    base = definition.get("base_point") if isinstance(definition, dict) else None
+    base_x, base_y = (
+        (float(base[0]), float(base[1])) if _point_like(base) else (0.0, 0.0)
+    )
+    result = {key: value for key, value in entity.items() if key != "transform"}
+    scale_x = math.hypot(a, b)
+    determinant = a * d - b * c
+    if not (math.isfinite(scale_x) and scale_x > 1e-12 and abs(determinant) > 1e-24):
+        _diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_INSERT_TRANSFORM_OMITTED",
+            severity="warning",
+            message=(
+                f"[INSERT:{entity_id or '?'}] affine transform collapses the "
+                "block and was omitted."
+            ),
+            entity_id=entity_id,
+            action="skipped",
+        )
+        return result
+    angle = math.atan2(b, a)
+    scale_y = determinant / scale_x
+    tolerance = 1e-9 * scale_x
+    sheared = not (
+        math.isclose(c, -math.sin(angle) * scale_y, rel_tol=1e-9, abs_tol=tolerance)
+        and math.isclose(d, math.cos(angle) * scale_y, rel_tol=1e-9, abs_tol=tolerance)
+    )
+    result["insert"] = [e + a * base_x + c * base_y, f + b * base_x + d * base_y]
+    rotation = math.degrees(angle)
+    if abs(rotation) > 1e-9:
+        result["rotation"] = rotation
+    else:
+        result.pop("rotation", None)
+    if math.isclose(scale_x, scale_y, rel_tol=1e-12):
+        if math.isclose(scale_x, 1.0, rel_tol=1e-12):
+            result.pop("scale", None)
+        else:
+            result["scale"] = scale_x
+    else:
+        result["scale"] = [scale_x, scale_y]
+    if sheared:
+        _diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_INSERT_TRANSFORM_OMITTED",
+            severity="warning",
+            message=(
+                f"[INSERT:{entity_id or '?'}] affine transform shears the "
+                "block, which a DXF INSERT cannot; it was written with its "
+                "rotation and scale only."
+            ),
+            entity_id=entity_id,
+            action="approximated",
+        )
+    return result
 
 
 def _insert_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
@@ -5624,12 +6129,19 @@ def _hatch_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
             pairs.append((20, _num(vertex[1])))
             if has_bulge:
                 pairs.append((42, _num(vertex[2] if len(vertex) >= 3 else 0.0)))
+        # No source boundary objects (the boundary is not associative).
+        pairs.append((97, "0"))
 
     pairs.extend([(75, "0"), (76, "1")])
     if not solid:
         pairs.extend(_hatch_pattern_to_pairs(entity))
     pairs.append((98, "0"))
     return pairs
+
+
+def _hatch_has_pattern_lines(entity: dict[str, Any]) -> bool:
+    lines = entity.get("pattern_lines")
+    return isinstance(lines, list) and any(isinstance(line, dict) for line in lines)
 
 
 def _hatch_pattern_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
@@ -5748,7 +6260,15 @@ def _dimension_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
         pairs.append((1, str(text_value)))
 
     rotation = definition.get("rotation")
-    if isinstance(rotation, (int, float)):
+    source_geometry = definition.get("source_geometry")
+    if (
+        not isinstance(rotation, (int, float))
+        and dim_kind == "LINEAR"
+        and isinstance(source_geometry, dict)
+    ):
+        # A dimension read from DWG keeps its rotation with the source fields.
+        rotation = source_geometry.get("angle")
+    if isinstance(rotation, (int, float)) and not isinstance(rotation, bool):
         pairs.append((50, _num(rotation)))
 
     text_rotation = definition.get("text_rotation")
@@ -6788,6 +7308,52 @@ def _render_entity(
             rendered.extend(child_rendered)
         return rendered, None
 
+    if (
+        kind == "HATCH"
+        and target_version == "AC1024"
+        and not bool(entity.get("solid", True))
+        and not _hatch_has_pattern_lines(entity)
+    ):
+        # A pattern hatch needs the lines of its pattern; AutoCAD and ODA drop a
+        # HATCH without them. Its boundary is what a reader can draw.
+        rendered = [
+            _RenderedEntity(
+                "LWPOLYLINE",
+                _lwpolyline_to_pairs(
+                    {
+                        **_entity_common_values(entity),
+                        "kind": "LWPOLYLINE",
+                        "vertices": loop["vertices"],
+                        "closed": True,
+                    }
+                ),
+            )
+            for loop in entity.get("loops", [])
+            if isinstance(loop, dict) and loop.get("vertices")
+        ]
+        _diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_HATCH_PATTERN_EXPLODED",
+            severity="warning",
+            message=(
+                f"[HATCH:{entity_id or '?'}] pattern {entity.get('pattern')!r} "
+                f"has no definition lines; its {len(rendered)} boundary loop(s) "
+                "were written as polylines."
+            ),
+            entity_id=entity_id or None,
+            action="exploded",
+        )
+        return rendered, None
+
+    if kind == "INSERT" and "transform" in entity:
+        entity = _insert_from_transform(
+            entity,
+            tables.blocks if tables is not None else {},
+            diagnostics=diagnostics,
+            warnings=warnings,
+        )
+
     prepared = entity
     if target_version == "AC1009":
         prepared = _prepare_r12_entity(
@@ -6939,20 +7505,6 @@ def _render_entity(
             action="skipped",
         )
         return [], "DXF_UNKNOWN_ENTITY_SKIPPED"
-
-    if kind == "INSERT" and "transform" in entity:
-        _diagnose(
-            diagnostics,
-            warnings,
-            code="DXF_INSERT_TRANSFORM_OMITTED",
-            severity="warning",
-            message=(
-                f"[INSERT:{entity_id or '?'}] affine transform is not "
-                "representable by plain DXF INSERT and was omitted."
-            ),
-            entity_id=entity_id or None,
-            action="skipped",
-        )
 
     return [_RenderedEntity(kind, _entity_to_pairs(prepared))], None
 
@@ -7545,6 +8097,18 @@ def _linetype_scale_value(value: Any) -> float | None:
     return _linetype_scale_or_none(float(value))
 
 
+# The DWG importer keeps the points of a dimension under the names ezdwg gives
+# them, after their DXF groups: defpoint (10), defpoint2 (13), defpoint3 (14),
+# defpoint4 (15) and defpoint5 (16).
+_DIMENSION_POINT_ALIASES = {
+    "location": ("defpoint",),
+    "p1": ("defpoint2",),
+    "p2": ("defpoint3",),
+    "p3": ("defpoint4",),
+    "p4": ("defpoint5",),
+}
+
+
 def _dimension_point(
     points: dict[str, Any],
     definition: dict[str, Any],
@@ -7552,9 +8116,10 @@ def _dimension_point(
     *,
     default: list[float] | None,
 ) -> list[float] | None:
-    candidate = points.get(key, definition.get(key))
-    if isinstance(candidate, list) and len(candidate) >= 2:
-        return [float(candidate[0]), float(candidate[1])]
+    for name in (key, *_DIMENSION_POINT_ALIASES.get(key, ())):
+        candidate = points.get(name, definition.get(name))
+        if isinstance(candidate, (list, tuple)) and len(candidate) >= 2:
+            return [float(candidate[0]), float(candidate[1])]
     return default
 
 

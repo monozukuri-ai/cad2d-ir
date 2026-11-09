@@ -257,7 +257,8 @@ def test_text_escapes_are_normalized() -> None:
     assert normalize_text("%c20\\D\\H1x;+0.0065^-0.0065|b;") == "⌀20\\S+0.0065^-0.0065;"
     assert normalize_text("10\\D\\H0.707107x;-0.013^-0.028|b;") == "10\\S-0.013^-0.028;"
     assert normalize_text("500\\V\\H0.707107x;H9^f9|a;") == "500\\SH9^f9;"
-    # Either tolerance ends with |a; or |b;
+    # Either tolerance ends with |a;, |b; or |c;; CAXA stacks all of them.
+    assert normalize_text("⌀40\\D\\H0.707107x;+0.075^+0.050|c;") == "⌀40\\S+0.075^+0.050;"
     counts: Counter[str] = Counter()
     assert normalize_text("60\\D\\H0.707107x;+0.021^0|a;", counts) == "60\\S+0.021^0;"
     assert normalize_text("50\\V\\H0.707107x;H7^m6|b;", counts) == "50\\SH7^m6;"

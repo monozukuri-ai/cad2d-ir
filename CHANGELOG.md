@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.17.14
+
+- DXF R2010 export: the file has the structure AutoCAD and ODA read a DXF
+  R2000 or later file by: all nine symbol tables (VPORT, LTYPE with ByBlock,
+  ByLayer and Continuous, LAYER, STYLE, VIEW, UCS, APPID with ACAD, DIMSTYLE
+  with the styles the dimensions name, BLOCK_RECORD), a block record for
+  model space, paper space and every block, the blocks `*Model_Space` and
+  `*Paper_Space`, the owner (group 330) of every table record and entity,
+  `CLASSES`, and the named object dictionary with `ACAD_GROUP` in `OBJECTS`.
+  ODA rejected the file before. Blocks whose name starts with `*` are marked
+  anonymous. The handles given before stay as they were.
+- DXF R2010 export: `$DWGCODEPAGE` names the code page the characters of the
+  drawing ask for (as for R12; the text itself stays UTF-8). Without it ODA
+  garbled the `MTEXT` of a drawing it saved as R2000.
+- DXF R2010 export: the horizontal justification (72) and the second point
+  (11, 21) of a `TEXT` are in its first `AcDbText` group, where AutoCAD and
+  ODA read them; they were in the second one, so centered and right-aligned
+  texts lost their alignment there. A linear dimension has the subclass
+  `AcDbAlignedDimension` before `AcDbRotatedDimension`.
+- DXF R2010 export: every boundary path of a `HATCH` ends with its number of
+  source objects (97). A pattern hatch without the lines of its pattern
+  (`pattern_lines`) is written as its boundary polylines
+  (`DXF_HATCH_PATTERN_EXPLODED`): AutoCAD and ODA drop a `HATCH` whose pattern
+  has no lines.
+- DXF export: an `INSERT` with an affine `transform` is written with the
+  insertion point, rotation and signed scale factors the transform has, so
+  rotated, scaled and mirrored blocks land where the transform puts them. The
+  transform was left out, and the block was placed without it. A transform
+  that shears is written without the shear (`DXF_INSERT_TRANSFORM_OMITTED`,
+  now `approximated`).
+- DXF export: a dimension read from DWG is written with its points, which the
+  DWG importer keeps under the names of their DXF groups (`defpoint`,
+  `defpoint2` to `defpoint5`), and with the rotation of a linear dimension;
+  they were left out, so the definition point was at the origin and the
+  other points were missing.
+- DXF export: names of layers, linetypes and text or dimension styles lose
+  the characters AutoCAD does not allow in a name (`<>/\":;?*|,=` and control
+  characters), which become `_` (`DXF_SYMBOL_NAME_NORMALIZED`). AutoCAD and
+  ODA reject such a table record, and the entities on a layer named `*…`, as
+  some applications keep in DWG, were not shown. Two names stay two names.
+- DXF import: the rotation of an `MTEXT` comes from its direction (groups 11
+  and 21) when it has one, as AutoCAD and ODA write it; only group 50 was
+  read, so their rotated `MTEXT` came in unrotated.
+- DXF export: two percent signs that start no control code (`50%% off`, a
+  text that ends with `%%`, as CAXA and Jw_cad texts have them) are written as
+  `%%%` each; AutoCAD and ODA read `%%` as the start of a control code and
+  dropped them. The control codes of a text read from DXF (`%%c`, `%%%`,
+  `%%123`) stay as they are.
+- New `cad2d_ir.mtext.mtext_dxf_codes`: the width factors and fonts CAXA gives
+  Latin and CJK characters (`\W0.8^0.7;`, `\W^0.8;`, `\fArial^SimSun||;`)
+  become one DXF code, or the characters of one script in braces with their
+  own code (`{\W0.8;中文}AB`), and `\A3;` is removed. `mtext_lines` reads
+  the result as it read the CAXA form. The EXB importer rewrites `MTEXT` text
+  with it (`EXB_TEXT_ESCAPE_NORMALIZED` counts the texts in
+  `details.texts_with_script_codes`), and the DXF export rewrites the `MTEXT`
+  of a drawing CAXA saved as DWG or DXF.
+- EXB importer: a deviation or fit tolerance that ends with `|c;` (or any
+  other letter) becomes a stack as `|a;` and `|b;` do; CAXA draws them all
+  one value above the other. It was left in the text as written.
+
 ## 0.17.13
 
 - DXF R12 export: the text is stored in the Windows code page its characters

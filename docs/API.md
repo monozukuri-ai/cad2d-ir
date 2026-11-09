@@ -141,7 +141,7 @@ output handles are omitted and consumers use `index`.
 | Value | CAD release | Export behavior |
 |---|---|---|
 | `AC1009` | R12 | LWPOLYLINE to POLYLINE; MTEXT to one TEXT per line (placed, sized and scaled as the line is; see "MTEXT inline codes" in docs/SCHEMA_NOTES.md); ELLIPSE/SPLINE to sampled POLYLINE; HATCH to boundary POLYLINE; IMAGE skipped |
-| `AC1024` | R2010 | native supported entities (IMAGE with its IMAGEDEF objects), deterministic handles, and `$HANDSEED` |
+| `AC1024` | R2010 | native supported entities (IMAGE with its IMAGEDEF objects), deterministic handles, `$HANDSEED` and `$DWGCODEPAGE`, all nine symbol tables, block records, owners (group 330), `*Model_Space` / `*Paper_Space` and the named object dictionary, as AutoCAD and ODA read DXF R2000+; a pattern HATCH without pattern lines as its boundary polylines |
 
 AC1009 has no Unicode: its text is stored in one Windows code page, which
 `$DWGCODEPAGE` names. The writer picks it from the characters of the drawing:

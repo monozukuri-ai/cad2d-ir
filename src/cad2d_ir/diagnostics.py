@@ -574,7 +574,7 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "info",
         "normalized",
         "EXB import",
-        "CAXA text escapes were rewritten: `%c` / `%d` / `%p` / `%x` as ⌀ ° ± ×, deviation (`\\D…|b;`) and fit (`\\V…|a;`) tolerances and stacks with a height code (`\\S\\H…;上^下;`) as DXF-style `\\S上^下;` stacks.",
+        "CAXA text escapes were rewritten: `%c` / `%d` / `%p` / `%x` as ⌀ ° ± ×, deviation (`\\D…|a;`, `|b;`, `|c;`) and fit (`\\V…|a;`) tolerances and stacks with a height code (`\\S\\H…;上^下;`) as DXF-style `\\S上^下;` stacks; width factors and fonts for Latin and CJK characters (`\\W0.8^0.7;`, `\\W^0.8;`, `\\fArial^SimSun||;`) as DXF `\\W` and `\\f` codes, and `\\A3;` removed.",
     ),
     "EXB_TEXT_SYMBOL_DROPPED": DiagnosticCode(
         "warning",
@@ -961,8 +961,21 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "DXF export",
         "A required DIMENSION geometry block was generated.",
     ),
+    "DXF_SYMBOL_NAME_NORMALIZED": DiagnosticCode(
+        "warning",
+        "normalized",
+        "DXF export",
+        "Layer, linetype or style names with characters AutoCAD does not allow "
+        "in a name (`<>/\\\":;?*|,=` and control characters) were written with `_` "
+        "in their place.",
+    ),
     "DXF_INSERT_TRANSFORM_OMITTED": DiagnosticCode(
-        "warning", "skipped", "DXF export", "An affine INSERT transform was omitted."
+        "warning",
+        "approximated",
+        "DXF export",
+        "The shear of an affine INSERT transform was dropped (a DXF INSERT has a "
+        "rotation and two scale factors), or a transform that collapses the "
+        "block was omitted.",
     ),
     "DXF_UNKNOWN_ENTITY_SKIPPED": DiagnosticCode(
         "warning", "skipped", "DXF export", "An unknown IR entity kind was skipped."
@@ -1128,6 +1141,13 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "approximated",
         "DXF R12 export",
         "SPLINE was approximated by a polyline.",
+    ),
+    "DXF_HATCH_PATTERN_EXPLODED": DiagnosticCode(
+        "warning",
+        "exploded",
+        "DXF R2010 export",
+        "A pattern HATCH without the lines of its pattern was emitted as its "
+        "boundary polylines.",
     ),
     "DXF_R12_HATCH_EXPLODED": DiagnosticCode(
         "warning",

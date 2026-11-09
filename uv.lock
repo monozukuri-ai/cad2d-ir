@@ -20,7 +20,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.17.13"
+version = "0.17.14"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },

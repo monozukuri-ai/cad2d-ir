@@ -157,6 +157,11 @@ without such codes:
   A line advances by `LINE_PITCH` times its own height, an empty line keeps
   its room, and empty lines at the end take none.
 - `mtext_plain(text)` is the text without the codes.
+- `mtext_dxf_codes(text)` rewrites the codes only CAXA writes as DXF codes:
+  a width factor or a font for Latin and for CJK characters (`\W0.8^0.7;`,
+  `\W^0.8;`, `\fArial^SimSun||;`) becomes one code, or the characters of
+  one script in braces with their own code (`{\W0.8;中文}AB`); `\A3;` is
+  removed. The EXB importer and the DXF export use it.
 - `mtext_source_text(entity)` is the text with its codes. The DWG importer
   puts the text without the codes into `text` and keeps the stored text in
   `metadata.dwg.raw_text`; the stored text is used while it still reads as
