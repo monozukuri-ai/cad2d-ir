@@ -14,6 +14,7 @@ import json
 import math
 import os
 import struct
+from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -255,6 +256,18 @@ def test_text_escapes_are_normalized() -> None:
     assert normalize_text("%c20\\D\\H1x;+0.0065^-0.0065|b;") == "⌀20\\S+0.0065^-0.0065;"
     assert normalize_text("10\\D\\H0.707107x;-0.013^-0.028|b;") == "10\\S-0.013^-0.028;"
     assert normalize_text("500\\V\\H0.707107x;H9^f9|a;") == "500\\SH9^f9;"
+    # Either tolerance ends with |a; or |b;
+    counts: Counter[str] = Counter()
+    assert normalize_text("60\\D\\H0.707107x;+0.021^0|a;", counts) == "60\\S+0.021^0;"
+    assert normalize_text("50\\V\\H0.707107x;H7^m6|b;", counts) == "50\\SH7^m6;"
+    assert (counts["text_deviation_stacked"], counts["text_fit_stacked"]) == (1, 1)
+    # A superscript, subscript or stack has the height of its characters behind
+    # \S; the DXF stack has none there.
+    assert normalize_text("mm\\S\\H0.7x;2^;", counts) == "mm\\S2^;"
+    assert normalize_text("D\\S\\H0.7x;^-0.1; x\\S\\H0.7x;+0.2^-0.1;", counts) == (
+        "D\\S^-0.1; x\\S+0.2^-0.1;"
+    )
+    assert counts["text_stack_normalized"] == 3
     assert normalize_text("M16%x1 60%d %c114%p0.017") == "M16×1 60° ⌀114±0.017"
     assert normalize_text("型部\\R\\H0.707x;0^0^7^^0.2^^^^;尺寸公差") == "型部尺寸公差"
     # DXF-compatible escapes pass through untouched

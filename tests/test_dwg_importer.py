@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from typing import Any
 import weakref
 
@@ -1010,6 +1011,56 @@ def test_dwg_texts_keep_their_text_style_and_its_fonts() -> None:
     assert ir["tables"]["text_styles"] == {
         "Standard": {"font": "txt", "big_font": "extfont2.shx"},
         "JP": {"font": "msgothic.ttc"},
+    }
+
+
+def test_convert_dwg_file_reads_the_width_factor_of_text_styles(
+    monkeypatch, tmp_path
+) -> None:
+    import sys
+    from types import SimpleNamespace
+
+    def style(handle: int, name: str, width: Any) -> dict[str, Any]:
+        return {
+            "kind": "STYLE",
+            "handle": handle,
+            "name": name,
+            "shape": False,
+            "font": "arial.ttf",
+            "bigfont": "",
+            "width": width,
+        }
+
+    raw = SimpleNamespace(
+        decode_layer_names=lambda _path: [(16, "0")],
+        decode_layer_colors=lambda _path: [(16, 7, None)],
+        decode_block_header_names=lambda _path: [],
+        decode_write_tables=lambda _path: [
+            style(0x11, "Standard", 1.0),
+            style(0x30, "NARROW", 0.8),
+            style(0x31, "ZERO", 0.0),
+            style(0x32, "TEXTUAL", "0.5"),
+            style(0x33, "NAN", math.nan),
+        ],
+    )
+    fake_ezdwg = SimpleNamespace(
+        read=lambda _path: _Document([_text_entity(1, style_handle=0x30)]), raw=raw
+    )
+    monkeypatch.setitem(sys.modules, "ezdwg", fake_ezdwg)
+    source = tmp_path / "fixture.dwg"
+    source.write_bytes(b"fixture")
+
+    ir = convert_dwg_file_to_ir(source).document
+    validate_ir(ir, strict_jsonschema=True)
+
+    # An MTEXT is drawn with the width factor of its style; 1.0 and values that
+    # are no factor are left out.
+    assert ir["tables"]["text_styles"] == {
+        "Standard": {"font": "arial.ttf"},
+        "NARROW": {"font": "arial.ttf", "width_factor": 0.8},
+        "ZERO": {"font": "arial.ttf"},
+        "TEXTUAL": {"font": "arial.ttf"},
+        "NAN": {"font": "arial.ttf"},
     }
 
 

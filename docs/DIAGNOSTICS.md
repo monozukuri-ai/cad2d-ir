@@ -115,7 +115,7 @@ entity/source identifiers and structured details.
 | `EXB_POLYLINE_WIDTH_DROPPED` | warning | approximated | EXB import | A polyline had segment widths, which the IR polyline does not carry. |
 | `EXB_PRODUCT_BUILD_UNVERIFIED` | info | assumed | EXB import | The CAXA product build was not verified against a native sample; `ezexb` read the stored entities with the rules of its major version (`details.product_build`). |
 | `EXB_TEXT_ALIGNMENT_ASSUMED` | info | assumed | EXB import | Texts use an alignment code that was not verified against CAXA: 2 (top-right by the 3×3 grid) or an unknown code read as top-left. |
-| `EXB_TEXT_ESCAPE_NORMALIZED` | info | normalized | EXB import | CAXA text escapes were rewritten: `%c` / `%d` / `%p` / `%x` as ⌀ ° ± ×, deviation (`\D…\|b;`) and fit (`\V…\|a;`) tolerances as DXF-style `\S上^下;` stacks. |
+| `EXB_TEXT_ESCAPE_NORMALIZED` | info | normalized | EXB import | CAXA text escapes were rewritten: `%c` / `%d` / `%p` / `%x` as ⌀ ° ± ×, deviation (`\D…\|b;`) and fit (`\V…\|a;`) tolerances and stacks with a height code (`\S\H…;上^下;`) as DXF-style `\S上^下;` stacks. |
 | `EXB_TEXT_FIT_WIDTH_FACTOR` | info | approximated | EXB import | A fit-to-box text got a `width_factor` derived from its stored box width, since CAXA compresses the glyphs to the box. |
 | `EXB_TEXT_STYLE_UNRESOLVED` | warning | normalized | EXB import | Texts reference text style ids missing from the text style table; no style was assigned. |
 | `EXB_TEXT_SYMBOL_DROPPED` | warning | skipped | EXB import | A surface roughness symbol embedded in text (`\R…;`) has no text form and was removed. |

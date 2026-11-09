@@ -574,7 +574,7 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "info",
         "normalized",
         "EXB import",
-        "CAXA text escapes were rewritten: `%c` / `%d` / `%p` / `%x` as ⌀ ° ± ×, deviation (`\\D…|b;`) and fit (`\\V…|a;`) tolerances as DXF-style `\\S上^下;` stacks.",
+        "CAXA text escapes were rewritten: `%c` / `%d` / `%p` / `%x` as ⌀ ° ± ×, deviation (`\\D…|b;`) and fit (`\\V…|a;`) tolerances and stacks with a height code (`\\S\\H…;上^下;`) as DXF-style `\\S上^下;` stacks.",
     ),
     "EXB_TEXT_SYMBOL_DROPPED": DiagnosticCode(
         "warning",

@@ -248,11 +248,14 @@ def _read_dwg_linetypes(
 def _read_dwg_text_styles(
     raw: Any, decode_path: str
 ) -> dict[int, tuple[str, dict[str, Any]]]:
-    """Text styles by handle: ``(name, {"font": ..., "big_font": ...})``.
+    """Text styles by handle: ``(name, definition)`` with ``font``, ``big_font``
+    and ``width_factor``.
 
     The font is the file the style names (``msgothic.ttc``, ``txt``) and the big
     font the SHX that draws Japanese or Chinese text in an SHX style
-    (``extfont2.shx``). Empty with an ``ezdwg`` that has no table decoder.
+    (``extfont2.shx``). The width factor is present when it is not 1.0: an
+    ``MTEXT`` of the style is drawn with it, while a ``TEXT`` stores its own.
+    Empty with an ``ezdwg`` that has no table decoder.
     """
     decode_write_tables = getattr(raw, "decode_write_tables", None)
     if not callable(decode_write_tables):
@@ -276,6 +279,15 @@ def _read_dwg_text_styles(
         big_font = str(row.get("bigfont") or "").strip()
         if big_font:
             definition["big_font"] = big_font
+        width_factor = row.get("width")
+        if (
+            isinstance(width_factor, (int, float))
+            and not isinstance(width_factor, bool)
+            and math.isfinite(width_factor)
+            and width_factor > 0.0
+            and abs(width_factor - 1.0) > 1e-9
+        ):
+            definition["width_factor"] = float(width_factor)
         styles[int(row["handle"])] = (name, definition)
     return styles
 

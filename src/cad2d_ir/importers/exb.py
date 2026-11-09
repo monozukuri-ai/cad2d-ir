@@ -131,10 +131,14 @@ SYMBOL_ESCAPES: dict[str, str] = {
     "%X": "×",
 }
 # Deviation tolerance ``10\D\H0.707x;-0.013^-0.028|b;`` and fit tolerance
-# ``50\V\H0.707x;H7^m6|a;``; both become the DXF stack ``\S上^下;``. A roughness
-# symbol ``\R\H0.707x;0^0^7^^0.2^^^^;`` has no text form.
-_DEVIATION_RE = re.compile(r"\\D\\H[0-9.]+x;([^^|;]*)\^([^|;]*)\|b;")
-_FIT_RE = re.compile(r"\\V\\H[0-9.]+x;([^^|;]*)\^([^|;]*)\|a;")
+# ``50\V\H0.707x;H7^m6|a;``; both become the DXF stack ``\S上^下;``. Either one
+# ends with ``|a;`` or ``|b;``. A roughness symbol
+# ``\R\H0.707x;0^0^7^^0.2^^^^;`` has no text form.
+_DEVIATION_RE = re.compile(r"\\D\\H[0-9.]+x;([^^|;]*)\^([^|;]*)\|[ab];")
+_FIT_RE = re.compile(r"\\V\\H[0-9.]+x;([^^|;]*)\^([^|;]*)\|[ab];")
+# A superscript, subscript or stack ``m\S\H0.7x;2^;`` carries the height of its
+# characters behind ``\S``; the DXF stack has none there (``m\S2^;``).
+_STACK_RE = re.compile(r"\\S\\H[0-9.]+x;([^;\\{}]*);")
 _ROUGHNESS_RE = re.compile(r"\\R\\H[0-9.]+x;[^;]*;")
 _MTEXT_ESCAPE_RE = re.compile(r"\\[A-Za-z]|[{}]")
 
@@ -932,8 +936,9 @@ def normalize_text(contents: str, counts: Counter[str] | None = None) -> str:
     """Rewrite CAXA text escapes into IR text.
 
     ``%c`` / ``%d`` / ``%p`` / ``%x`` become the Unicode symbols, deviation and
-    fit tolerances become DXF-style ``\\S上^下;`` stacks and roughness symbols
-    (which have no text form) are removed. ``counts`` receives what was done.
+    fit tolerances become DXF-style ``\\S上^下;`` stacks, a stack loses the
+    height code CAXA writes inside it, and roughness symbols (which have no
+    text form) are removed. ``counts`` receives what was done.
     """
     counter = counts if counts is not None else Counter()
     for code, symbol in SYMBOL_ESCAPES.items():
@@ -946,6 +951,8 @@ def normalize_text(contents: str, counts: Counter[str] | None = None) -> str:
     counter["text_deviation_stacked"] += n
     contents, n = _FIT_RE.subn(lambda m: f"\\S{m.group(1)}^{m.group(2)};", contents)
     counter["text_fit_stacked"] += n
+    contents, n = _STACK_RE.subn(lambda m: f"\\S{m.group(1)};", contents)
+    counter["text_stack_normalized"] += n
     contents, n = _ROUGHNESS_RE.subn("", contents)
     counter["text_roughness_dropped"] += n
     return contents
@@ -1612,6 +1619,7 @@ def _append_summary_diagnostics(
         counts["text_symbol_escape"]
         + counts["text_deviation_stacked"]
         + counts["text_fit_stacked"]
+        + counts["text_stack_normalized"]
     )
     if escaped:
         diagnostics.append(
@@ -1620,7 +1628,8 @@ def _append_summary_diagnostics(
                 severity="info",
                 message=(
                     "CAXA text escapes were rewritten: %c/%d/%p/%x as ⌀ ° ± ×, deviation "
-                    "and fit tolerances as DXF-style \\S stacks."
+                    "and fit tolerances, superscripts and subscripts as DXF-style \\S "
+                    "stacks."
                 ),
                 source_kind="Text",
                 action="normalized",
@@ -1628,6 +1637,7 @@ def _append_summary_diagnostics(
                     "symbols": counts["text_symbol_escape"],
                     "deviation_tolerances": counts["text_deviation_stacked"],
                     "fit_tolerances": counts["text_fit_stacked"],
+                    "stacks": counts["text_stack_normalized"],
                 },
             )
         )

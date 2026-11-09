@@ -396,6 +396,57 @@ def test_line_breaks_in_text_keep_one_value_per_line(target_version: str) -> Non
     assert [entity["kind"] for entity in restored["entities"]][-1] == "LINE"
 
 
+def test_mtext_width_factor_is_written_in_front_of_the_text() -> None:
+    # A DXF MTEXT has no width factor of its own: it is drawn with the one of
+    # its text style unless the text sets one. Importers of formats that store
+    # a factor per text (EXB, SXF, MI) put it on the entity.
+    def mtext(index: int, text: str, **extra: float) -> dict:
+        return {
+            "id": f"M{index}",
+            "kind": "MTEXT",
+            "insert": [0, 10 * index],
+            "height": 2.5,
+            "text": text,
+            **extra,
+        }
+
+    document = {
+        "format": "cad2d-ir",
+        "version": "0.2.0",
+        "header": {"units": "mm", "angle_unit": "deg", "coord_space": "world"},
+        "tables": {"layers": {"0": {}}},
+        "entities": [
+            mtext(0, "narrow", width_factor=0.667),
+            mtext(1, "plain"),
+            mtext(2, "one", width_factor=1.0),
+            # Outside the 0.1 to 10 an MTEXT accepts
+            mtext(3, "wide", width_factor=25.0),
+            mtext(4, "{\\W0.5;a}b\nc", width_factor=1.5),
+        ],
+    }
+
+    lines = ir_to_dxf(document).splitlines()
+    assert "\\W0.667;narrow" in lines
+    assert "\\W1.5;{\\W0.5;a}b\\Pc" in lines
+    assert {"plain", "one", "wide"} <= set(lines)
+
+    # R12 has no MTEXT: every TEXT it becomes carries the factor itself.
+    restored = dxf_to_ir(ir_to_dxf(document, target_version="AC1009"))
+    factors = {
+        entity["text"]: entity.get("width_factor")
+        for entity in restored["entities"]
+        if entity["kind"] == "TEXT"
+    }
+    assert factors == {
+        "narrow": 0.667,
+        "plain": None,
+        "one": 1.0,
+        "wide": 25.0,
+        "ab": 1.5,
+        "c": 1.5,
+    }
+
+
 def test_unknown_entity_and_constraints_have_structured_export_diagnostics() -> None:
     document = {
         "format": "cad2d-ir",

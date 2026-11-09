@@ -4693,17 +4693,36 @@ def _text_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     return pairs
 
 
+def _mtext_inline_width(width_factor: Any) -> str:
+    """The inline code for the width factor an ``MTEXT`` carries itself.
+
+    A DXF ``MTEXT`` has no width factor of its own: it is drawn with the one of
+    its text style unless the text sets one with ``\\W…;``. Factors outside the
+    0.1 to 10 that AutoCAD accepts, and 1.0, give no code.
+    """
+    if (
+        isinstance(width_factor, bool)
+        or not isinstance(width_factor, (int, float))
+        or not math.isfinite(width_factor)
+        or not 0.1 <= width_factor <= 10.0
+        or abs(width_factor - 1.0) < 1e-6
+    ):
+        return ""
+    return f"\\W{f'{width_factor:.6f}'.rstrip('0').rstrip('.')};"
+
+
 def _mtext_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     insert = entity["insert"]
     pairs = [(0, "MTEXT")]
     pairs.extend(_common_to_pairs(entity))
+    # A line break inside MTEXT is the paragraph code in DXF.
+    text = _DXF_LINE_BREAK.sub(r"\\P", str(entity["text"]))
     pairs.extend(
         [
             (10, _num(insert[0])),
             (20, _num(insert[1])),
             (40, _num(entity["height"])),
-            # A line break inside MTEXT is the paragraph code in DXF.
-            (1, _DXF_LINE_BREAK.sub(r"\\P", str(entity["text"]))),
+            (1, _mtext_inline_width(entity.get("width_factor")) + text),
         ]
     )
 
@@ -6642,6 +6661,16 @@ def _explode_mtext(entity: dict[str, Any]) -> tuple[list[dict[str, Any]], bool]:
         for key in ("rotation", "style"):
             if key in entity:
                 text_entity[key] = entity[key]
+        # The width factor an MTEXT carries itself (EXB, SXF, MI) is the one of
+        # every TEXT it becomes.
+        width_factor = entity.get("width_factor")
+        if (
+            isinstance(width_factor, (int, float))
+            and not isinstance(width_factor, bool)
+            and math.isfinite(width_factor)
+            and width_factor > 0.0
+        ):
+            text_entity["width_factor"] = float(width_factor)
         result.append(text_entity)
     return result, formatting_changed or len(lines) > 1
 

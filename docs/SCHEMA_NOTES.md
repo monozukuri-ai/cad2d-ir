@@ -131,8 +131,14 @@ needs no other.
 
 `width_factor` scales the glyphs of a `TEXT` horizontally, as the DXF width
 factor does (group 41): 1.0 is the natural width of the font, and the text is
-stretched or compressed about its `insert`. A DXF `MTEXT` has no factor of its
-own and uses the one of its text style (`tables.text_styles`).
+stretched or compressed about its `insert`. A DXF or DWG `MTEXT` has no factor
+of its own and uses the one of its text style (`tables.text_styles.*.width_factor`,
+1.0 when absent), unless the text sets one with the inline code `\W…;`.
+
+An `MTEXT` from a format that stores a factor with each text (EXB, SXF, MI)
+carries `width_factor` itself, and that one takes precedence over the text
+style. The DXF export writes it as `\W…;` in front of the text; for DXF R12,
+which has no `MTEXT`, every `TEXT` the entity becomes gets the factor.
 
 Formats that lay text out in character cells instead of font metrics (JWW,
 SXF, iCAD, HP-GL labels) store a cell width or the length of the text. Their

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.17.11
+
+- DWG importer: `tables.text_styles` carries the `width_factor` of a text style
+  when it is not 1.0, as the DXF importer does. An `MTEXT` has no width factor
+  of its own and is drawn with the one of its style, so a renderer could not
+  know that such a text is narrower or wider than its font.
+- DXF export: the `width_factor` an `MTEXT` entity carries itself (EXB, SXF and
+  MI importers) is written as the inline code `\W…;` in front of the text. A
+  DXF `MTEXT` has no group for it, and the factor was dropped, so the text came
+  out at the natural width of its font. For DXF R12 every `TEXT` such an
+  `MTEXT` becomes gets the factor. Factors outside 0.1 to 10 are not written
+  for an `MTEXT`.
+- EXB importer: a deviation tolerance that ends with `|a;` and a fit tolerance
+  that ends with `|b;` become the stack `\S…^…;` as the other way round always
+  did. They were left in the text as written
+  (`\D\H0.707x;+0.021^0|a;`).
+- EXB importer: a superscript, subscript or stack loses the height code CAXA
+  writes behind `\S` (`m\S\H0.7x;2^;` becomes `m\S2^;`), which is no part of a
+  DXF stack. `EXB_TEXT_ESCAPE_NORMALIZED` counts them in `details.stacks`.
+
 ## 0.17.10
 
 - SXF importer: a TEXT's `width_factor` is the stored box width against the
