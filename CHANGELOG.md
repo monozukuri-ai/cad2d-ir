@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.16
+
+- DXF import uses about half the memory on a large drawing (a synthetic 72 MB DXF of
+  435,000 entities: peak 2.27 GB → 1.06 GB, and 16 s → 10 s), with the same IR.
+  The header variables that pick the text encoding are looked up in the HEADER
+  section only; the whole file was split into lines for each of them. The lines
+  are counted for `DXF_DECODE_REPLACED` only when something was replaced. The
+  file's bytes and text are let go once split into group pairs, the pairs are not
+  copied to decode `\U+` escapes or to group them into records, and the model
+  space records are let go as their entities are built.
+
 ## 0.17.15
 
 - JWW import: an entity's `color` is the ACI Jw_cad writes for its pen color when

@@ -825,8 +825,15 @@ def read_dxf_file(
         )
     selected_encoding, encoding_source = _select_dxf_encoding(raw, encoding)
     dxf_text = raw.decode(selected_encoding, errors="replace")
+    del raw
     replacement_characters = dxf_text.count("�")
-    affected_lines = sum("�" in line for line in dxf_text.splitlines())
+    # Splitting the text into lines only to count them costs as much memory as the
+    # text, so it is done only when something was replaced
+    affected_lines = (
+        sum("�" in line for line in dxf_text.splitlines())
+        if replacement_characters
+        else 0
+    )
 
     import_diagnostics.append(
         ImportDiagnostic(
@@ -860,8 +867,12 @@ def read_dxf_file(
         )
         _warn(warnings, message)
 
-    document = dxf_to_ir(
-        dxf_text,
+    # As dxf_to_ir, but the text is let go once it is split into pairs (the pairs
+    # hold strings of their own), so it is not kept while the IR is built
+    pairs = _parse_pairs(dxf_text, warnings=warnings, diagnostics=import_diagnostics)
+    del dxf_text
+    document = _pairs_to_ir(
+        pairs,
         ir_version=ir_version,
         validate=validate,
         warnings=warnings,
@@ -1032,13 +1043,17 @@ def _pairs_to_ir(
     diagnostics: list[ImportDiagnostic] | None,
     model3d: _model3d.Model3DCollector | None = None,
 ) -> dict[str, Any]:
-    pairs = [
-        (code, _decode_dxf_text_escapes(value))
-        if "\\U+" in value or "\\M+" in value
-        else (code, value)
-        for code, value in pairs
-    ]
+    """Build the IR from the pairs of a DXF.
+
+    The list given is used up: escapes are decoded in place, and the list is emptied
+    once its sections are split off, so that a large drawing does not hold the pairs
+    two or three times over while its IR is built (a synthetic 72 MB DXF peaked at 2.2 GB).
+    """
+    for index, (code, value) in enumerate(pairs):
+        if "\\U+" in value or "\\M+" in value:
+            pairs[index] = (code, _decode_dxf_text_escapes(value))
     sections = _split_sections(pairs)
+    pairs.clear()
     if not sections:
         # Lenient pairing must not turn arbitrary bytes into an empty drawing.
         raise ValueError("Not a DXF document: no SECTION record found")
@@ -1050,10 +1065,11 @@ def _pairs_to_ir(
     # Paper-space entities (group 67 = 1) are drawn on a sheet, in paper
     # coordinates. They are kept apart from model space, as layouts.
     model_records, paper_records = _split_paper_space_records(
-        _pairs_to_records(sections.get("ENTITIES", []))
+        _pairs_to_records(sections.pop("ENTITIES", []))
     )
     dimstyles = _dimstyle_sizes(sections.get("TABLES", []))
     image_defs = _image_definitions(sections.get("OBJECTS", []))
+    # The model space records are let go as they are converted
     entities = _entity_records_to_ir(
         model_records,
         warnings=warnings,
@@ -1062,7 +1078,9 @@ def _pairs_to_ir(
         dimstyles=dimstyles,
         image_defs=image_defs,
         model3d=model3d,
+        release_records=True,
     )
+    del model_records
     paper_space_blocks: dict[str, list[tuple[str, list[DXFPair]]]] = {}
     blocks = _blocks_to_ir(
         sections.get("BLOCKS", []),
@@ -1648,8 +1666,14 @@ def _select_dxf_encoding(raw: bytes, requested: str) -> tuple[str, str]:
 
 
 def _raw_header_string(raw: bytes, name: str) -> str | None:
-    """Value of a string header variable, read before the encoding is known."""
-    text = raw.decode("latin-1")
+    """Value of a string header variable, read before the encoding is known.
+
+    Only the HEADER section, which a DXF starts with, is split into lines: splitting
+    a whole large file, once for every variable looked up, took more memory than
+    reading it.
+    """
+    end = raw.find(b"ENDSEC")
+    text = (raw if end < 0 else raw[:end]).decode("latin-1")
     lines = text.splitlines()
     for index in range(0, len(lines) - 3, 2):
         if lines[index].strip() != "9":
@@ -2464,6 +2488,7 @@ def _entity_records_to_ir(
     dimstyles: dict[str, dict[str, float]] | None = None,
     image_defs: dict[str, dict[str, Any]] | None = None,
     model3d: _model3d.Model3DCollector | None = None,
+    release_records: bool = False,
 ) -> list[dict[str, Any]]:
     projection = _detect_axis_projection(records)
     if projection is not None:
@@ -2494,6 +2519,7 @@ def _entity_records_to_ir(
         image_defs=image_defs,
         model3d=model3d,
         model3d_scope=None,
+        release_records=release_records,
     )
 
 
@@ -2954,14 +2980,16 @@ def _pairs_to_records(pairs: list[DXFPair]) -> list[tuple[str, list[DXFPair]]]:
     current_kind: str | None = None
     current_pairs: list[DXFPair] = []
 
-    for code, value in pairs:
+    for pair in pairs:
+        code, value = pair
         if code == 0:
             if current_kind is not None:
                 records.append((current_kind, current_pairs))
             current_kind = value.strip().upper()
             current_pairs = []
         elif current_kind is not None:
-            current_pairs.append((code, value))
+            # the pair itself, not a copy: a large drawing has millions of them
+            current_pairs.append(pair)
 
     if current_kind is not None:
         records.append((current_kind, current_pairs))
@@ -3069,6 +3097,7 @@ def _records_to_entities(
     image_defs: dict[str, dict[str, Any]] | None = None,
     model3d: _model3d.Model3DCollector | None = None,
     model3d_scope: Any = None,
+    release_records: bool = False,
 ) -> list[dict[str, Any]]:
     """Convert entity records to IR entities.
 
@@ -3076,17 +3105,26 @@ def _records_to_entities(
     unparsable numbers, degenerate geometry that fails IR validation, ...) is
     reported through ``DXF_ENTITY_CONVERSION_FAILED`` and skipped, so a single bad
     entity no longer rejects the whole drawing.
+
+    With ``release_records`` the records are used up: each is replaced by an empty
+    one once converted (the loop only looks ahead), and the list is emptied at the
+    end, so the pairs of a large drawing are let go while its entities are built.
     """
     from cad2d_ir.schema import IRValidationError, validate_entity
 
     entities: list[dict[str, Any]] = []
     used_ids: set[str] = set()
     record_index = 0
+    released = 0
     serial = 1
     if in_block is None:
         in_block = context != "ENTITIES"
 
     while record_index < len(records):
+        if release_records:
+            while released < record_index:
+                records[released] = _RELEASED_RECORD
+                released += 1
         kind, pairs = records[record_index]
         consumed = 1
         entity: dict[str, Any] | None = None
@@ -3314,7 +3352,14 @@ def _records_to_entities(
             serial += 1
         record_index += consumed
 
+    if release_records:
+        records.clear()
     return entities
+
+
+# What a converted record is replaced by when the records are used up
+# (_records_to_entities with release_records)
+_RELEASED_RECORD: tuple[str, list[DXFPair]] = ("", [])
 
 
 def _points3_sequence(
@@ -3496,7 +3541,12 @@ def _collect_dxf_model3d(
         elif kind in {"SOLID", "TRACE"}:
             extrusion = _extrusion_from_pairs(pairs)
             corners = []
-            for x_code, y_code, z_code in ((10, 20, 30), (11, 21, 31), (12, 22, 32), (13, 23, 33)):
+            for x_code, y_code, z_code in (
+                (10, 20, 30),
+                (11, 21, 31),
+                (12, 22, 32),
+                (13, 23, 33),
+            ):
                 if _first_float(pairs, x_code, default=None) is None:
                     continue
                 corners.append(
@@ -3545,7 +3595,12 @@ def _collect_dxf_model3d_unconverted(
     try:
         if kind == "3DFACE":
             corners = []
-            for x_code, y_code, z_code in ((10, 20, 30), (11, 21, 31), (12, 22, 32), (13, 23, 33)):
+            for x_code, y_code, z_code in (
+                (10, 20, 30),
+                (11, 21, 31),
+                (12, 22, 32),
+                (13, 23, 33),
+            ):
                 if _first_float(pairs, x_code, default=None) is None:
                     continue
                 corners.append(_point3_from_pairs(pairs, x_code, y_code, z_code))
@@ -3591,7 +3646,11 @@ def _mesh_triangles_from_pairs(pairs: list[DXFPair]) -> list[Any]:
             vertices[-1] = (current[0], current[1], current[2])
         elif code == 93 and face_list_size is None:
             face_list_size = int(float(value))
-        elif code == 90 and face_list_size is not None and len(face_values) < face_list_size:
+        elif (
+            code == 90
+            and face_list_size is not None
+            and len(face_values) < face_list_size
+        ):
             face_values.append(int(float(value)))
     faces: list[list[int]] = []
     index = 0

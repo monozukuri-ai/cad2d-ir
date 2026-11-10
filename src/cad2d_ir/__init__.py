@@ -51,7 +51,7 @@ from cad2d_ir.importers import (
 )
 from cad2d_ir.schema import IRValidationError, load_schema, validate_ir
 
-__version__ = "0.17.15"
+__version__ = "0.17.16"
 
 __all__ = [
     "__version__",
