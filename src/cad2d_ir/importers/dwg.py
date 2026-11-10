@@ -401,7 +401,10 @@ def dwg_document_to_ir(
         text_style_names=text_style_names,
         default_text_style=default_text_style,
         model3d=(
-            Model3DCollector(curve_segments=import_options.curve_segments)
+            Model3DCollector(
+                curve_segments=import_options.curve_segments,
+                stats_only=import_options.keep_3d == "stats",
+            )
             if import_options.keep_3d
             else None
         ),

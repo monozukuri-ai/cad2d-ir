@@ -571,6 +571,19 @@ def is_planar(points: Sequence[Point3]) -> bool:
 # ---------------------------------------------------------------------------
 
 
+# The z difference within which a triangle is horizontal; heights are compared
+# to six decimals, as ``elevations`` are
+_HORIZONTAL_TOLERANCE = 1e-6
+
+
+def _horizontal_level(triangle: Sequence[Sequence[float]]) -> float | None:
+    """The height of a horizontal triangle (six decimals), ``None`` if it is not."""
+    zs = [float(corner[2]) for corner in triangle]
+    if max(zs) - min(zs) > _HORIZONTAL_TOLERANCE:
+        return None
+    return round(zs[0], 6)
+
+
 @dataclass(slots=True)
 class _Scope:
     curves: list[dict[str, Any]] = field(default_factory=list)
@@ -598,10 +611,25 @@ class Model3DCollector:
     definition (the DWG importer uses block header handles and maps them to
     the final IR block names at :meth:`finalize`). Entries keep a reference to
     their IR entity so ids assigned later are picked up when finalizing.
+
+    With ``stats_only`` (``ImportOptions(keep_3d="stats")``) nothing is kept but
+    the counts: the side channel then has ``stats`` and ``unsupported`` only,
+    and ``stats_only: True``. Most drawings are flat, and the geometry of a
+    flat drawing is only thrown away again (its curves alone took as much
+    memory as the IR), so a caller can ask for the counts first and import
+    again with ``keep_3d=True`` when :func:`has_3d_content` says so.
     """
 
-    def __init__(self, *, curve_segments: int = 96) -> None:
+    def __init__(self, *, curve_segments: int = 96, stats_only: bool = False) -> None:
         self.curve_segments = max(8, int(curve_segments))
+        self.stats_only = bool(stats_only)
+        self._curves_total = 0
+        self._curves_3d = 0
+        self._elevations: set[float] = set()
+        self._face_triangles = 0
+        self._faces_3d = 0
+        self._levels: set[float] = set()
+        self._insert_cells = 0
         self._scopes: dict[Any, _Scope] = {}
         self._pending_inserts: list[_PendingInsert] = []
         self._block_base_points: dict[Any, Point3] = {}
@@ -631,6 +659,15 @@ class Model3DCollector:
     ) -> None:
         if len(points) < 2:
             return
+        if self.stats_only:
+            first_z = float(points[0][2])
+            self._curves_total += 1
+            if all(abs(float(point[2]) - first_z) <= _EPSILON for point in points):
+                self._elevations.add(round(first_z, 6))
+                self._levels.add(round(first_z, 6))
+            else:
+                self._curves_3d += 1
+            return
         coordinates = [[float(x), float(y), float(z)] for x, y, z in points]
         first_z = coordinates[0][2]
         planar = all(abs(point[2] - first_z) <= _EPSILON for point in coordinates)
@@ -655,6 +692,15 @@ class Model3DCollector:
         triangles: Sequence[Triangle],
     ) -> None:
         if not triangles:
+            return
+        if self.stats_only:
+            self._face_triangles += len(triangles)
+            for triangle in triangles:
+                level = _horizontal_level(triangle)
+                if level is None:
+                    self._faces_3d += 1
+                else:
+                    self._levels.add(level)
             return
         self._scope(scope).faces.append(
             {
@@ -681,6 +727,9 @@ class Model3DCollector:
         column_spacing: float = 0.0,
         row_spacing: float = 0.0,
     ) -> None:
+        if self.stats_only:
+            self._insert_cells += max(1, int(rows)) * max(1, int(columns))
+            return
         cells: list[tuple[int, int, Point3]] = []
         radians = math.radians(rotation_deg)
         cos_r = math.cos(radians)
@@ -727,6 +776,23 @@ class Model3DCollector:
         block_names: Mapping[Any, str] | None = None,
     ) -> dict[str, Any]:
         """Resolve ids and block names; return the side-channel dictionary."""
+        if self.stats_only:
+            return {
+                "version": SIDE_CHANNEL_VERSION,
+                "units": units,
+                "stats_only": True,
+                "unsupported": dict(sorted(self.unsupported.items())),
+                "stats": {
+                    "curves_total": self._curves_total,
+                    "curves_3d": self._curves_3d,
+                    "elevations": len(self._elevations),
+                    "faces": self._face_triangles,
+                    "faces_3d": self._faces_3d,
+                    "levels": len(self._levels),
+                    "inserts": self._insert_cells,
+                    "unsupported": sum(self.unsupported.values()),
+                },
+            }
         names = dict(block_names or {})
 
         def block_name_of(key: Any) -> str:
@@ -800,11 +866,26 @@ class Model3DCollector:
         elevations = {
             round(curve["points"][0][2], 6) for curve in all_curves if curve["planar"]
         }
+        levels = set(elevations)
+        faces_3d = 0
+        for face in all_faces:
+            for triangle in face["triangles"]:
+                level = _horizontal_level(triangle)
+                if level is None:
+                    faces_3d += 1
+                else:
+                    levels.add(level)
         stats = {
             "curves_total": len(all_curves),
             "curves_3d": sum(not curve["planar"] for curve in all_curves),
             "elevations": len(elevations),
             "faces": sum(len(face["triangles"]) for face in all_faces),
+            # Faces a flat drawing cannot show: a horizontal one (a SOLID or TRACE,
+            # such as a dimension arrow) lies in the drawing like its curves, and
+            # only adds its height to ``levels``, the heights of the planar curves
+            # and the horizontal faces together
+            "faces_3d": faces_3d,
+            "levels": len(levels),
             "inserts": len(inserts)
             + sum(len(block["inserts"]) for block in blocks.values()),
             "unsupported": sum(self.unsupported.values()),

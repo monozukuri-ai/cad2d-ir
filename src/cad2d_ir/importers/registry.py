@@ -69,7 +69,10 @@ def import_file(
         warnings: list[str] = []
         diagnostics: list[ImportDiagnostic] = []
         collector = (
-            Model3DCollector(curve_segments=import_options.curve_segments)
+            Model3DCollector(
+                curve_segments=import_options.curve_segments,
+                stats_only=import_options.keep_3d == "stats",
+            )
             if import_options.keep_3d
             else None
         )

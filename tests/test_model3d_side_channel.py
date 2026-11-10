@@ -786,6 +786,49 @@ def test_public_api_exposes_the_side_channel(tmp_path: Path) -> None:
     assert convert_file_to_ir(source).model3d is None
 
 
+def test_stats_only_counts_the_same_without_keeping_the_geometry(tmp_path: Path) -> None:
+    """``keep_3d="stats"``: the counts of ``keep_3d=True`` and nothing else, so a
+    caller can look for 3D content first and import again only when there is some."""
+    full = convert_dxf_text_to_ir(_dxf_fixture(), keep_3d=True).model3d
+    counted = convert_dxf_text_to_ir(_dxf_fixture(), keep_3d="stats").model3d
+    assert full is not None and counted is not None
+    assert counted == {
+        "version": full["version"],
+        "units": full["units"],
+        "stats_only": True,
+        "unsupported": full["unsupported"],
+        "stats": full["stats"],
+    }
+    assert has_3d_content(counted)
+
+    source = tmp_path / "model.dxf"
+    source.write_text(_dxf_fixture(), encoding="ascii")
+    assert convert_file_to_ir(source, keep_3d="stats").model3d == counted
+
+    dwg_full = dwg_document_to_ir(
+        _dwg_document(),
+        block_names_by_handle={100: "SYMBOL", 31: "*Model_Space"},
+        options=ImportOptions(keep_3d=True, strict=False),
+    )
+    dwg_counted = dwg_document_to_ir(
+        _dwg_document(),
+        block_names_by_handle={100: "SYMBOL", 31: "*Model_Space"},
+        options=ImportOptions(keep_3d="stats", strict=False),
+    )
+    assert dwg_counted.model3d is not None and dwg_full.model3d is not None
+    assert dwg_counted.model3d["stats"] == dwg_full.model3d["stats"]
+    assert dwg_counted.model3d["unsupported"] == dwg_full.model3d["unsupported"]
+    assert "curves" not in dwg_counted.model3d
+    assert dwg_counted.document == dwg_full.document
+
+    # A flat drawing: nothing a 2D drawing cannot show
+    flat = convert_dxf_text_to_ir(
+        _dxf(["0\nLINE\n8\n0\n10\n0\n20\n0\n11\n5\n21\n5"]), keep_3d="stats"
+    ).model3d
+    assert flat is not None and flat["stats"]["curves_total"] == 1
+    assert not has_3d_content(flat)
+
+
 def test_dwg_file_round_trip_through_ezdwg(tmp_path: Path) -> None:
     ezdwg = pytest.importorskip("ezdwg")
     drawing = ezdwg.new("AC1015")

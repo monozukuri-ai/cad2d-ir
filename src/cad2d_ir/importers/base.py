@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 from cad2d_ir.constants import CURRENT_IR_VERSION
 from cad2d_ir.diagnostics import DiagnosticSeverity
@@ -72,8 +72,9 @@ class ImportOptions:
     entity_provenance: bool = True
     # DWG/DXF: 投影前の 3D 幾何(折線・面・ブロック配置・未対応の 3D 要素の件数)を
     # IR とは別の側道 ``ImportResult.model3d`` で返す。IR 自体は 2D のまま変わらない。
-    # 形は cad2d_ir.model3d を参照
-    keep_3d: bool = False
+    # 形は cad2d_ir.model3d を参照。"stats" は件数だけを集める(幾何を持たないので
+    # メモリを使わない。has_3d_content で 3D の有無を見てから True で読み直す使い方)
+    keep_3d: bool | Literal["stats"] = False
 
     def __post_init__(self) -> None:
         if not 8 <= self.curve_segments <= 4096:

@@ -543,10 +543,20 @@ The dictionary (`cad2d_ir.model3d.SIDE_CHANNEL_VERSION == 1`) holds:
   (3DSOLID, REGION, BODY, surfaces, DWG MESH).
 - `stats`: `curves_total`, `curves_3d` (curves that do not lie in a plane
   parallel to XY), `elevations` (distinct z levels of the ones that do),
-  `faces` (triangles), `inserts`, `unsupported`. `planar` on a curve means
+  `faces` (triangles), `faces_3d` (the triangles that are not horizontal: a
+  horizontal one, such as the `SOLID` of a dimension arrow, lies in the drawing
+  like its curves), `levels` (distinct z levels of the planar curves and the
+  horizontal triangles together), `inserts`, `unsupported`. `planar` on a curve means
   "constant z". `cad2d_ir.model3d.has_3d_content` tells whether any of this
   exceeds what the 2D drawing shows (non-planar curves, faces, unreadable
   solids, or more than one elevation).
+
+`ImportOptions(keep_3d="stats")` collects the counts only: the side channel is
+then `version`, `units`, `stats_only: true`, `unsupported` and `stats`, without
+the lists. The lists hold every curve of the drawing as points, about as much
+memory as the IR itself, and most drawings are flat; a caller that builds a
+model only for drawings with 3D content can read the counts first and import
+again with `keep_3d=True` when they call for one.
 
 Paper-space entities are not collected. Text, dimensions, hatches, images and
 points are not collected either. Known limits: ezdwg does not expose the

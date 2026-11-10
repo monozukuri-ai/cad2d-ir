@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.17.17
+
+- `keep_3d="stats"` (`ImportOptions`, `convert_file_to_ir`, `convert_dwg_file_to_ir`,
+  `convert_dxf_file_to_ir`, `convert_dxf_text_to_ir`): the 3D side channel with
+  its counts only (`stats_only: true`, no `curves`, `faces`, `inserts` or
+  `blocks`). The lists hold every curve of a drawing as points, about as much
+  memory as the IR, and are thrown away for a flat drawing; a caller can read
+  the counts first and import again with `keep_3d=True` when the drawing has
+  3D content.
+- The side channel `stats` have `faces_3d`, the triangles that are not
+  horizontal, and `levels`, the distinct heights of the planar curves and the
+  horizontal triangles together. A horizontal `SOLID` or `TRACE` (a dimension
+  arrow) is a face, but nothing a flat drawing cannot show.
+
 ## 0.17.16
 
 - DXF import uses about half the memory on a large drawing (a synthetic 72 MB DXF of

@@ -5,7 +5,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from cad2d_ir.codecs.dxf import (
     EntityMapEntry,
@@ -192,11 +192,15 @@ def convert_dxf_text_to_ir(
     *,
     ir_version: str = CURRENT_IR_VERSION,
     validate: bool = True,
-    keep_3d: bool = False,
+    keep_3d: bool | Literal["stats"] = False,
     curve_segments: int = 96,
 ) -> DxfToIrResult:
     warnings: list[str] = []
-    collector = Model3DCollector(curve_segments=curve_segments) if keep_3d else None
+    collector = (
+        Model3DCollector(curve_segments=curve_segments, stats_only=keep_3d == "stats")
+        if keep_3d
+        else None
+    )
     document = dxf_to_ir(
         dxf_text,
         ir_version=ir_version,
@@ -234,12 +238,16 @@ def convert_dxf_file_to_ir(
     ir_version: str = CURRENT_IR_VERSION,
     validate: bool = True,
     encoding: str = "auto",
-    keep_3d: bool = False,
+    keep_3d: bool | Literal["stats"] = False,
     curve_segments: int = 96,
 ) -> DxfToIrResult:
     warnings: list[str] = []
     diagnostics: list[ImportDiagnostic] = []
-    collector = Model3DCollector(curve_segments=curve_segments) if keep_3d else None
+    collector = (
+        Model3DCollector(curve_segments=curve_segments, stats_only=keep_3d == "stats")
+        if keep_3d
+        else None
+    )
     document = read_dxf_file(
         path,
         ir_version=ir_version,
@@ -277,7 +285,7 @@ def convert_file_to_ir(
     curve_segments: int = 96,
     encoding: str = "auto",
     entity_provenance: bool = True,
-    keep_3d: bool = False,
+    keep_3d: bool | Literal["stats"] = False,
 ) -> ImportResult:
     """Convert a supported CAD file to IR using format detection or an explicit adapter.
 
@@ -286,6 +294,9 @@ def convert_file_to_ir(
     imports of very large drawings.
     ``keep_3d=True`` (DWG/DXF) returns the geometry before XY projection in
     ``ImportResult.model3d``; see ``cad2d_ir.model3d``.
+    ``keep_3d="stats"`` returns only its counts there, without holding the
+    geometry: check them with ``cad2d_ir.model3d.has_3d_content`` and import
+    again with ``keep_3d=True`` when the drawing has 3D content.
     """
     return import_file(
         path,
@@ -353,7 +364,7 @@ def convert_dwg_file_to_ir(
     validate: bool = True,
     strict: bool = True,
     curve_segments: int = 96,
-    keep_3d: bool = False,
+    keep_3d: bool | Literal["stats"] = False,
 ) -> ImportResult:
     """Convert a DWG file directly to IR without an intermediate DXF."""
     from cad2d_ir.importers.dwg import convert_dwg_file_to_ir as import_dwg
