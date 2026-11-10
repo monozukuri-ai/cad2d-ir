@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.17.19
+
+- PDF import joins the strokes of a dashed line. A printer driver draws a dashed
+  line as its dashes, each one a stroke of its own; strokes of one pen on one
+  straight line with even gaps now become a single `LINE` with a linetype that
+  carries the measured pattern (`PDF_DASHED_LINES_REBUILT`). Plain dashed lines,
+  chain lines and double-chain lines are read. Lettering drawn as lines, hatch
+  lines broken by labels and shapes filled with scan strokes are left alone, and
+  dashed arcs are not joined. `rebuild_dashes=False` turns it off.
+- PDF import sorts a PDF without optional content groups into layers: `TEXT`,
+  `FILL`, `IMAGE`, and strokes by linetype class and line width (`LINE_0.25`,
+  `CENTER_0.13`), with the colour in the name when there are several
+  (`PDF_LAYERS_INFERRED`). `infer_layers=False` keeps everything on layer `0`.
+- PDF import takes the plot scale from the title block when the dimensions do
+  not settle it (`SCALE 1:50`, `縮尺 1/100`, or a bare ratio beside such a word;
+  `PDF_SCALE_FROM_TITLE_BLOCK`, `paper_scale.labelled_scale`).
+  `header.metadata.pdf.paper_scale` has `method` (`"dimensions"` or
+  `"title_block"`) and `known`, which is true also for a scale of 1:1.
+- PDF statistics have `dashed_lines_rebuilt`, `dash_pieces_joined`,
+  `inferred_layers`, `strokes` and `short_strokes` (straight strokes under 1 mm:
+  a plot whose text was drawn as lines has thousands).
+
 ## 0.17.18
 
 - DXF export uses less memory on a large drawing, with the same output. The

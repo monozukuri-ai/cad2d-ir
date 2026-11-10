@@ -372,7 +372,7 @@ The PDF adapter reads a vector PDF's page objects natively through PDFium
 not CAD structure, so this is the one importer that infers structure. Every
 inference is disclosed by a `PDF_*` diagnostic and counted in `statistics`
 (`bezier_arcs`, `polyline_arc_refits`, `splines`, `fill_as_line`, `text_runs`,
-`images`, `paper_scale`). `convert_pdf_file_to_ir` reads a file;
+`dashed_lines_rebuilt`, `inferred_layers`, `images`, `paper_scale`). `convert_pdf_file_to_ir` reads a file;
 `pdf_document_to_ir` accepts an open `pypdfium2.PdfDocument`.
 
 | PDF object | IR mapping | Fidelity handling |
@@ -385,7 +385,7 @@ inference is disclosed by a `PDF_*` diagnostic and counted in `statistics`
 | filled path | solid `HATCH`; a thin rectangle (at most 1 mm wide, four times longer) becomes a `LINE` with that lineweight | curves flattened at 0.05 mm (`PDF_HATCH_FLATTENED`); `PDF_FILL_AS_LINE`; many small filled curve shapes raise `PDF_TEXT_AS_OUTLINES` |
 | stroke width, stroke/fill colour | `lineweight_mm`, `color` (`#RRGGBB`) | paper width in millimetres |
 | dash array | `tables.linetypes` entry named by class (`DASHED`, `DOT`, `DASHDOT`, `CENTER`, `DIVIDE`, `PHANTOM`, `PDF_DASH`; `_2`, `_3` when patterns differ) | pattern in paper millimetres |
-| `/OC` marked content | layer named after the optional content group; other objects on layer `0` | `PDF_LAYERS_FROM_OCG`; visibility expressions are not evaluated |
+| `/OC` marked content | layer named after the optional content group; other objects on layer `0` | `PDF_LAYERS_FROM_OCG`; visibility expressions are not evaluated. Without any group the layers are inferred (below) |
 | rectangular clip | applied exactly to lines, polylines, arcs and circles; objects entirely outside are dropped | `PDF_CLIPPED_OUT`; other clip shapes keep objects whole (`PDF_CLIP_APPROXIMATED`) |
 | text (PDFium text page) | `TEXT` per glyph run: insert at the first glyph origin, rotation and width factor from the text matrix, `style` `PDF_<font>` | height is the measured capital/digit height for axis-aligned Latin text, the em size for CJK text, else 0.72 em; invisible text (render mode 3) is skipped (`PDF_TEXT_INVISIBLE_SKIPPED`) |
 | image | `IMAGE` placement with pixel size in metadata; `embed_images=True` embeds PNG data up to 16 Mpx | `PDF_IMAGE_PLACEHOLDER` / `PDF_IMAGE_TOO_LARGE` |
@@ -405,8 +405,48 @@ cluster within 3 % wins. When at least four pairs and a quarter of the numeric
 texts agree, the drawing is scaled to model millimetres, `header.linetype_scale`
 keeps the dash lengths on paper, and `PDF_SCALE_ESTIMATED` reports the label
 (`1:50`); otherwise the drawing stays in paper millimetres (`PDF_SCALE_UNKNOWN`).
+When the dimensions do not settle it, the scale a title block states is taken
+(`paper_scale.labelled_scale`): a text that names the scale (`SCALE 1:50`,
+`縮尺 1/100`, `尺度 2:1`) or a bare ratio with such a word in a cell close by.
+A label on a single view (`S=1:2`) is not used, and labels that disagree are
+not either. `PDF_SCALE_FROM_TITLE_BLOCK` reports it, with
+`paper_scale.method` `"title_block"` (`"dimensions"` for the estimate).
 `scale="none"` keeps paper millimetres; a number applies that factor
-(`PDF_SCALE_APPLIED`). `header.metadata.pdf.coordinate_space` says which.
+(`PDF_SCALE_APPLIED`). `header.metadata.pdf.coordinate_space` says which, and
+`paper_scale.known` is true whenever the scale is known, also when it is 1:1
+and nothing had to be scaled.
+
+A printer driver draws a dashed line as its dashes, each one a stroke of its
+own, and writes no layers. Two passes put that structure back
+(`cad2d_ir.importers.pdf_structure`), each with a switch on
+`convert_pdf_file_to_ir`:
+
+- `rebuild_dashes=True`: strokes of one pen that lie on one straight line with
+  even gaps become a single `LINE` with a linetype that carries the measured
+  pattern in paper millimetres (`PDF_DASHED_LINES_REBUILT`, statistics
+  `dashed_lines_rebuilt` and `dash_pieces_joined`, `metadata.pdf.dash_pieces`
+  on the line). Plain dashed lines, chain lines (long, short) and double-chain
+  lines (long, short, short) are read; the long dash of a chain line differs
+  from part to part of a centre line and is not compared. The end dashes may
+  be cut or stretched, a dash may be drawn in parts end to end, and dashes
+  merged where dashed lines cross are tolerated. Left alone: fewer than three
+  pieces, uneven gaps, long pieces with only two gaps (a line broken by
+  labels), a single short piece between two lines unless the line is
+  horizontal or vertical and the piece small, strokes that other strokes
+  start from (lettering drawn as lines) and rows of strokes right beside each
+  other (shapes filled with scan strokes). Dashed arcs and circles are not
+  joined.
+- `infer_layers=True`: when the PDF has no optional content groups, text goes
+  to layer `TEXT`, fills to `FILL`, images to `IMAGE`, and strokes to
+  `<linetype class>_<width in mm>` such as `LINE_0.25` or `CENTER_0.13`, with
+  `_<RRGGBB>` appended when the strokes have several colours
+  (`PDF_LAYERS_INFERRED`, statistics `inferred_layers`). Above 24 layers the
+  colour, and then the width, is left out of the names.
+
+`statistics.short_strokes` counts the straight strokes under 1 mm against
+`statistics.strokes` (lines, polylines, arcs and circles, before the dashes are
+joined). A plot whose text was drawn as lines has thousands of them and no
+`TEXT`.
 
 Provenance: `source.id` is `page:object index` (nested forms as `3/1`),
 `metadata.pdf` keeps the page, the optional content group, the fill rule, the

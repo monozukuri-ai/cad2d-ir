@@ -628,13 +628,19 @@ def convert_pdf_file_to_ir(
     pages: Sequence[int] | None = None,
     scale: str | float = "auto",
     embed_images: bool = False,
+    rebuild_dashes: bool = True,
+    infer_layers: bool = True,
 ) -> ImportResult:
     """Rebuild the CAD structure of a vector PDF directly as IR.
 
     Requires the ``pdf`` extra (``pypdfium2``). Coordinates are paper
     millimetres of the page as displayed; with ``scale="auto"`` the plot scale
-    is recovered from the dimension texts and applied when enough of them
-    agree. ``pages`` selects 1-based pages (default: all, tiled along +X).
+    is recovered from the dimension texts, or else read off the title block,
+    and applied; a number is the scale to apply (model millimetres per paper
+    millimetre). ``pages`` selects 1-based pages (default: all, tiled along +X).
+    ``rebuild_dashes`` joins the separate strokes of dashed lines into single
+    lines with a linetype, and ``infer_layers`` sorts the entities of a PDF
+    without layers into layers by kind, linetype and line width.
     """
     from cad2d_ir.importers.pdf import convert_pdf_file_to_ir as import_pdf
 
@@ -649,6 +655,8 @@ def convert_pdf_file_to_ir(
         pages=pages,
         scale=scale,
         embed_images=embed_images,
+        rebuild_dashes=rebuild_dashes,
+        infer_layers=infer_layers,
     )
 
 

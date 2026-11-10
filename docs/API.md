@@ -45,16 +45,19 @@ Format-specific helpers are also public:
 - `convert_jww_file_to_ir(path, ...)`
 - `convert_jws_file_to_ir(path, ...)` (Jw_cad registered symbol, `ezjww` 0.7+)
 - `convert_mi_file_to_ir(path, *, encoding="auto", ...)`
-- `convert_pdf_file_to_ir(path, *, pages=None, scale="auto", embed_images=False, ...)`
+- `convert_pdf_file_to_ir(path, *, pages=None, scale="auto", embed_images=False, rebuild_dashes=True, infer_layers=True, ...)`
 - `convert_sxf_file_to_ir(path, ...)`
 - `convert_dxf_text_to_ir(dxf_text, ...)`
 
 PDF import reads page objects through PDFium (`cad2d-ir[pdf]`). `pages` selects
 1-based pages (default: all, tiled along +X); `scale="auto"` recovers the plot
 scale from the dimension texts and scales the drawing to model millimetres when
-enough of them agree (`PDF_SCALE_ESTIMATED`), `"none"` keeps paper millimetres and
+enough of them agree (`PDF_SCALE_ESTIMATED`) or else takes the scale the title
+block states (`PDF_SCALE_FROM_TITLE_BLOCK`), `"none"` keeps paper millimetres and
 a number applies that many model millimetres per paper millimetre;
-`embed_images=True` stores raster images as PNG data. `cad2d_ir.importers.pdf.
+`embed_images=True` stores raster images as PNG data; `rebuild_dashes` joins the
+separate strokes of dashed lines and `infer_layers` sorts a PDF without layers
+into layers by kind, linetype and line width (both on by default). `cad2d_ir.importers.pdf.
 pdf_document_to_ir` accepts an already open `pypdfium2.PdfDocument` (for example
 built from bytes). The scale recovery itself is public as `cad2d_ir.paper_scale`.
 

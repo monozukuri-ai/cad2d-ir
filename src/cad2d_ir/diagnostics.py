@@ -1220,6 +1220,18 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "PDF import",
         "Layers were taken from optional content group names.",
     ),
+    "PDF_LAYERS_INFERRED": DiagnosticCode(
+        "info",
+        "detected",
+        "PDF import",
+        "The PDF has no layers; entities were sorted into layers by kind, linetype and line width.",
+    ),
+    "PDF_DASHED_LINES_REBUILT": DiagnosticCode(
+        "info",
+        "normalized",
+        "PDF import",
+        "Separate dash strokes on one line were joined into single lines with a dashed linetype.",
+    ),
     "PDF_POLYLINE_ARC_REFITTED": DiagnosticCode(
         "info",
         "normalized",
@@ -1321,6 +1333,12 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "normalized",
         "PDF import",
         "The plot scale recovered from dimension texts was applied; coordinates are model millimetres.",
+    ),
+    "PDF_SCALE_FROM_TITLE_BLOCK": DiagnosticCode(
+        "info",
+        "normalized",
+        "PDF import",
+        "The plot scale stated in the title block was applied; coordinates are model millimetres.",
     ),
     "PDF_SCALE_APPLIED": DiagnosticCode(
         "info",

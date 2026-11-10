@@ -51,6 +51,7 @@ from pathlib import Path
 from typing import Any
 
 from cad2d_ir import paper_scale
+from cad2d_ir.importers import pdf_structure
 from cad2d_ir.importers.base import (
     ImportDiagnostic,
     ImporterError,
@@ -72,6 +73,8 @@ FLATTEN_TOLERANCE_MM = 0.05
 FILL_AS_LINE_MAX_WIDTH_MM = 1.0
 # A closed stroked shape whose extent is at most this is a point marker.
 POINT_SHAPE_MAX_MM = 0.1
+# Shorter strokes are counted as lettering drawn as lines (``short_strokes``).
+SHORT_STROKE_MM = 1.0
 MAX_FORM_DEPTH = 16
 # Pixels above which an image is not embedded even with embed_images=True.
 MAX_EMBED_PIXELS = 16_000_000
@@ -2024,6 +2027,8 @@ def convert_pdf_file_to_ir(
     scale: str | float = "auto",
     embed_images: bool = False,
     page_gap_ratio: float = DEFAULT_PAGE_GAP_RATIO,
+    rebuild_dashes: bool = True,
+    infer_layers: bool = True,
 ) -> ImportResult:
     """Read a vector PDF with PDFium and rebuild its CAD structure as IR.
 
@@ -2032,6 +2037,9 @@ def convert_pdf_file_to_ir(
     scale to model millimetres when enough dimensions agree), ``"none"`` (keep
     paper millimetres) or a number of model millimetres per paper millimetre.
     ``embed_images`` stores raster images as PNG data in ``IMAGE`` entities.
+    ``rebuild_dashes`` joins the separate strokes of a dashed line into one line
+    with a linetype; ``infer_layers`` sorts the entities into layers by kind,
+    linetype and line width when the PDF has no optional content groups.
     """
     pypdfium2, _raw = _load_pdfium()
     source_path = Path(path)
@@ -2049,6 +2057,8 @@ def convert_pdf_file_to_ir(
             scale=scale,
             embed_images=embed_images,
             page_gap_ratio=page_gap_ratio,
+            rebuild_dashes=rebuild_dashes,
+            infer_layers=infer_layers,
         )
     finally:
         try:
@@ -2067,6 +2077,8 @@ def pdf_document_to_ir(
     scale: str | float = "auto",
     embed_images: bool = False,
     page_gap_ratio: float = DEFAULT_PAGE_GAP_RATIO,
+    rebuild_dashes: bool = True,
+    infer_layers: bool = True,
 ) -> ImportResult:
     """Convert an open :class:`pypdfium2.PdfDocument` to IR (see the module doc)."""
     pypdfium2, raw = _load_pdfium()
@@ -2163,6 +2175,29 @@ def pdf_document_to_ir(
 
     entities = _dedupe(entities, context)
 
+    # Strokes too short to be anything but lettering drawn as lines: a printer
+    # driver that does not keep text leaves thousands of them.
+    short_strokes = sum(
+        1
+        for e in entities
+        if e["kind"] == "LINE"
+        and math.hypot(e["p2"][0] - e["p1"][0], e["p2"][1] - e["p1"][1])
+        < SHORT_STROKE_MM
+    )
+    stroke_count = sum(
+        1 for e in entities if e["kind"] in ("LINE", "LWPOLYLINE", "ARC", "CIRCLE")
+    )
+
+    if rebuild_dashes:
+        entities, dashes = pdf_structure.rebuild_dashed_lines(
+            entities, lambda pattern: context.linetype([abs(v) for v in pattern])
+        )
+        context.note("dashed_lines_rebuilt", dashes["lines"])
+        context.note("dash_pieces_joined", dashes["pieces"])
+    inferred_layers: dict[str, int] = {}
+    if infer_layers and not any(layer != "0" for layer in context.layers):
+        inferred_layers = pdf_structure.infer_layers(entities, context.layers)
+
     # Paper scale
     factor: float | None = None
     scale_record: dict[str, Any] = {
@@ -2177,9 +2212,20 @@ def pdf_document_to_ir(
             scale_record["label"] = label
             if estimate.confident:
                 factor = paper_scale.paper_scale_value(label) or estimate.mm_per_unit
+                scale_record["method"] = "dimensions"
+        if factor is None:
+            # Too few dimensions agree: take the scale the title block states.
+            labelled = paper_scale.labelled_scale(texts)
+            if labelled is not None:
+                factor = labelled[0]
+                scale_record["label"] = paper_scale.snap_paper_scale(factor)
+                scale_record["method"] = "title_block"
+                scale_record["labels"] = labelled[1]
     elif not isinstance(scale, str):
         factor = float(scale)
         scale_record["label"] = paper_scale.snap_paper_scale(factor)
+    # The scale is known even when it is 1:1 and nothing has to be scaled.
+    scale_record["known"] = factor is not None
     if factor is not None and abs(factor - 1.0) <= 1e-9:
         factor = None
     if factor is not None:
@@ -2195,7 +2241,9 @@ def pdf_document_to_ir(
         bbox_min = [v * factor for v in bbox_min]
         bbox_max = [v * factor for v in bbox_max]
 
-    _append_diagnostics(context, frames, annotations, scale_record, factor)
+    _append_diagnostics(
+        context, frames, annotations, scale_record, factor, inferred_layers
+    )
 
     file_version = ctypes.c_int()
     version = None
@@ -2287,6 +2335,11 @@ def pdf_document_to_ir(
         "fill_as_line": context.counts["fill_as_line"],
         "points_from_tiny_shapes": context.counts["points_from_tiny_shapes"],
         "text_runs": context.counts["text_runs"],
+        "dashed_lines_rebuilt": context.counts["dashed_lines_rebuilt"],
+        "dash_pieces_joined": context.counts["dash_pieces_joined"],
+        "inferred_layers": dict(inferred_layers),
+        "strokes": stroke_count,
+        "short_strokes": short_strokes,
         "images": context.counts["images"],
         "annotations": annotations,
         "paper_scale": scale_record,
@@ -2302,6 +2355,7 @@ def _append_diagnostics(
     annotations: int,
     scale_record: dict[str, Any],
     factor: float | None,
+    inferred_layers: dict[str, int],
 ) -> None:
     counts = context.counts
     if len(frames) > 1:
@@ -2326,7 +2380,7 @@ def _append_diagnostics(
             action="normalized",
             details={"pages": rotated},
         )
-    if any(layer != "0" for layer in context.layers):
+    if not inferred_layers and any(layer != "0" for layer in context.layers):
         _diagnose(
             context,
             code="PDF_LAYERS_FROM_OCG",
@@ -2335,6 +2389,33 @@ def _append_diagnostics(
             action="detected",
             details={
                 "layers": sorted(layer for layer in context.layers if layer != "0")
+            },
+        )
+    if inferred_layers:
+        _diagnose(
+            context,
+            code="PDF_LAYERS_INFERRED",
+            severity="info",
+            message=(
+                f"The PDF has no layers; sorted the entities into {len(inferred_layers)} "
+                "layer(s) by kind, linetype and line width."
+            ),
+            action="detected",
+            details={"layers": dict(inferred_layers)},
+        )
+    if counts["dashed_lines_rebuilt"]:
+        _diagnose(
+            context,
+            code="PDF_DASHED_LINES_REBUILT",
+            severity="info",
+            message=(
+                f"Joined {counts['dash_pieces_joined']} separate dash stroke(s) into "
+                f"{counts['dashed_lines_rebuilt']} line(s) with a dashed linetype."
+            ),
+            action="normalized",
+            details={
+                "count": counts["dashed_lines_rebuilt"],
+                "pieces": counts["dash_pieces_joined"],
             },
         )
     if counts["polyline_arc_refits"]:
@@ -2495,7 +2576,19 @@ def _append_diagnostics(
             details={"count": counts["duplicates_removed"]},
         )
     if scale_record.get("mode") == "auto":
-        if factor is not None:
+        if factor is not None and scale_record.get("method") == "title_block":
+            _diagnose(
+                context,
+                code="PDF_SCALE_FROM_TITLE_BLOCK",
+                severity="info",
+                message=(
+                    f"Scaled the drawing from paper to model millimetres by {scale_record.get('label')}, "
+                    "the scale the title block states; the dimensions were too few to confirm it."
+                ),
+                action="normalized",
+                details=dict(scale_record),
+            )
+        elif factor is not None:
             _diagnose(
                 context,
                 code="PDF_SCALE_ESTIMATED",
@@ -2507,6 +2600,8 @@ def _append_diagnostics(
                 action="normalized",
                 details=dict(scale_record),
             )
+        elif scale_record.get("method") == "title_block":
+            pass  # the title block states 1:1: paper millimetres are model millimetres
         else:
             _diagnose(
                 context,

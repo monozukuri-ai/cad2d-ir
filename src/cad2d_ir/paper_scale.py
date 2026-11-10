@@ -252,6 +252,72 @@ def estimate_scale(
     return ScaleEstimate(float(median), len(chosen), spread, n_numeric, chosen)
 
 
+_SCALE_WORD = re.compile(r"SCALE|縮\s*尺|尺\s*度", re.IGNORECASE)
+_SCALE_RATIO = re.compile(r"(\d+(?:\.\d+)?)\s*[:：/／]\s*(\d+(?:\.\d+)?)")
+_SCALE_ONLY = re.compile(
+    r"^\s*[\(（]?\s*(?:S\s*[=＝]\s*)?(\d+(?:\.\d+)?)\s*[:：/／]\s*(\d+(?:\.\d+)?)\s*[\)）]?\s*$"
+)
+
+
+def _ratio_factor(a: str, b: str) -> float | None:
+    try:
+        paper, model = float(a), float(b)
+    except ValueError:
+        return None
+    if paper <= 0 or model <= 0 or (paper != 1.0 and model != 1.0):
+        return None
+    factor = model / paper
+    return factor if 0.001 <= factor <= 10000.0 else None
+
+
+def labelled_scale(texts: list[dict[str, Any]]) -> tuple[float, int] | None:
+    """Plot scale a title block states, as model millimetres per paper millimetre.
+
+    A text counts when it names the scale itself (``SCALE 1:50``, ``縮尺 1/100``)
+    or is a bare ratio (``1:50``) with such a word in a text close by, as in the
+    cells of a title block. A label on a view (``S=1:2``) does not: it is the
+    scale of that view. Returns the factor and how many labels state it, or
+    ``None`` when there is no label or the labels disagree.
+    """
+    words: list[tuple[float, float, float]] = []
+    for t in texts:
+        text = str(t.get("text") or "")
+        if _SCALE_WORD.search(text) and not _SCALE_RATIO.search(text):
+            x, y = t["insert"][0], t["insert"][1]
+            words.append((float(x), float(y), float(t.get("height") or 0.0)))
+    found: list[float] = []
+    for t in texts:
+        text = str(t.get("text") or "")
+        factor: float | None = None
+        if _SCALE_WORD.search(text):
+            m = _SCALE_RATIO.search(text)
+            if m:
+                factor = _ratio_factor(m.group(1), m.group(2))
+        else:
+            m = _SCALE_ONLY.match(text)
+            if m and "S" not in text.upper() and words:
+                x, y = float(t["insert"][0]), float(t["insert"][1])
+                height = float(t.get("height") or 0.0)
+                # The word sits left of the ratio or above it, within a few cells.
+                for wx, wy, wh in words:
+                    reach = 25.0 * max(height, wh, 1.0)
+                    if (
+                        abs(x - wx) <= reach
+                        and abs(y - wy) <= 0.3 * reach
+                        and (wx <= x + reach * 0.1)
+                    ):
+                        factor = _ratio_factor(m.group(1), m.group(2))
+                        break
+        if factor is not None:
+            found.append(factor)
+    if not found:
+        return None
+    first = found[0]
+    if any(abs(v / first - 1.0) > 1e-6 for v in found):
+        return None
+    return first, len(found)
+
+
 def snap_paper_scale(mm_per_paper_mm: float, tol: float = 0.02) -> str:
     """``"1:50"`` style label, snapped to a standard scale when within ``tol``."""
     if mm_per_paper_mm <= 0:

@@ -174,6 +174,8 @@ entity/source identifiers and structured details.
 | `PDF_PAGES_TILED` | warning | flattened | PDF import | Multiple pages were placed side by side in one IR modelspace with page offsets retained in metadata. |
 | `PDF_PAGE_ROTATED` | info | normalized | PDF import | The page /Rotate was applied so coordinates follow the page as displayed. |
 | `PDF_LAYERS_FROM_OCG` | info | detected | PDF import | Layers were taken from optional content group names. |
+| `PDF_LAYERS_INFERRED` | info | detected | PDF import | The PDF has no layers; entities were sorted into layers by kind, linetype and line width. |
+| `PDF_DASHED_LINES_REBUILT` | info | normalized | PDF import | Separate dash strokes on one line were joined into single lines with a dashed linetype. |
 | `PDF_POLYLINE_ARC_REFITTED` | info | normalized | PDF import | Evenly turning polyline runs that trace a circle were replaced by arcs or circles. |
 | `PDF_POINT_FROM_TINY_SHAPE` | info | normalized | PDF import | Closed shapes smaller than 0.1 mm (plotted point markers) were read as points. |
 | `PDF_FILL_AS_LINE` | info | normalized | PDF import | Thin filled rectangles were read as lines with the rectangle width as lineweight. |
@@ -191,6 +193,7 @@ entity/source identifiers and structured details.
 | `PDF_ANNOTATIONS_SKIPPED` | info | skipped | PDF import | Annotations were skipped; only page content is read. |
 | `PDF_DUPLICATE_REMOVED` | info | skipped | PDF import | Exact duplicate lines, arcs or circles were removed. |
 | `PDF_SCALE_ESTIMATED` | info | normalized | PDF import | The plot scale recovered from dimension texts was applied; coordinates are model millimetres. |
+| `PDF_SCALE_FROM_TITLE_BLOCK` | info | normalized | PDF import | The plot scale stated in the title block was applied; coordinates are model millimetres. |
 | `PDF_SCALE_APPLIED` | info | normalized | PDF import | The requested plot scale was applied; coordinates are model millimetres. |
 | `PDF_SCALE_UNKNOWN` | info | - | PDF import | Too few dimension texts agreed on a plot scale; coordinates stay paper millimetres. |
 | `PDF_ENTITY_CONVERSION_FAILED` | error | skipped | PDF import | A PDF page object that could not be converted was skipped. |
