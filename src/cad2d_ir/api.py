@@ -681,7 +681,14 @@ def convert_ir_to_dxf_text(
     target_version: TargetVersion = "AC1024",
     curve_segments: int = 96,
     generic_dimensions: GenericDimensionMode = "explode",
+    consume: bool = False,
 ) -> IrToDxfResult:
+    """Write an IR document as DXF text.
+
+    ``consume=True`` uses the document up (see ``ir_to_dxf``): for a caller that
+    does not need the IR again, a large drawing is then not held whole beside
+    the DXF being built.
+    """
     warnings: list[str] = []
     diagnostics: list[ExportDiagnostic] = []
     entity_map: list[EntityMapEntry] = []
@@ -694,6 +701,7 @@ def convert_ir_to_dxf_text(
         target_version=target_version,
         curve_segments=curve_segments,
         generic_dimensions=generic_dimensions,
+        consume=consume,
     )
     return IrToDxfResult(
         dxf_text=dxf_text,

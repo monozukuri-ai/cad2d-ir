@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.17.18
+
+- DXF export uses less memory on a large drawing, with the same output. The
+  group pairs of the file are no longer copied whole to escape `%%`, to find the
+  code page or to join the sections, and the text is joined a chunk of lines at
+  a time; the copies and the list of all lines took about as much again as the
+  pairs themselves.
+- `convert_ir_to_dxf_text(..., consume=True)` and `ir_to_dxf(..., consume=True)`
+  use the IR up: the model space entities are taken out of
+  `document["entities"]` as they are written (the list is empty afterwards), and
+  blocks for dimensions are added to the document itself rather than to a deep
+  copy. For a caller that does not need the IR again.
+
 ## 0.17.17
 
 - `keep_3d="stats"` (`ImportOptions`, `convert_file_to_ir`, `convert_dwg_file_to_ir`,

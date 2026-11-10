@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import codecs
 import copy
+import itertools
 import math
 import re
 import struct
@@ -1166,11 +1167,18 @@ def ir_to_dxf(
     target_version: TargetVersion = "AC1024",
     curve_segments: int = 96,
     generic_dimensions: GenericDimensionMode = "explode",
+    consume: bool = False,
 ) -> str:
     """Serialize an IR document deterministically.
 
     entity_map and diagnostics are optional output collectors. The string
     return type is retained for compatibility with the original API.
+
+    With ``consume`` the document is used up: its model space entities are taken
+    out of ``ir_document["entities"]`` as they are written (the list is empty
+    afterwards), and blocks for dimensions are added to the document itself
+    rather than to a copy. A caller that does not need the IR again saves the
+    memory of holding all of it beside the DXF being built.
     """
     if target_version not in SUPPORTED_DXF_TARGET_VERSIONS:
         choices = ", ".join(SUPPORTED_DXF_TARGET_VERSIONS)
@@ -1188,7 +1196,8 @@ def ir_to_dxf(
     images = _ImageRegistry(allocator) if allocator is not None else None
     export_document = ir_document
     if _dimension_geometry_blocks_are_missing(ir_document):
-        export_document = copy.deepcopy(ir_document)
+        if not consume:
+            export_document = copy.deepcopy(ir_document)
         _ensure_dimension_geometry_blocks(
             export_document,
             diagnostics=export_diagnostics,
@@ -1241,7 +1250,17 @@ def ir_to_dxf(
         )
 
     entity_pairs: list[DXFPair] = [(0, "SECTION"), (2, "ENTITIES")]
-    for entity in export_document.get("entities", []):
+    model_entities = export_document.get("entities", [])
+    if consume and isinstance(model_entities, list):
+        # Taken from the end of the reversed list: the order is kept and each
+        # entity is let go once its pairs are made
+        model_entities.reverse()
+        source_entities: Iterable[Any] = (
+            model_entities.pop() for _ in range(len(model_entities))
+        )
+    else:
+        source_entities = model_entities
+    for entity in source_entities:
         _append_entity_output(
             entity_pairs,
             entity,
@@ -1294,7 +1313,9 @@ def ir_to_dxf(
         warnings=warnings,
         codepage=(
             _select_r12_codepage(
-                _non_ascii_characters(table_pairs + block_pairs + entity_pairs)
+                _non_ascii_characters(
+                    itertools.chain(table_pairs, block_pairs, entity_pairs)
+                )
             )
             if target_version == "AC1024"
             else None
@@ -1310,6 +1331,11 @@ def ir_to_dxf(
         + objects_pairs
         + [(0, "EOF")]
     )
+    # Only ``pairs`` is used from here on. The passes below change it in place and
+    # it is written out in chunks: a large drawing has millions of pairs, and each
+    # copy of the list or of its lines cost as much memory again as a tenth of the IR
+    del header_pairs, classes_pairs, table_pairs, block_pairs, entity_pairs
+    del objects_pairs
     pairs = _valid_symbol_names(
         pairs, diagnostics=export_diagnostics, warnings=warnings
     )
@@ -1457,22 +1483,28 @@ _DXF_TEXT_VALUE_RECORDS = frozenset({"TEXT", "MTEXT", "ATTRIB", "ATTDEF", "DIMEN
 
 
 def _escape_literal_percents(pairs: list[DXFPair]) -> list[DXFPair]:
-    """Write ``%%`` that is no control code as two ``%%%`` (one percent sign each)."""
-    result: list[DXFPair] = []
+    """Write ``%%`` that is no control code as two ``%%%`` (one percent sign each).
+
+    The list is changed in place and returned.
+    """
     record = ""
-    for code, value in pairs:
+    for index, (code, value) in enumerate(pairs):
         if code == 0:
             record = value
         elif code in (1, 3) and record in _DXF_TEXT_VALUE_RECORDS and "%%" in value:
-            value = _DXF_PERCENT_RE.sub(
-                lambda match: "%%%%%%" if match.group(0) == "%%" else match.group(0),
-                value,
+            pairs[index] = (
+                code,
+                _DXF_PERCENT_RE.sub(
+                    lambda match: (
+                        "%%%%%%" if match.group(0) == "%%" else match.group(0)
+                    ),
+                    value,
+                ),
             )
-        result.append((code, value))
-    return result
+    return pairs
 
 
-def _non_ascii_characters(pairs: list[DXFPair]) -> dict[str, int]:
+def _non_ascii_characters(pairs: Iterable[DXFPair]) -> dict[str, int]:
     """How often each character outside ASCII occurs in the values of ``pairs``."""
     characters: dict[str, int] = {}
     for _, value in pairs:
@@ -8249,12 +8281,30 @@ def _num(value: Any) -> str:
     return "0" if text == "-0" else text
 
 
+# Lines joined at a time when the pairs are written out (_format_pairs)
+_FORMAT_CHUNK_LINES = 1 << 16
+
+
 def _format_pairs(pairs: list[DXFPair]) -> str:
+    """The DXF text of the pairs: a line for each code and each value.
+
+    Joined a chunk at a time, so the lines of a large drawing do not all exist
+    at once beside its text.
+    """
+    chunks: list[str] = []
     lines: list[str] = []
     for code, value in pairs:
         lines.append(str(code))
         lines.append(_single_line(str(value)))
-    return "\n".join(lines) + "\n"
+        if len(lines) >= _FORMAT_CHUNK_LINES:
+            lines.append("")
+            chunks.append("\n".join(lines))
+            lines.clear()
+    if not chunks and not lines:
+        return "\n"
+    lines.append("")
+    chunks.append("\n".join(lines))
+    return "".join(chunks)
 
 
 def _single_line(value: str) -> str:
