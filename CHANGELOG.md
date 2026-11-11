@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.20
+
+- The `idw` extra requires `inventor-kit>=0.10,<0.11`. From 0.10 `inventor-kit`
+  installs CadQuery/OCCT only through its own `cadquery` / `occt` extras, so
+  `cad2d-ir[idw]` no longer pulls them in and the `cq-acis` override that kept
+  them out is not needed. An environment that set
+  `override-dependencies = ["cq-acis; python_full_version < '0'"]` for this
+  reason can drop it. IDW reading is unchanged.
+
 ## 0.17.19
 
 - PDF import joins the strokes of a dashed line. A printer driver draws a dashed

@@ -195,11 +195,10 @@ itself stays two-dimensional. See `docs/IMPORTERS.md`, "3D side channel".
   segment majors follow `inventor-kit` (23, 24, 26, 28, 29, 31 in 0.6.0);
   other profiles raise `ImporterError("unsupported IDW profile ...")`.
   `inventor-kit` needs Python 3.11+; see the
-  [IDW licensing terms](#idw-licensing-inventor-kit). It also declares
-  `cq-acis` (CadQuery/OCCT, about 1 GB) for IPT/IAM geometry, which
-  the IDW path never imports. Consumers that only need IDW can exclude it, for
-  example with uv's `override-dependencies = ["cq-acis; python_full_version < '0'"]`
-  or `pip install --no-deps inventor-kit`.
+  [IDW licensing terms](#idw-licensing-inventor-kit). `inventor-kit` 0.10
+  installs no geometry kernel by default (CadQuery/OCCT come only with its own
+  `cadquery` / `occt` extras for IPT/IAM geometry), so `cad2d-ir[idw]` needs no
+  dependency override.
 - MI import consumes `ezmi2d>=0.2,<0.3` directly. Part definitions and shared
   occurrences become IR blocks and INSERTs; source radians are normalized to
   IR degrees. `.bi` dispatch covers the gzip-wrapped MI container verified by

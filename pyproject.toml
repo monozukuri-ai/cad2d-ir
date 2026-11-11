@@ -1,6 +1,6 @@
 [project]
 name = "cad2d-ir"
-version = "0.17.19"
+version = "0.17.20"
 description = "Intermediate representation (IR) and importers for 2D CAD formats"
 readme = "README.md"
 license = "MIT"
@@ -39,9 +39,10 @@ hpgl = ["ezhpgl>=0.1.0a2,<0.2"]
 # icadkit ships wheels for Linux x86_64, Windows and macOS arm64 only; it is kept
 # out of `all` so that `cad2d-ir[all]` still installs on Linux aarch64.
 icad = ["icadkit>=0.3.12,<0.4"]
-# inventor-kit needs Python 3.11+; it is deliberately not part of `all` because it
-# declares cq-acis (CadQuery/OCCT) for IPT/IAM geometry, which the IDW path does not use.
-idw = ["inventor-kit>=0.9.1,<0.10; python_version >= '3.11'"]
+# inventor-kit needs Python 3.11+ and has its own licence terms (see README), so
+# it is deliberately not part of `all`. Since 0.10 it installs no geometry kernel
+# unless one of its own extras is requested; the IDW path needs none.
+idw = ["inventor-kit>=0.10,<0.11; python_version >= '3.11'"]
 jww = ["ezjww>=0.2.6,<0.8"]
 mi = ["ezmi2d>=0.2,<0.3"]
 pdf = ["pypdfium2>=4.30,<6"]
@@ -60,13 +61,6 @@ cad2d-ir = "cad2d_ir.cli:main"
 [build-system]
 requires = ["uv_build>=0.8.15,<0.9.0"]
 build-backend = "uv_build"
-
-[tool.uv]
-# inventor-kit declares cq-acis (CadQuery/OCCT, about 1 GB) for IPT/IAM geometry.
-# The IDW drawing path never imports it, so the development lock and CI leave it
-# out. This override applies to this project's own environment only; consumers of
-# `cad2d-ir[idw]` resolve their own dependencies (see README).
-override-dependencies = ["cq-acis; python_full_version < '0'"]
 
 [dependency-groups]
 dev = [
