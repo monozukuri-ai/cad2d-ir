@@ -197,7 +197,9 @@ pub fn base64_to_pybytes<'py>(py: Python<'py>, text: &str) -> Option<Bound<'py, 
             text.len() - 4
         };
         let mut invalid = 0_u8;
-        for (group, decoded) in text[..whole].chunks_exact(4).zip(out.chunks_exact_mut(3)) {
+        let (quads, _) = text[..whole].as_chunks::<4>();
+        let (triples, _) = out.as_chunks_mut::<3>();
+        for (group, decoded) in quads.iter().zip(triples.iter_mut()) {
             let a = BASE64_VALUES[group[0] as usize];
             let b = BASE64_VALUES[group[1] as usize];
             let c = BASE64_VALUES[group[2] as usize];

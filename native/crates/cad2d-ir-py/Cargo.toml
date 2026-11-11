@@ -3,13 +3,14 @@ name = "cad2d-ir-py"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Python bindings of the native cad2d-ir core, as a library an extension module registers (experimental)"
 publish = false
 
 [dependencies]
 cad2d-ir-core = { path = "../cad2d-ir-core" }
 cad2d-ir-jww = { path = "../cad2d-ir-jww" }
-ezjww-core = { path = "../../../../ezjww/crates/ezjww-core" }
+ezjww-core = { workspace = true }
 indexmap = "2"
 # The extension module that links this crate turns on `pyo3/extension-module`.
 pyo3 = { version = "0.22.4", features = ["abi3-py310"] }

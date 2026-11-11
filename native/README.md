@@ -15,6 +15,19 @@ against it:
 What the native code has not learnt it does not guess: it raises `Unsupported`
 and the caller uses the Python implementation.
 
+## Install
+
+```sh
+pip install cad2d-ir-native
+```
+
+The package is released together with `cad2d-ir`, under the same version, and
+installs exactly that `cad2d-ir` (with its `jww` extra). There are wheels for
+Linux (x86_64, aarch64), Windows (x86_64) and macOS (universal2), one for all
+Python versions from 3.10 (abi3); elsewhere `pip` builds the source
+distribution, which needs a Rust toolchain. `cad2d-ir` itself stays pure Python
+and does not depend on this package.
+
 ## Layout
 
 | Path | What |
@@ -26,9 +39,18 @@ and the caller uses the Python implementation.
 | `python/cad2d_ir_native` | The Python package; `jww.py` assembles a JWW import from the header code of `cad2d_ir.importers.jww` and the native entities |
 | `tests/test_native.py` | The checks against the Python reference |
 
-`crates/cad2d-ir-jww` depends on `ezjww-core` by path
-(`../../ezjww/crates/ezjww-core`): the `ezjww` repository has to sit next to this
-one.
+The crates take `ezjww-core` from a released tag of the `ezjww` repository
+(`[workspace.dependencies]` in `Cargo.toml`), so a build needs nothing next to
+this repository. To build against a checkout of `ezjww` instead (a change of
+the reader that is not released yet), name it in `native/.cargo/config.toml`,
+which is not committed:
+
+```toml
+[patch."https://github.com/monozukuri-ai/ezjww"]
+ezjww-core = { path = "../../ezjww/crates/ezjww-core" }
+```
+
+`--locked` fails with such a patch, since `Cargo.lock` records the tag.
 
 ## Build and test
 
@@ -41,6 +63,35 @@ python -m pytest tests                                   # with the wheel instal
 
 The JWW tests read `../../ezjww/jww_samples` (`EZJWW_SAMPLES` names another
 directory) and are skipped without it.
+
+## Release
+
+`cad2d-ir` and `cad2d-ir-native` are one release. The version is written in
+four places, which `python scripts/check_release.py` compares (and
+`tests/test_package_metadata.py` with it): `pyproject.toml`,
+`src/cad2d_ir/__init__.py`, `native/pyproject.toml` (the version and the
+`cad2d-ir[jww]==` pin) and `native/Cargo.toml` (then `cargo build` in `native/`
+for `Cargo.lock`). When the tag of `ezjww-core` in `native/Cargo.toml` changes,
+the floor of `ezjww` in `native/pyproject.toml` follows it.
+
+Pushing the tag `v<version>` runs `.github/workflows/release.yml`: it checks
+the versions and the tag, runs the tests, builds `cad2d-ir` (wheel and source
+distribution) and `cad2d-ir-native` (a wheel on each platform and a source
+distribution), installs each native wheel with the `cad2d-ir` of the release
+and runs `native/tests` on its platform, and publishes all files to PyPI. Run
+by hand (`workflow_dispatch`) it does everything but publish.
+
+Publishing uses PyPI [trusted publishing](https://docs.pypi.org/trusted-publishers/):
+the repository stores no token, and PyPI accepts the upload because it comes
+from this workflow. Each of the two projects on PyPI names the same publisher
+(for a project that does not exist yet, as a pending publisher of the account):
+
+| Field | Value |
+| --- | --- |
+| Owner | `monozukuri-ai` |
+| Repository name | `cad2d-ir` |
+| Workflow name | `release.yml` |
+| Environment name | `pypi` |
 
 ## Use
 

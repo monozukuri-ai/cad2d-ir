@@ -1,0 +1,247 @@
+name: release
+
+# A tag v<version> builds and publishes one release of two packages:
+#
+#   cad2d-ir         pure Python: one wheel and a source distribution
+#   cad2d-ir-native  the Rust extension under native/: an abi3 wheel for every
+#                    platform below and a source distribution
+#
+# Run by hand (workflow_dispatch) it builds and checks everything and publishes
+# nothing.
+#
+# Publishing uses PyPI trusted publishing: no token is stored in this
+# repository. Both projects on PyPI name this workflow as their publisher
+# (owner monozukuri-ai, repository cad2d-ir, workflow release.yml,
+# environment pypi).
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+
+      - name: Check release versions and tag
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || '' }}
+        run: uv run --no-project python scripts/check_release.py --tag "${RELEASE_TAG}"
+
+      - name: Python tests
+        run: |
+          uv sync --locked --dev --all-extras
+          uv run --no-sync pytest -q
+
+      - name: Rust checks
+        working-directory: native
+        run: |
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test -p cad2d-ir-core -p cad2d-ir-jww --locked
+
+  build-python:
+    name: Build cad2d-ir
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build wheel and source distribution
+        run: uv build --out-dir dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: distributions-python
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+          if-no-files-found: error
+
+  build-native-wheels:
+    name: Build cad2d-ir-native (${{ matrix.artifact }})
+    needs: build-python
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            manylinux: 2014
+            artifact: linux-x86_64
+          - os: ubuntu-24.04-arm
+            manylinux: 2014
+            artifact: linux-aarch64
+          - os: windows-latest
+            manylinux: auto
+            artifact: windows-x86_64
+          - os: macos-latest
+            manylinux: auto
+            archflags: "-arch x86_64 -arch arm64"
+            artifact: macos-universal2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Read the ezjww tag
+        shell: bash
+        run: echo "EZJWW_TAG=$(python scripts/check_release.py --ezjww-tag)" >> "${GITHUB_ENV}"
+
+      - name: Checkout JWW samples
+        uses: actions/checkout@v4
+        with:
+          repository: monozukuri-ai/ezjww
+          ref: ${{ env.EZJWW_TAG }}
+          path: .ezjww
+          sparse-checkout: jww_samples
+
+      - name: Install macOS x86_64 target
+        if: matrix.os == 'macos-latest'
+        run: rustup target add x86_64-apple-darwin
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        env:
+          ARCHFLAGS: ${{ matrix.archflags }}
+        with:
+          working-directory: native
+          command: build
+          args: --release --locked --out dist --compatibility pypi
+          manylinux: ${{ matrix.manylinux }}
+
+      - name: Download cad2d-ir
+        uses: actions/download-artifact@v6
+        with:
+          name: distributions-python
+          path: dist-python
+
+      # The wheel as it will be published, with the cad2d-ir of this release:
+      # the native import and the DXF writer against the Python ones, on the
+      # platform the wheel is for.
+      - name: Install the wheels and run the native tests
+        shell: bash
+        env:
+          EZJWW_SAMPLES: ${{ github.workspace }}/.ezjww/jww_samples
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "$(ls dist-python/cad2d_ir-*.whl)[jww]" pytest
+          python -m pip install native/dist/*.whl
+          python -m pip check
+          python -m pytest native/tests -q -rs
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: distributions-native-${{ matrix.artifact }}
+          path: native/dist/*.whl
+          if-no-files-found: error
+
+  build-native-sdist:
+    name: Build cad2d-ir-native source distribution
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build source distribution
+        uses: PyO3/maturin-action@v1
+        with:
+          working-directory: native
+          command: sdist
+          args: --out dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: distributions-native-sdist
+          path: native/dist/*.tar.gz
+          if-no-files-found: error
+
+  verify-distributions:
+    name: Verify the release bundle
+    needs: [build-python, build-native-wheels, build-native-sdist]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: distributions-*
+          path: dist
+          merge-multiple: true
+      - name: Check every file of the release
+        run: python scripts/check_release.py --artifacts dist
+
+  publish:
+    name: Publish to PyPI
+    needs: verify-distributions
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    # The environment the trusted publishers on PyPI name. Protection rules
+    # (a required reviewer, tags only) can be added to it in the repository
+    # settings.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/cad2d-ir/
+    permissions:
+      contents: read
+      # the identity token of this run, which PyPI exchanges for an upload token
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: distributions-*
+          path: dist
+          merge-multiple: true
+      - name: Check the tag and every file of the release
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python scripts/check_release.py --tag "${RELEASE_TAG}" --artifacts dist
+      - uses: astral-sh/setup-uv@v5
+      # cad2d-ir-native pins the cad2d-ir of the same version, so cad2d-ir goes
+      # up first. Each project gets its own upload token from PyPI. A file that
+      # is already on PyPI is left alone, and a run that failed half-way can be
+      # run again.
+      - name: Publish cad2d-ir
+        run: >-
+          uv publish --trusted-publishing always
+          --check-url https://pypi.org/simple
+          dist/cad2d_ir-*
+      - name: Publish cad2d-ir-native
+        run: >-
+          uv publish --trusted-publishing always
+          --check-url https://pypi.org/simple
+          dist/cad2d_ir_native-*

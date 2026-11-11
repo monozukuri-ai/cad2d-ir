@@ -41,6 +41,23 @@ def project() -> dict[str, Any]:
     ]
 
 
+def test_native_package_is_released_under_the_same_version() -> None:
+    """cad2d-ir-native (native/) pins the cad2d-ir of its own version."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "check_release", ROOT / "scripts" / "check_release.py"
+    )
+    assert spec is not None and spec.loader is not None
+    check_release = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(check_release)
+    version, problems = check_release.repository_problems()
+    assert version == cad2d_ir.__version__
+    assert problems == []
+    assert check_release.tag_problems(version, f"v{version}") == []
+    assert check_release.tag_problems(version, "v0.0.0") != []
+
+
 def test_release_metadata_keeps_version_and_license(project: dict[str, Any]) -> None:
     assert project["version"] == cad2d_ir.__version__
     assert project["requires-python"] == ">=3.10"

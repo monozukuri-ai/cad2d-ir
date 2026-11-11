@@ -342,8 +342,10 @@ fn decode_image_prefix(data: &str) -> Result<Vec<u8>, WriteError> {
     }
     compact.truncate(compact.len() - compact.len() % 4);
     let mut out = Vec::with_capacity(compact.len() / 4 * 3);
-    let groups = compact.len() / 4;
-    for (index, group) in compact.chunks_exact(4).enumerate() {
+    // groups of four characters (the length is a multiple of four by now)
+    let (quads, _) = compact.as_chunks::<4>();
+    let groups = quads.len();
+    for (index, group) in quads.iter().enumerate() {
         let padding = group.iter().rev().take_while(|byte| **byte == b'=').count();
         if padding > 2 || (padding > 0 && index + 1 != groups) {
             return Err(unsupported());

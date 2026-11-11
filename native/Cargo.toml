@@ -3,16 +3,25 @@ members = ["crates/cad2d-ir-core", "crates/cad2d-ir-jww", "crates/cad2d-ir-py", 
 resolver = "2"
 
 [workspace.package]
-version = "0.0.1"
+# The version of the cad2d-ir release this is built for (scripts/check_release.py
+# keeps it equal to the one in pyproject.toml).
+version = "0.17.21"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/monozukuri-ai/cad2d-ir"
+
+[workspace.dependencies]
+# The JWW reader, from a released tag: a build needs no checkout of ezjww next
+# to this repository. `ezjww` on PyPI of the same version reads the header in
+# python/cad2d_ir_native/jww.py (the floor in pyproject.toml follows this tag).
+ezjww-core = { git = "https://github.com/monozukuri-ai/ezjww", tag = "v0.7.13" }
 
 [package]
 name = "cad2d-ir-native"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Native (Rust) IR core for cad2d-ir: typed IR, DXF writer and JWW mapping (experimental)"
 publish = false
 

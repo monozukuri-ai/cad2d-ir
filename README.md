@@ -34,6 +34,10 @@ pip install "cad2d-ir[all]"
 Python 3.10 or newer is required. The core wheel is pure Python; native format
 adapters are optional extras.
 
+`pip install cad2d-ir-native` adds an experimental Rust implementation of the
+JWW import and the DXF R2010 writer (the same output, several times faster),
+released with `cad2d-ir` under the same version. See [native/](native/README.md).
+
 > **IDW license notice:** IDW support uses `inventor-kit`, which is offered under
 > PolyForm Noncommercial 1.0.0 with separate commercial licenses. Before using
 > IDW in commercial workflows, including internal business use, review the

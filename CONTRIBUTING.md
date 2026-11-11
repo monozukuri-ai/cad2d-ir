@@ -22,6 +22,32 @@ uv run --extra sxf cad2d-ir import path/to/sample.sfc -o /tmp/sample.json
 uv run python scripts/sync_packaged_schema.py
 ```
 
+## Native package
+
+The Rust extension under `native/` is the package `cad2d-ir-native`
+([native/README.md](native/README.md)). CI builds it from source on Linux,
+macOS and Windows and compares it with the Python implementation.
+
+```bash
+cd native
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo test -p cad2d-ir-core -p cad2d-ir-jww --locked
+maturin develop --release        # into the active environment
+python -m pytest tests -q
+```
+
+## Releasing
+
+```bash
+uv run python scripts/check_release.py   # the versions of both packages agree
+git tag v<version> && git push origin v<version>
+```
+
+The tag runs `.github/workflows/release.yml`, which builds `cad2d-ir` and the
+wheels of `cad2d-ir-native` for every platform and publishes them together
+through PyPI trusted publishing (see [native/README.md](native/README.md#release)).
+
 ## Branch and PR guidelines
 
 - Keep each PR focused on one logical change.

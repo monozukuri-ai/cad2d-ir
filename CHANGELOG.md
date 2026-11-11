@@ -2,6 +2,17 @@
 
 ## 0.17.21
 
+- New package `cad2d-ir-native` (experimental, under `native/`): the JWW import
+  and the DXF R2010 writer in Rust, on a typed form of the IR. Its output is the
+  one of the Python importer and writer (the tests compare them byte for byte),
+  and what it has not learnt raises `Unsupported` so that a caller falls back
+  to Python. It is released with `cad2d-ir` under the same version and pins it;
+  `cad2d-ir` stays pure Python and does not depend on it. See
+  `native/README.md`.
+- Releases are built by CI: the tag `v<version>` builds `cad2d-ir` and the
+  `cad2d-ir-native` wheels for Linux (x86_64, aarch64), Windows (x86_64) and
+  macOS (universal2), tests each wheel on its platform and publishes all of
+  them together. `scripts/check_release.py` checks that the versions agree.
 - PDF import places a mirrored image where the page shows it. An image whose
   matrix flips it (the row axis clockwise of the column axis, as in
   `1 0 0 -1` or `-1 0 0 1`) was written as if it were not flipped: the `IMAGE`

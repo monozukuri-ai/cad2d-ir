@@ -3,6 +3,7 @@ name = "cad2d-ir-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Typed 2D CAD intermediate representation and a DXF writer (experimental)"
 publish = false
 

@@ -1,13 +1,49 @@
 [build-system]
-requires = ["maturin>=1.7,<2"]
+requires = ["maturin>=1.9,<2"]
 build-backend = "maturin"
 
 [project]
 name = "cad2d-ir-native"
-version = "0.0.1"
-description = "Native (Rust) IR core for cad2d-ir: typed IR, DXF writer and JWW mapping (experimental)"
+# The same version as cad2d-ir, released together with it
+# (scripts/check_release.py keeps the versions and the pin below in step).
+version = "0.17.21"
+description = "Native (Rust) accelerator for cad2d-ir: typed IR, DXF writer and JWW import (experimental)"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "neka-nat", email = "nekanat.stock@gmail.com" }
+]
 requires-python = ">=3.10"
-license = { text = "MIT" }
+keywords = ["cad", "dxf", "jww", "2d", "intermediate-representation", "rust"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+    # The Python package here calls into cad2d_ir.importers.jww for everything
+    # that comes from the header of a JWW file, so the two are one release.
+    "cad2d-ir[jww]==0.17.21",
+    # The version of the ezjww reader the Rust code is built with
+    # (`ezjww-core` in Cargo.toml); the header is read by the Python package.
+    "ezjww>=0.7.13,<0.8",
+]
+
+[project.urls]
+Homepage = "https://github.com/monozukuri-ai/cad2d-ir"
+Repository = "https://github.com/monozukuri-ai/cad2d-ir"
+Documentation = "https://github.com/monozukuri-ai/cad2d-ir/tree/main/native"
+Issues = "https://github.com/monozukuri-ai/cad2d-ir/issues"
 
 [tool.maturin]
 python-source = "python"
