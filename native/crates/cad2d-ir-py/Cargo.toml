@@ -1,0 +1,19 @@
+[package]
+name = "cad2d-ir-py"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Python bindings of the native cad2d-ir core, as a library an extension module registers (experimental)"
+publish = false
+
+[dependencies]
+cad2d-ir-core = { path = "../cad2d-ir-core" }
+cad2d-ir-jww = { path = "../cad2d-ir-jww" }
+ezjww-core = { path = "../../../../ezjww/crates/ezjww-core" }
+indexmap = "2"
+# The extension module that links this crate turns on `pyo3/extension-module`.
+pyo3 = { version = "0.22.4", features = ["abi3-py310"] }
+
+[lints.rust]
+# `pyo3::create_exception!` of pyo3 0.22 tests a feature of pyo3 in the crate that uses it.
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("gil-refs"))'] }

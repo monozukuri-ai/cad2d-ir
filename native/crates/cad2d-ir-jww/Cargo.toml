@@ -1,0 +1,12 @@
+[package]
+name = "cad2d-ir-jww"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "JWW (Jw_cad) to cad2d-ir mapping (experimental)"
+publish = false
+
+[dependencies]
+cad2d-ir-core = { path = "../cad2d-ir-core" }
+ezjww-core = { path = "../../../../ezjww/crates/ezjww-core" }
+flate2 = "1"

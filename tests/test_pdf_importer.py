@@ -439,6 +439,65 @@ def test_images_keep_placement_and_can_embed_pixels(tmp_path: Path) -> None:
     assert "PDF_IMAGE_PLACEHOLDER" not in _codes(embedded)
 
 
+def _png_rows(png: bytes) -> list[bytes]:
+    """The pixel rows of an 8-bit RGB PNG written without row filters."""
+    import struct
+    import zlib
+
+    assert png.startswith(b"\x89PNG\r\n\x1a\n")
+    position, width, height, body = 8, 0, 0, b""
+    while position < len(png):
+        (length,) = struct.unpack(">I", png[position : position + 4])
+        tag = png[position + 4 : position + 8]
+        chunk = png[position + 8 : position + 8 + length]
+        if tag == b"IHDR":
+            width, height, depth, color_type = struct.unpack(">IIBB", chunk[:10])
+            assert (depth, color_type) == (8, 2)
+        elif tag == b"IDAT":
+            body += chunk
+        position += 12 + length
+    raw = zlib.decompress(body)
+    stride = 1 + width * 3
+    assert all(raw[y * stride] == 0 for y in range(height))
+    return [raw[y * stride + 1 : (y + 1) * stride] for y in range(height)]
+
+
+RED, BLUE = b"\xff\x00\x00", b"\x00\x00\xff"
+# One pixel wide, two high: red on top, blue below.
+RED_OVER_BLUE = (1, 2, RED + BLUE)
+
+
+@pytest.mark.parametrize(
+    ("matrix", "insert", "rotation", "rows"),
+    [
+        # Upright: the entity starts at the lower left corner.
+        (b"120 0 0 60 700 400", (700, 400), 0.0, [RED, BLUE]),
+        # Flipped top to bottom: the same box, the picture upside down.
+        (b"120 0 0 -60 700 460", (700, 400), 0.0, [BLUE, RED]),
+        # Flipped left to right: the same box, drawn from its upper right corner
+        # half a turn round, with the rows reversed.
+        (b"-120 0 0 60 820 400", (820, 460), 180.0, [BLUE, RED]),
+        # Turned half a turn (not mirrored): the rows stay as stored.
+        (b"-120 0 0 -60 820 460", (820, 460), 180.0, [RED, BLUE]),
+    ],
+)
+def test_mirrored_images_sit_where_the_page_shows_them(
+    tmp_path: Path, matrix: bytes, insert: tuple[int, int], rotation: float, rows: list[bytes]
+) -> None:
+    content = b"q " + matrix + b" cm /Im1 Do Q\n"
+    for embed in (False, True):
+        result = _convert(
+            tmp_path, content, images={"Im1": RED_OVER_BLUE}, embed_images=embed
+        )
+        image = _of(result, "IMAGE")[0]
+        assert image["insert"] == pytest.approx([insert[0] * MM, insert[1] * MM], abs=1e-3)
+        assert image["width"] == pytest.approx(120 * MM, abs=1e-3)
+        assert image["height"] == pytest.approx(60 * MM, abs=1e-3)
+        assert image.get("rotation", 0.0) == pytest.approx(rotation, abs=1e-6)
+        if embed:
+            assert _png_rows(base64.b64decode(image["data"])) == rows
+
+
 def test_duplicates_annotations_and_statistics(tmp_path: Path) -> None:
     content = b"q 100 100 m 200 100 l S Q\nq 200 100 m 100 100 l S Q\n"
     result = _convert(tmp_path, content, annots=2)

@@ -1,0 +1,15 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "cad2d-ir-native"
+version = "0.0.1"
+description = "Native (Rust) IR core for cad2d-ir: typed IR, DXF writer and JWW mapping (experimental)"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+[tool.maturin]
+python-source = "python"
+module-name = "cad2d_ir_native._core"
+features = ["pyo3/extension-module"]

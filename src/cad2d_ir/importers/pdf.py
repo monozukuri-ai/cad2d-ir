@@ -583,8 +583,19 @@ def _decode_pdf_text(data: bytes) -> str:
     return data.decode("latin-1")
 
 
-def _png_bytes(width: int, height: int, mode: str, buffer: Any, stride: int) -> bytes:
-    """Encode a PDFium bitmap buffer (``L``/``BGR``/``BGRA``/``BGRx``) as PNG."""
+def _png_bytes(
+    width: int,
+    height: int,
+    mode: str,
+    buffer: Any,
+    stride: int,
+    *,
+    flip_rows: bool = False,
+) -> bytes:
+    """Encode a PDFium bitmap buffer (``L``/``BGR``/``BGRA``/``BGRx``) as PNG.
+
+    ``flip_rows`` writes the rows bottom to top.
+    """
     channels = {"L": 1, "BGR": 3, "RGB": 3, "BGRA": 4, "RGBA": 4, "BGRx": 4, "RGBx": 4}[
         mode
     ]
@@ -593,7 +604,7 @@ def _png_bytes(width: int, height: int, mode: str, buffer: Any, stride: int) -> 
         color_type = 2
     data = bytes(buffer)
     rows = bytearray()
-    for y in range(height):
+    for y in range(height - 1, -1, -1) if flip_rows else range(height):
         row = data[y * stride : y * stride + width * channels]
         if mode in ("BGR", "BGRA", "BGRx"):
             px = bytearray(row)
@@ -1625,6 +1636,12 @@ def _image_entity(
     width, height = math.hypot(*w_vec), math.hypot(*h_vec)
     if width <= _EPS or height <= _EPS:
         return None
+    # A mirrored placement (the row axis clockwise of the column axis) is the
+    # same picture with its rows reversed, seen from the far end of the row
+    # axis: an IMAGE has no mirror flag, so the entity starts at that corner
+    # and the embedded pixels are flipped top to bottom.
+    mirrored = _cross(w_vec, h_vec) < 0.0
+    origin = c3 if mirrored else c0
     context.note("images")
     number = context.counts["images"]
     metadata = raw.FPDF_IMAGEOBJ_METADATA()
@@ -1641,21 +1658,20 @@ def _image_entity(
         "id": context.allocate_id(),
         "kind": "IMAGE",
         "name": f"pdf_p{frame.index + 1}_image{number}",
-        "insert": [c0[0], c0[1]],
+        "insert": [origin[0], origin[1]],
         "width": width,
         "height": height,
     }
     rotation = _angle_deg(w_vec[0], w_vec[1])
     if rotation > 1e-9:
         entity["rotation"] = rotation
-    mirrored = _cross(w_vec, h_vec) < 0.0
     embedded = False
     if context.embed_images:
         pixels = pixel.get("pixel_width", 0) * pixel.get("pixel_height", 0)
         if pixels > MAX_EMBED_PIXELS:
             context.note("image_too_large")
         else:
-            png = _render_image_png(raw, obj)
+            png = _render_image_png(raw, obj, flip_rows=mirrored)
             if png is None:
                 context.note("image_embed_failed")
             else:
@@ -1673,7 +1689,7 @@ def _image_entity(
     return entity
 
 
-def _render_image_png(raw: Any, obj: Any) -> bytes | None:
+def _render_image_png(raw: Any, obj: Any, *, flip_rows: bool = False) -> bytes | None:
     try:
         bitmap = raw.FPDFImageObj_GetBitmap(obj)
     except Exception:  # noqa: BLE001
@@ -1690,7 +1706,7 @@ def _render_image_png(raw: Any, obj: Any) -> bytes | None:
         if mode is None or width <= 0 or height <= 0 or not pointer:
             return None
         data = ctypes.string_at(pointer, stride * height)
-        return _png_bytes(width, height, mode, data, stride)
+        return _png_bytes(width, height, mode, data, stride, flip_rows=flip_rows)
     except Exception:  # noqa: BLE001
         return None
     finally:

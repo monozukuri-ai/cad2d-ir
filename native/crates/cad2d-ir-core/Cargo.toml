@@ -1,0 +1,12 @@
+[package]
+name = "cad2d-ir-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Typed 2D CAD intermediate representation and a DXF writer (experimental)"
+publish = false
+
+[dependencies]
+indexmap = "2"
+caseless = "0.2"
+unicode-general-category = "1"

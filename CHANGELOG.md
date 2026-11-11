@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.21
+
+- PDF import places a mirrored image where the page shows it. An image whose
+  matrix flips it (the row axis clockwise of the column axis, as in
+  `1 0 0 -1` or `-1 0 0 1`) was written as if it were not flipped: the `IMAGE`
+  started at the wrong corner, so it sat beside its place, and with
+  `embed_images=True` the picture was upside down. The entity now starts at
+  the far end of the row axis and the embedded PNG has its rows reversed, so
+  the placement and the picture match the page. `metadata.pdf.mirrored` is
+  still recorded.
+
 ## 0.17.20
 
 - The `idw` extra requires `inventor-kit>=0.10,<0.11`. From 0.10 `inventor-kit`

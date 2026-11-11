@@ -1,0 +1,30 @@
+[workspace]
+members = ["crates/cad2d-ir-core", "crates/cad2d-ir-jww", "crates/cad2d-ir-py", "."]
+resolver = "2"
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/monozukuri-ai/cad2d-ir"
+
+[package]
+name = "cad2d-ir-native"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Native (Rust) IR core for cad2d-ir: typed IR, DXF writer and JWW mapping (experimental)"
+publish = false
+
+[lib]
+name = "_core"
+crate-type = ["cdylib"]
+
+[dependencies]
+cad2d-ir-py = { path = "crates/cad2d-ir-py" }
+pyo3 = { version = "0.22.4", features = ["extension-module", "abi3-py310"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4

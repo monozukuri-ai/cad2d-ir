@@ -388,7 +388,7 @@ inference is disclosed by a `PDF_*` diagnostic and counted in `statistics`
 | `/OC` marked content | layer named after the optional content group; other objects on layer `0` | `PDF_LAYERS_FROM_OCG`; visibility expressions are not evaluated. Without any group the layers are inferred (below) |
 | rectangular clip | applied exactly to lines, polylines, arcs and circles; objects entirely outside are dropped | `PDF_CLIPPED_OUT`; other clip shapes keep objects whole (`PDF_CLIP_APPROXIMATED`) |
 | text (PDFium text page) | `TEXT` per glyph run: insert at the first glyph origin, rotation and width factor from the text matrix, `style` `PDF_<font>` | height is the measured capital/digit height for axis-aligned Latin text, the em size for CJK text, else 0.72 em; invisible text (render mode 3) is skipped (`PDF_TEXT_INVISIBLE_SKIPPED`) |
-| image | `IMAGE` placement with pixel size in metadata; `embed_images=True` embeds PNG data up to 16 Mpx | `PDF_IMAGE_PLACEHOLDER` / `PDF_IMAGE_TOO_LARGE` |
+| image | `IMAGE` placement with pixel size in metadata; `embed_images=True` embeds PNG data up to 16 Mpx. A mirrored placement starts at the far end of the row axis and its embedded rows are reversed, so it shows as on the page (`metadata.pdf.mirrored`) | `PDF_IMAGE_PLACEHOLDER` / `PDF_IMAGE_TOO_LARGE` |
 | form XObject | recursed with its matrix (16 levels) | `PDF_FORM_DEPTH_EXCEEDED` |
 | shading, annotation | skipped | `PDF_UNSUPPORTED_OBJECT`, `PDF_ANNOTATIONS_SKIPPED` |
 
