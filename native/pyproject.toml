@@ -6,7 +6,7 @@ build-backend = "maturin"
 name = "cad2d-ir-native"
 # The same version as cad2d-ir, released together with it
 # (scripts/check_release.py keeps the versions and the pin below in step).
-version = "0.17.21"
+version = "0.17.22"
 description = "Native (Rust) accelerator for cad2d-ir: typed IR, DXF writer and JWW import (experimental)"
 readme = "README.md"
 license = "MIT"
@@ -33,7 +33,7 @@ classifiers = [
 dependencies = [
     # The Python package here calls into cad2d_ir.importers.jww for everything
     # that comes from the header of a JWW file, so the two are one release.
-    "cad2d-ir[jww]==0.17.21",
+    "cad2d-ir[jww]==0.17.22",
     # The version of the ezjww reader the Rust code is built with
     # (`ezjww-core` in Cargo.toml); the header is read by the Python package.
     "ezjww>=0.7.13,<0.8",

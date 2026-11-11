@@ -980,6 +980,20 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
     "DXF_UNKNOWN_ENTITY_SKIPPED": DiagnosticCode(
         "warning", "skipped", "DXF export", "An unknown IR entity kind was skipped."
     ),
+    "DXF_TEMPORARY_POINT_SKIPPED": DiagnosticCode(
+        "info",
+        "skipped",
+        "DXF export",
+        "A temporary (construction) point was not written: DXF has no points "
+        "that are left out of a plot.",
+    ),
+    "DXF_LINEWEIGHT_NORMALIZED": DiagnosticCode(
+        "info",
+        "normalized",
+        "DXF export",
+        "Line weights DXF has no value for were written as the nearest line "
+        "weight it has (reported once, with their number).",
+    ),
     "DXF_GENERIC_DIMENSION_EXPLODED": DiagnosticCode(
         "info",
         "exploded",

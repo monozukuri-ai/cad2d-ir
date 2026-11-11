@@ -157,6 +157,11 @@ itself stays two-dimensional. See `docs/IMPORTERS.md`, "3D side channel".
   output also has the other symbol tables, the block records, the owners and
   the named object dictionary AutoCAD and ODA need to read DXF R2000+.
 - GENERIC dimensions expand to their preserved visual primitives by default.
+- R2010 line weights (group 370) are written as the nearest of the line
+  weights DXF has (0.17 mm becomes 0.18 mm); readers take any other value for
+  "by layer".
+- Temporary (construction) points, `POINT` entities with `temporary: true`,
+  are not written: DXF has no points that are shown and left out of a plot.
 - R12 text is stored in the Windows code page its characters ask for, named
   in `$DWGCODEPAGE` (ANSI_932 for Japanese and plain ASCII drawings, ANSI_936
   for simplified Chinese, and so on); LWPOLYLINE becomes POLYLINE/VERTEX,

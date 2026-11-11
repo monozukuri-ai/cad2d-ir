@@ -769,3 +769,113 @@ def test_generic_dimension_text_angle_is_in_degrees(angle: float) -> None:
         e for e in dxf_to_ir(result.dxf_text)["entities"] if e["kind"] == "TEXT"
     )
     assert text.get("rotation", 0.0) == pytest.approx(angle)
+
+
+def _values(dxf_text: str, code: int) -> list[str]:
+    lines = dxf_text.splitlines()
+    return [
+        lines[index + 1]
+        for index in range(0, len(lines) - 1, 2)
+        if lines[index].strip() == str(code)
+    ]
+
+
+def test_line_weights_are_written_as_the_nearest_one_dxf_has() -> None:
+    """DXF has a fixed set of line weights; AutoCAD and ODA read any other value
+    of group 370 as "by layer". A pen width such as 0.17 mm is written as 0.18."""
+    widths = [0.17, 0.08, 0.42, 0.25, 3.0, 0.0, 0.12, 0.3]
+    document = {
+        "format": "cad2d-ir",
+        "version": "0.2.0",
+        "header": {"units": "mm", "angle_unit": "deg", "coord_space": "world"},
+        "tables": {"layers": {"thin": {"lineweight_mm": 0.06}, "plain": {}}},
+        "entities": [
+            {
+                "id": f"L{index}",
+                "kind": "LINE",
+                "layer": "plain",
+                "p1": [0.0, float(index)],
+                "p2": [10.0, float(index)],
+                "lineweight_mm": width,
+            }
+            for index, width in enumerate(widths)
+        ],
+    }
+
+    result = convert_ir_to_dxf_text(document, target_version="AC1024")
+
+    # the layer (0.06 -> 0.05) and the lines
+    assert _values(result.dxf_text, 370) == [
+        "5",
+        "18",
+        "9",
+        "40",
+        "25",
+        "211",
+        "0",
+        "13",
+        "30",
+    ]
+    normalized = [
+        d for d in result.diagnostics if d.code == "DXF_LINEWEIGHT_NORMALIZED"
+    ]
+    assert len(normalized) == 1
+    assert normalized[0].severity == "info" and normalized[0].action == "normalized"
+    # 0.06, 0.17, 0.08, 0.42, 3.0 and 0.12: the widths DXF has stay as they are
+    assert normalized[0].message.startswith("6 line weight(s)")
+    read_back = dxf_to_ir(result.dxf_text)
+    assert [entity["lineweight_mm"] for entity in read_back["entities"]] == [
+        0.18,
+        0.09,
+        0.4,
+        0.25,
+        2.11,
+        0.0,
+        0.13,
+        0.3,
+    ]
+
+    # DXF R12 has no line weights; that is reported for each of them instead
+    r12 = convert_ir_to_dxf_text(document, target_version="AC1009")
+    assert _values(r12.dxf_text, 370) == []
+    assert "DXF_LINEWEIGHT_NORMALIZED" not in {d.code for d in r12.diagnostics}
+
+    standard = dict(document, entities=document["entities"][3:4])
+    standard["tables"] = {"layers": {"plain": {"lineweight_mm": 0.5}}}
+    codes = {d.code for d in convert_ir_to_dxf_text(standard).diagnostics}
+    assert "DXF_LINEWEIGHT_NORMALIZED" not in codes
+
+
+@pytest.mark.parametrize("target_version", ["AC1024", "AC1009"])
+def test_temporary_points_are_not_written(target_version: str) -> None:
+    """A temporary (construction) point of Jw_cad is shown and not plotted. DXF
+    has no such point; as a POINT it would become part of the drawing."""
+    document = {
+        "format": "cad2d-ir",
+        "version": "0.2.0",
+        "header": {"units": "mm", "angle_unit": "deg", "coord_space": "world"},
+        "tables": {"layers": {"0": {}}},
+        "entities": [
+            {"id": "P1", "kind": "POINT", "position": [1.0, 2.0], "temporary": True},
+            {"id": "P2", "kind": "POINT", "position": [3.0, 4.0], "temporary": False},
+            {"id": "P3", "kind": "POINT", "position": [5.0, 6.0]},
+        ],
+    }
+
+    result = convert_ir_to_dxf_text(document, target_version=target_version)
+
+    points = [entry for entry in result.entity_map if entry["dxf_type"] == "POINT"]
+    assert [entry["ir_id"] for entry in points] == ["P2", "P3"]
+    skipped = [d for d in result.diagnostics if d.code == "DXF_TEMPORARY_POINT_SKIPPED"]
+    assert [(d.entity_id, d.severity, d.action) for d in skipped] == [
+        ("P1", "info", "skipped")
+    ]
+    assert result.entity_map[0]["ir_id"] == "P1"
+    assert result.entity_map[0]["handle"] is None
+    assert result.entity_map[0]["reason_code"] == "DXF_TEMPORARY_POINT_SKIPPED"
+    assert [
+        entity["position"] for entity in dxf_to_ir(result.dxf_text)["entities"]
+    ] == [
+        [3.0, 4.0],
+        [5.0, 6.0],
+    ]

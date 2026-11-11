@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import codecs
 import copy
+import functools
 import itertools
 import math
 import re
@@ -1206,6 +1207,7 @@ def ir_to_dxf(
 
     normalized_tables = _normalized_tables(
         export_document,
+        target_version=target_version,
         diagnostics=export_diagnostics,
         warnings=warnings,
     )
@@ -6583,6 +6585,7 @@ def _dimension_geometry_entities(
 def _normalized_tables(
     ir_document: dict[str, Any],
     *,
+    target_version: TargetVersion,
     diagnostics: list[ExportDiagnostic],
     warnings: list[str] | None,
 ) -> dict[str, dict[str, dict[str, Any]]]:
@@ -6716,6 +6719,31 @@ def _normalized_tables(
             warnings=warnings,
         )
 
+    if target_version == "AC1024":
+        # DXF R12 has no line weights at all (they are reported one by one).
+        normalized = 0
+        verdicts: dict[float, bool] = {}
+        for holder in itertools.chain(entities, layers.values()):
+            lineweight = holder.get("lineweight_mm")
+            if not isinstance(lineweight, (int, float)):
+                continue
+            verdict = verdicts.get(lineweight)
+            if verdict is None:
+                verdict = verdicts[lineweight] = _lineweight_is_normalized(lineweight)
+            normalized += verdict
+        if normalized:
+            _diagnose(
+                diagnostics,
+                warnings,
+                code="DXF_LINEWEIGHT_NORMALIZED",
+                severity="info",
+                message=(
+                    f"{normalized} line weight(s) DXF has no value for were "
+                    "written as the nearest line weight it has."
+                ),
+                action="normalized",
+            )
+
     return {
         "layers": layers,
         "linetypes": linetypes,
@@ -6820,7 +6848,7 @@ def _tables_to_pairs(
         lineweight = definition.get("lineweight_mm")
         if isinstance(lineweight, (int, float)):
             if target_version == "AC1024":
-                pairs.append((370, str(int(round(float(lineweight) * 100.0)))))
+                pairs.append((370, str(_dxf_lineweight(float(lineweight)))))
             else:
                 _diagnose(
                     diagnostics,
@@ -7398,6 +7426,24 @@ def _render_entity(
             )
             rendered.extend(child_rendered)
         return rendered, None
+
+    if kind == "POINT" and entity.get("temporary") is True:
+        # A construction point of the source (a Jw_cad temporary point): it is
+        # shown on screen and left out of a plot. DXF has no such point, and
+        # written as a POINT it would become part of the drawing.
+        _diagnose(
+            diagnostics,
+            warnings,
+            code="DXF_TEMPORARY_POINT_SKIPPED",
+            severity="info",
+            message=(
+                f"[POINT:{entity_id or '?'}] temporary (construction) point was "
+                "not written; DXF has no points that are left out of a plot."
+            ),
+            entity_id=entity_id or None,
+            action="skipped",
+        )
+        return [], "DXF_TEMPORARY_POINT_SKIPPED"
 
     if (
         kind == "HATCH"
@@ -8152,6 +8198,31 @@ def _point_like(value: Any) -> bool:
     )
 
 
+# The line weights DXF has (group 370, in hundredths of a millimetre). AutoCAD
+# and ODA take any other value for "by layer", so a width in between is written
+# as the nearest of these.
+_DXF_LINEWEIGHTS = (
+    0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50,
+    53, 60, 70, 80, 90, 100, 106, 120, 140, 158, 200, 211,
+)  # fmt: skip
+
+
+@functools.lru_cache(maxsize=1024)
+def _dxf_lineweight(lineweight_mm: float) -> int:
+    """Group 370 for a width in millimetres: the nearest line weight DXF has."""
+    hundredths = lineweight_mm * 100.0
+    return min(_DXF_LINEWEIGHTS, key=lambda weight: abs(weight - hundredths))
+
+
+def _lineweight_is_normalized(lineweight: Any) -> bool:
+    """Whether a width is written as another line weight than it is (by half a
+    hundredth of a millimetre or more)."""
+    if not isinstance(lineweight, (int, float)):
+        return False
+    width = float(lineweight)
+    return abs(_dxf_lineweight(width) - width * 100.0) >= 0.5
+
+
 def _common_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
     pairs: list[DXFPair] = []
     layer = entity.get("layer", "0")
@@ -8174,7 +8245,7 @@ def _common_to_pairs(entity: dict[str, Any]) -> list[DXFPair]:
 
     lineweight = entity.get("lineweight_mm")
     if isinstance(lineweight, (int, float)):
-        pairs.append((370, str(int(round(float(lineweight) * 100.0)))))
+        pairs.append((370, str(_dxf_lineweight(float(lineweight)))))
 
     if entity.get("visible") is False:
         pairs.append((60, "1"))

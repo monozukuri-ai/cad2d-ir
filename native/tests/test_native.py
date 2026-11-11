@@ -99,6 +99,96 @@ def test_basic_entities_are_written_like_the_python_writer() -> None:
     )
 
 
+def test_line_weights_are_written_as_the_nearest_one_dxf_has() -> None:
+    widths = [0.0, 0.05, 0.06, 0.07, 0.08, 0.13, 0.14, 0.17, 0.18, 0.25, 0.3, 0.42]
+    widths += [0.5, 0.53, 0.565, 1, 1.5, 2.11, 3.0, 1e9, -0.2, 0.2549, 0.2551]
+    entities = [
+        {
+            "id": f"L{index}",
+            "kind": "LINE",
+            "layer": f"layer{index % 3}",
+            "p1": [0.0, float(index)],
+            "p2": [10.0, float(index)],
+            "lineweight_mm": width,
+        }
+        for index, width in enumerate(widths)
+    ]
+    document = _document(
+        entities,
+        blocks={
+            "B": {
+                "base_point": [0.0, 0.0],
+                "entities": [
+                    {
+                        "id": "B1",
+                        "kind": "CIRCLE",
+                        "center": [0.0, 0.0],
+                        "radius": 1.0,
+                        "lineweight_mm": 0.17,
+                    }
+                ],
+            }
+        },
+    )
+    document["tables"]["layers"] = {
+        "layer0": {"lineweight_mm": 0.07},
+        "layer1": {"lineweight_mm": 0.35},
+        "layer2": {"lineweight_mm": 1},
+        "unused": {"lineweight_mm": 0.22},
+    }
+    _same_as_python(document)
+    _, diagnostics = native.ir_to_dxf(document)
+    assert [row[0] for row in diagnostics].count("DXF_LINEWEIGHT_NORMALIZED") == 1
+
+    # nothing to report when every width is one DXF has
+    plain = _document(entities[9:10])
+    _same_as_python(plain)
+    _, diagnostics = native.ir_to_dxf(plain)
+    assert "DXF_LINEWEIGHT_NORMALIZED" not in [row[0] for row in diagnostics]
+
+    # widths that are no numbers are written like the Python writer writes them
+    for width in (float("inf"), float("-inf"), float("nan")):
+        odd = _document([dict(entities[0], lineweight_mm=width)])
+        reference = cad2d_ir.convert_ir_to_dxf_text(
+            copy.deepcopy(odd), target_version="AC1024", validate=False
+        )
+        text, diagnostics = native.ir_to_dxf(odd)
+        assert text == reference.dxf_text
+        assert diagnostics == _diagnostic_rows(reference.diagnostics)
+
+
+def test_temporary_points_are_left_out_like_the_python_writer_does() -> None:
+    document = _document(
+        [
+            {"id": "P1", "kind": "POINT", "position": [1.0, 2.0], "temporary": True},
+            {"id": "L1", "kind": "LINE", "p1": [0.0, 0.0], "p2": [1.0, 1.0]},
+            {"kind": "POINT", "position": [3.0, 4.0], "temporary": True},
+            {"id": "P3", "kind": "POINT", "position": [5.0, 6.0], "temporary": False},
+            {"id": "P4", "kind": "POINT", "position": [7.0, 8.0]},
+            {"id": "I1", "kind": "INSERT", "block": "B", "insert": [0.0, 0.0]},
+        ],
+        blocks={
+            "B": {
+                "base_point": [0.0, 0.0],
+                "entities": [
+                    {"id": "B1", "kind": "POINT", "position": [0.0, 0.0], "temporary": True},
+                    {"id": "B2", "kind": "POINT", "position": [1.0, 0.0]},
+                ],
+            }
+        },
+    )
+    assert native.document_roundtrip(document) == document
+    reference = cad2d_ir.convert_ir_to_dxf_text(
+        copy.deepcopy(document), target_version="AC1024", validate=False
+    )
+    text, diagnostics = native.ir_to_dxf(document)
+    assert text == reference.dxf_text
+    assert diagnostics == _diagnostic_rows(reference.diagnostics)
+    skipped = [row for row in diagnostics if row[0] == "DXF_TEMPORARY_POINT_SKIPPED"]
+    assert [row[3] for row in skipped] == ["B1", "P1", None]
+    assert text.count("\nPOINT\n") == 3
+
+
 def test_text_tables_and_names_are_written_like_the_python_writer() -> None:
     _same_as_python(
         _document(

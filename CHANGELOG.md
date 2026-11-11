@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.17.22
+
+- DXF R2010 export writes line weights AutoCAD and ODA keep. Group 370 was the
+  width in hundredths of a millimetre as it came (17 for a 0.17 mm pen); DXF
+  has a fixed set of line weights, and readers take any other value for "by
+  layer", so such lines lost their width. A width is now written as the nearest
+  line weight DXF has (0.17 mm as 18, 0.08 mm as 9, 0.42 mm as 40), for
+  entities and for layers. One `DXF_LINEWEIGHT_NORMALIZED` diagnostic (info)
+  counts the widths that were written as another value; a width DXF has is
+  written as before.
+- DXF export leaves out temporary (construction) points: `POINT` entities with
+  `temporary: true`, as the JWW import makes of the temporary points of
+  Jw_cad. Jw_cad shows them and does not plot them; written as `POINT` they
+  became part of the drawing. Each one is reported with
+  `DXF_TEMPORARY_POINT_SKIPPED` (info) and named in the entity map. This holds
+  for R2010 and R12.
+- `cad2d-ir-native` writes the same DXF and the same diagnostics for both.
+
 ## 0.17.21
 
 - New package `cad2d-ir-native` (experimental, under `native/`): the JWW import

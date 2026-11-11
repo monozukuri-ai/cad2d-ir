@@ -103,6 +103,8 @@ entity/source identifiers and structured details.
 | `DXF_IMAGE_CLIP_IGNORED` | warning | approximated | DXF import | The clip boundary of an `IMAGE` was not applied; the `IMAGE` spans its full extent and the boundary stays in `metadata.dxf.image`. |
 | `DXF_IMAGE_AXES_APPROXIMATED` | warning | approximated | DXF import | The pixel axes of an `IMAGE` are mirrored or not at a right angle; the `IMAGE` keeps its width, height and the rotation of the column axis only (the vectors stay in `metadata.dxf.image`). |
 | `DXF_UNKNOWN_ENTITY_SKIPPED` | warning | skipped | DXF export | An unknown IR entity kind was skipped. |
+| `DXF_TEMPORARY_POINT_SKIPPED` | info | skipped | DXF export | A temporary (construction) point was not written: DXF has no points that are left out of a plot. |
+| `DXF_LINEWEIGHT_NORMALIZED` | info | normalized | DXF export | Line weights DXF has no value for were written as the nearest line weight it has (reported once, with their number). |
 | `EXB_ATTRIBUTE_DEFINITIONS_SKIPPED` | info | skipped | EXB import | Attribute definitions (title block templates) were not converted; the values a block reference carries are kept as `attribute_texts` on the INSERT. |
 | `EXB_BLOCK_SOLID_ATTACHED` | info | - | EXB import | A block definition's attached fill was converted as a solid HATCH inside the block. |
 | `EXB_DIMENSION_FROM_CACHE` | info | flattened | EXB import | Dimensions were rebuilt from the display records CAXA cached (lines, arcs, arrow fills, text) in a block referenced by `definition.block`; the stored value and text are kept, the construction, associativity and tolerance semantics are not decoded. |

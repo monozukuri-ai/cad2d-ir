@@ -5,9 +5,12 @@ use std::collections::BTreeSet;
 use indexmap::IndexMap;
 
 use super::pairs::{Pair, Val};
-use super::{check_common, dimension, hex_color, image, Context, WriteError};
+use super::{
+    check_common, dimension, dxf_lineweight, hex_color, image, lineweight_is_normalized, Context,
+    WriteError,
+};
 use crate::model::{Document, Entity, Shape};
-use crate::num::{num, py_round_to_int, py_sum};
+use crate::num::{num, py_sum};
 use crate::pystr::{casefold, repr, upper};
 use crate::value::{Map, Value};
 
@@ -94,8 +97,13 @@ pub(crate) fn normalized_tables(
     let mut referenced_layers: BTreeSet<String> = BTreeSet::new();
     let mut referenced_linetypes: BTreeSet<String> = BTreeSet::new();
     let mut referenced_styles: BTreeSet<String> = BTreeSet::new();
+    // line weights DXF has no value for, of entities and of layers
+    let mut normalized_lineweights: u64 = 0;
     let mut visit = |entity: &Entity| -> Result<(), WriteError> {
         check_common(entity)?;
+        if entity.lineweight_mm.is_some_and(lineweight_is_normalized) {
+            normalized_lineweights += 1;
+        }
         match &entity.layer {
             Some(layer) => {
                 if !referenced_layers.contains(layer.as_ref()) {
@@ -189,6 +197,27 @@ pub(crate) fn normalized_tables(
     for name in sorted_casefold(referenced_styles) {
         let default = map_of(vec![("font", Value::Str(name.clone()))]);
         ensure_table_record(&mut text_styles, &name, default, "STYLE", context);
+    }
+
+    for definition in layers.values() {
+        let lineweight = definition
+            .get("lineweight_mm")
+            .and_then(Value::as_python_number);
+        if lineweight.is_some_and(lineweight_is_normalized) {
+            normalized_lineweights += 1;
+        }
+    }
+    if normalized_lineweights > 0 {
+        context.diagnose(
+            "DXF_LINEWEIGHT_NORMALIZED",
+            "info",
+            format!(
+                "{normalized_lineweights} line weight(s) DXF has no value for were written as \
+                 the nearest line weight it has."
+            ),
+            None,
+            Some("normalized"),
+        );
     }
 
     Ok(Normalized {
@@ -313,9 +342,7 @@ pub(crate) fn tables_to_pairs(
             .get("lineweight_mm")
             .and_then(Value::as_python_number)
         {
-            let hundredths = py_round_to_int(lineweight * 100.0)
-                .ok_or_else(|| WriteError::unsupported("layer lineweight_mm is not finite"))?;
-            pairs.push((370, Val::owned(hundredths.to_string())));
+            pairs.push((370, Val::owned(dxf_lineweight(lineweight).to_string())));
         }
         let plot = definition.get("plot").is_none_or(Value::truthy);
         pairs.push((290, Val::S(if plot { "1" } else { "0" })));

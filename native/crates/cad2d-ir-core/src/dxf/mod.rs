@@ -15,7 +15,7 @@ mod tables;
 use std::sync::Arc;
 
 use crate::model::{Color, Document, Entity, InsertScale, Shape, Vertex};
-use crate::num::{num, py_round_to_int};
+use crate::num::num;
 use crate::value::Value;
 
 pub use pairs::{Pair, Val};
@@ -433,14 +433,43 @@ fn common_to_pairs(entity: &Entity, pairs: &mut Vec<Pair>) -> Result<(), WriteEr
         None => {}
     }
     if let Some(lineweight) = entity.lineweight_mm {
-        let hundredths = py_round_to_int(lineweight * 100.0)
-            .ok_or_else(|| WriteError::unsupported("lineweight_mm is not finite"))?;
-        pairs.push((370, Val::integer(hundredths)));
+        pairs.push((370, Val::integer(dxf_lineweight(lineweight))));
     }
     if let Some(Value::Bool(false)) = entity.extra_get("visible") {
         pairs.push((60, Val::S("1")));
     }
     Ok(())
+}
+
+/// The line weights DXF has (group 370, in hundredths of a millimetre). AutoCAD
+/// and ODA take any other value for "by layer", so a width in between is written
+/// as the nearest of these.
+const DXF_LINEWEIGHTS: [i64; 24] = [
+    0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106, 120, 140, 158, 200,
+    211,
+];
+
+/// ``_dxf_lineweight``: group 370 for a width in millimetres. Like ``min`` in
+/// Python, the first of the line weights stays unless a later one is nearer
+/// (a width that is not a number is written as 0).
+pub(crate) fn dxf_lineweight(lineweight_mm: f64) -> i64 {
+    let hundredths = lineweight_mm * 100.0;
+    let mut nearest = DXF_LINEWEIGHTS[0];
+    let mut distance = (nearest as f64 - hundredths).abs();
+    for &weight in &DXF_LINEWEIGHTS[1..] {
+        let candidate = (weight as f64 - hundredths).abs();
+        if candidate < distance {
+            nearest = weight;
+            distance = candidate;
+        }
+    }
+    nearest
+}
+
+/// ``_lineweight_is_normalized``: whether a width is written as another line
+/// weight than it is (by half a hundredth of a millimetre or more).
+pub(crate) fn lineweight_is_normalized(lineweight_mm: f64) -> bool {
+    (dxf_lineweight(lineweight_mm) as f64 - lineweight_mm * 100.0).abs() >= 0.5
 }
 
 /// The RGB number of ``#RRGGBB`` or ``#RRGGBBAA``.
@@ -486,6 +515,28 @@ fn append_entity_output(
         if scope == Scope::Model {
             output.insert(start + 2, (330, Val::S(pairs::MODEL_SPACE_OWNER)));
         }
+        return Ok(());
+    }
+    if let Shape::Point {
+        temporary: Some(true),
+        ..
+    } = &entity.shape
+    {
+        // A construction point of the source (a Jw_cad temporary point): it is
+        // shown on screen and left out of a plot. DXF has no such point, and
+        // written as a POINT it would become part of the drawing.
+        let entity_id = entity.id.as_deref().filter(|id| !id.is_empty());
+        context.diagnose(
+            "DXF_TEMPORARY_POINT_SKIPPED",
+            "info",
+            format!(
+                "[POINT:{}] temporary (construction) point was not written; DXF has no \
+                 points that are left out of a plot.",
+                entity_id.unwrap_or("?")
+            ),
+            entity_id.map(str::to_string),
+            Some("skipped"),
+        );
         return Ok(());
     }
     let handle = context.allocator.allocate();
