@@ -47,7 +47,7 @@ icad = ["icadkit>=0.3.12,<0.4"]
 # inventor-kit needs Python 3.11+ and has its own licence terms (see README), so
 # it is deliberately not part of `all`. Since 0.10 it installs no geometry kernel
 # unless one of its own extras is requested; the IDW path needs none.
-idw = ["inventor-kit>=0.10,<0.11; python_version >= '3.11'"]
+idw = ["inventor-kit>=0.11,<0.12; python_version >= '3.11'"]
 # The reader the native code is built with (`ezjww-core` in native/Cargo.toml), or
 # a later one: the header of a file is read by this package, its entities by the
 # native code.
