@@ -23,6 +23,7 @@ pip install "cad2d-ir[dwf]"
 pip install "cad2d-ir[edrawings]"   # eDrawings drawings (.edrw); Linux x86_64, Windows, macOS arm64
 # HP-GL: install local ezhpgl + cad2d-ir wheels until the first ezhpgl release
 # then: pip install "cad2d-ir[hpgl]"
+pip install "cad2d-ir[icad]"  # Linux x86_64, Windows, macOS arm64; see the ICD license notice below
 pip install "cad2d-ir[idw]"   # Python 3.11+; see the IDW license notice below
 pip install "cad2d-ir[jww]"
 pip install "cad2d-ir[mi]"
@@ -45,9 +46,15 @@ the source distribution, which needs a Rust toolchain. See
 > IDW in commercial workflows, including internal business use, review the
 > [IDW licensing terms](#idw-licensing-inventor-kit).
 
+> **ICD license notice:** ICD (iCAD SX 2D drawing) support uses `icadkit`, which
+> is offered under PolyForm Noncommercial 1.0.0 with separate commercial licenses.
+> Before using ICD in commercial workflows, including internal business use,
+> review the [ICD licensing terms](#icd-licensing-icadkit).
+
 `pip install cad2d-ir` and `pip install "cad2d-ir[all]"` do not install
-`inventor-kit`; install `[idw]` explicitly when needed. The development command
-`uv sync --all-extras` below includes `[idw]` and installs `inventor-kit`.
+`inventor-kit` or `icadkit`; install `[idw]` or `[icad]` explicitly when needed.
+The development command `uv sync --all-extras` below includes both and installs
+`inventor-kit` and `icadkit`.
 
 HP-GL uses ezhpgl through the optional `[hpgl]` extra. See [HP-GL conversion](docs/HPGL.md)
 for local wheel installation, paper-space mapping, page selection and loss reporting.
@@ -276,7 +283,7 @@ IDW（`inventor-kit`）と ICD（`icadkit`）の読み取りは、PolyForm Nonco
 ## License
 
 `cad2d-ir` itself is licensed under MIT ([LICENSE](LICENSE)), including its IDW
-adapter code. Optional parser dependencies retain their own licenses.
+and ICD adapter code. Optional parser dependencies retain their own licenses.
 
 ### IDW licensing (`inventor-kit`)
 
@@ -299,3 +306,24 @@ support. Workflows using only other formats do not require `inventor-kit`;
 their respective dependency licenses still apply. Refer to the upstream
 [license notice](https://github.com/monozukuri-ai/inventor-kit/blob/main/LICENSE)
 for the full scope, including earlier MIT material and third-party components.
+
+### ICD licensing (`icadkit`)
+
+ICD support depends on `icadkit`, which is offered under
+[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0)
+with separate commercial licenses from UnRobotics Inc. The MIT license for
+`cad2d-ir` does not grant additional rights to use or redistribute `icadkit`.
+
+- Use permitted by the PolyForm terms does not require a commercial agreement.
+- Use outside those permissions, including commercial internal business use
+  and commercial product integration, requires a separate written commercial
+  agreement with UnRobotics Inc. The `LICENSE` and `COMMERCIAL-LICENSE.md` files
+  in the [icadkit distribution](https://pypi.org/project/icadkit/) describe the
+  terms; use the [contact form](https://www.un-robotics.com/#contact) for a
+  commercial license.
+- If you redistribute `icadkit` with your application, comply with its
+  distribution terms and preserve the applicable license texts and notices,
+  including those of its third-party components.
+
+These additional conditions concern the `icadkit` dependency used for ICD
+support. Workflows using only other formats do not require `icadkit`.
