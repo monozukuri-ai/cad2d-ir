@@ -121,7 +121,7 @@ dev = [
 
 [[package]]
 name = "cad2d-ir-native"
-version = "0.18.0"
+version = "0.18.1"
 source = { directory = "native" }
 
 [[package]]

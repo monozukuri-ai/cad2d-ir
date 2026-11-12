@@ -6,7 +6,7 @@ build-backend = "maturin"
 name = "cad2d-ir-native"
 # The same version as cad2d-ir, which pins this package and is released
 # together with it (scripts/check_release.py keeps the versions in step).
-version = "0.18.0"
+version = "0.18.1"
 description = "The native code (Rust) of cad2d-ir: typed IR, DXF writer and JWW entity conversion"
 readme = "README.md"
 license = "MIT"

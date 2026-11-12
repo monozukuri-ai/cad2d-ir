@@ -28,7 +28,7 @@ dependencies = [
     # The DXF writer and the entity conversion of the JWW importer are native
     # code: the Rust extension under native/, released with this package under
     # the same version (scripts/check_release.py keeps this pin in step).
-    "cad2d-ir-native==0.18.0",
+    "cad2d-ir-native==0.18.1",
     "jsonschema>=4.23.0",
 ]
 
