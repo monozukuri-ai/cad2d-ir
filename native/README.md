@@ -107,12 +107,27 @@ everything else is compared to the byte.
 
 ## Release
 
-`cad2d-ir` and `cad2d-ir-native` are one release. The version is written in
-four places, which `python scripts/check_release.py` compares (and
-`tests/test_package_metadata.py` with it): `pyproject.toml` (the version and
-the `cad2d-ir-native==` pin), `src/cad2d_ir/__init__.py`,
-`native/pyproject.toml` and `native/Cargo.toml` (then `cargo build` in
-`native/` for `Cargo.lock`, and `uv lock`). When the tag of `ezjww-core` in
+`cad2d-ir` and `cad2d-ir-native` are one release. The root `pyproject.toml`
+defines the release version. From the repository root, update it with:
+
+```sh
+uv run --no-sync python scripts/set_version.py 0.18.2
+```
+
+This sets the version, generates the exact `cad2d-ir-native` dependency pin
+and the Cargo workspace version, refreshes both lockfiles without requesting
+dependency upgrades, and runs the release consistency check. It requires uv
+and Cargo; if a command fails, it restores the previous metadata and lockfiles.
+Omit the version argument to synchronize after editing the root version.
+Versions use the stable `X.Y.Z` form. The command does not commit, tag or publish.
+
+The native Python package gets its version from Cargo through Maturin's
+dynamic metadata, and `cad2d_ir.__version__` reads the installed distribution
+metadata. Neither needs a separate version edit. CI checks the generated
+metadata and lockfiles with `python scripts/check_release.py` and
+`tests/test_package_metadata.py`.
+
+When the tag of `ezjww-core` in
 `native/Cargo.toml` changes, the floor of `ezjww` in the `jww` and `all` extras
 of `pyproject.toml` follows it.
 

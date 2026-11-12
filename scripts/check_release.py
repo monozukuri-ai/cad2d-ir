@@ -72,14 +72,6 @@ def repository_problems() -> tuple[str, list[str]]:
     project = _toml(ROOT / "pyproject.toml")["project"]
     version = str(project["version"])
 
-    init = (ROOT / "src" / "cad2d_ir" / "__init__.py").read_text(encoding="utf-8")
-    match = re.search(r'^__version__\s*=\s*"([^"]+)"', init, re.MULTILINE)
-    if match is None or match.group(1) != version:
-        found = match.group(1) if match else "no __version__"
-        problems.append(
-            f"src/cad2d_ir/__init__.py has {found}, pyproject.toml has {version}"
-        )
-
     # cad2d-ir installs the native code of its own version ...
     dependencies = [_requirement(item) for item in project.get("dependencies", [])]
     pin = f"cad2d-ir-native=={version}"
@@ -89,9 +81,9 @@ def repository_problems() -> tuple[str, list[str]]:
     # ... and the native package installs nothing: a requirement on cad2d-ir
     # there would be a circle.
     native = _toml(ROOT / "native" / "pyproject.toml")["project"]
-    if native["version"] != version:
+    if "version" in native or "version" not in native.get("dynamic", []):
         problems.append(
-            f"native/pyproject.toml has version {native['version']}, pyproject.toml has {version}"
+            "native/pyproject.toml must obtain its version dynamically from Cargo.toml"
         )
     native_dependencies = [
         _requirement(item) for item in native.get("dependencies", [])
@@ -112,7 +104,24 @@ def repository_problems() -> tuple[str, list[str]]:
         if package["name"].startswith("cad2d-ir") and package["version"] != version:
             problems.append(
                 f"native/Cargo.lock has {package['name']} {package['version']} "
-                f"(run `cargo build` in native/ after changing the version)"
+                "(run scripts/set_version.py to synchronize the release)"
+            )
+
+    uv_lock = _toml(ROOT / "uv.lock")
+    for name in ("cad2d-ir", "cad2d-ir-native"):
+        packages = [
+            package for package in uv_lock.get("package", []) if package["name"] == name
+        ]
+        # uv leaves a local package's dynamic version out of the lockfile.
+        expected = None if name == "cad2d-ir-native" else version
+        versions = [package.get("version") for package in packages]
+        if versions != [expected] or (
+            name == "cad2d-ir-native"
+            and packages[0].get("source") != {"directory": "native"}
+        ):
+            problems.append(
+                f"uv.lock has an inconsistent {name} entry: {packages} "
+                "(run scripts/set_version.py to synchronize the release)"
             )
 
     # The Rust code is built with one version of the ezjww reader; the header

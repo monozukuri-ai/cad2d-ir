@@ -3,8 +3,7 @@ members = ["crates/cad2d-ir-core", "crates/cad2d-ir-jww", "crates/cad2d-ir-py", 
 resolver = "2"
 
 [workspace.package]
-# The version of the cad2d-ir release this is built for (scripts/check_release.py
-# keeps it equal to the one in pyproject.toml).
+# Generated from ../pyproject.toml by scripts/set_version.py; do not edit here.
 version = "0.18.1"
 edition = "2021"
 license = "MIT"

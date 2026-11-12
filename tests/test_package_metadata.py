@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from importlib.metadata import version as distribution_version
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +61,7 @@ def test_native_package_is_released_under_the_same_version() -> None:
 
 def test_release_metadata_keeps_version_and_license(project: dict[str, Any]) -> None:
     assert project["version"] == cad2d_ir.__version__
+    assert cad2d_ir.__version__ == distribution_version("cad2d-ir")
     assert project["requires-python"] == ">=3.10"
     assert project["license"] == "MIT"
     assert project["license-files"] == ["LICENSE"]

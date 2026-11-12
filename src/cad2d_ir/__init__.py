@@ -1,3 +1,5 @@
+from importlib.metadata import version as _distribution_version
+
 from cad2d_ir.api import (
     DxfToIrResult,
     IrToDxfResult,
@@ -51,7 +53,7 @@ from cad2d_ir.importers import (
 )
 from cad2d_ir.schema import IRValidationError, load_schema, validate_ir
 
-__version__ = "0.18.1"
+__version__ = _distribution_version("cad2d-ir")
 
 __all__ = [
     "__version__",
