@@ -17,7 +17,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.18.0"
+version = "0.18.1"
 source = { editable = "." }
 dependencies = [
     { name = "cad2d-ir-native" },

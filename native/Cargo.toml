@@ -5,7 +5,7 @@ resolver = "2"
 [workspace.package]
 # The version of the cad2d-ir release this is built for (scripts/check_release.py
 # keeps it equal to the one in pyproject.toml).
-version = "0.18.0"
+version = "0.18.1"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/monozukuri-ai/cad2d-ir"
