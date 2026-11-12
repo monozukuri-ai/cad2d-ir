@@ -1,0 +1,223 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_DIMENSION_BLOCK_GENERATED",
+    "severity": "info",
+    "message": "[DIMENSION:E2] geometry block '*D0' was generated for DXF export.",
+    "entity_id": "E2",
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_CONSTRAINTS_OMITTED",
+    "severity": "warning",
+    "message": "IR constraints are not representable in plain DXF and were omitted.",
+    "entity_id": null,
+    "action": "skipped"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "E2",
+    "handle": "107",
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "E2",
+    "handle": "108",
+    "dxf_type": "TEXT",
+    "index": 1,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "E1",
+    "handle": "10A",
+    "dxf_type": "SPLINE",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2",
+    "handle": "10B",
+    "dxf_type": "DIMENSION",
+    "index": 3,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_DIMENSION_BLOCK_GENERATED",
+    "severity": "info",
+    "message": "[DIMENSION:E2] geometry block '*D0' was generated for DXF export.",
+    "entity_id": "E2",
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_CONSTRAINTS_OMITTED",
+    "severity": "warning",
+    "message": "IR constraints are not representable in plain DXF and were omitted.",
+    "entity_id": null,
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_SPLINE_APPROXIMATED",
+    "severity": "warning",
+    "message": "[SPLINE:E1] approximated as a 97-vertex POLYLINE for DXF R12.",
+    "entity_id": "E1",
+    "action": "approximated"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "E2",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "E2",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 1,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "E1",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2",
+    "handle": null,
+    "dxf_type": "DIMENSION",
+    "index": 3,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009-16": {
+  "diagnostics": [
+   {
+    "code": "DXF_DIMENSION_BLOCK_GENERATED",
+    "severity": "info",
+    "message": "[DIMENSION:E2] geometry block '*D0' was generated for DXF export.",
+    "entity_id": "E2",
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_CONSTRAINTS_OMITTED",
+    "severity": "warning",
+    "message": "IR constraints are not representable in plain DXF and were omitted.",
+    "entity_id": null,
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_SPLINE_APPROXIMATED",
+    "severity": "warning",
+    "message": "[SPLINE:E1] approximated as a 17-vertex POLYLINE for DXF R12.",
+    "entity_id": "E1",
+    "action": "approximated"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "E2",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "E2",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 1,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "E1",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2",
+    "handle": null,
+    "dxf_type": "DIMENSION",
+    "index": 3,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

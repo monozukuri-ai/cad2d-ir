@@ -4,10 +4,10 @@ build-backend = "maturin"
 
 [project]
 name = "cad2d-ir-native"
-# The same version as cad2d-ir, released together with it
-# (scripts/check_release.py keeps the versions and the pin below in step).
-version = "0.17.22"
-description = "Native (Rust) accelerator for cad2d-ir: typed IR, DXF writer and JWW import (experimental)"
+# The same version as cad2d-ir, which pins this package and is released
+# together with it (scripts/check_release.py keeps the versions in step).
+version = "0.18.0"
+description = "The native code (Rust) of cad2d-ir: typed IR, DXF writer and JWW entity conversion"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -30,14 +30,9 @@ classifiers = [
     "Topic :: Scientific/Engineering",
     "Topic :: Software Development :: Libraries",
 ]
-dependencies = [
-    # The Python package here calls into cad2d_ir.importers.jww for everything
-    # that comes from the header of a JWW file, so the two are one release.
-    "cad2d-ir[jww]==0.17.22",
-    # The version of the ezjww reader the Rust code is built with
-    # (`ezjww-core` in Cargo.toml); the header is read by the Python package.
-    "ezjww>=0.7.13,<0.8",
-]
+# No dependencies: this is the native half of cad2d-ir, installed as its
+# dependency. The DXF writer calls back into cad2d_ir (code pages, MTEXT, fonts).
+dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/monozukuri-ai/cad2d-ir"
@@ -49,3 +44,16 @@ Issues = "https://github.com/monozukuri-ai/cad2d-ir/issues"
 python-source = "python"
 module-name = "cad2d_ir_native._core"
 features = ["pyo3/extension-module"]
+
+[tool.uv]
+# What a build of this directory depends on, for uv: a checkout of cad2d-ir
+# installs it from here, and it is built again when the Rust code changes.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "Cargo.toml" },
+    { file = "Cargo.lock" },
+    { file = "src/**/*.rs" },
+    { file = "crates/**/*.rs" },
+    { file = "crates/**/Cargo.toml" },
+    { file = "python/**/*.py" },
+]

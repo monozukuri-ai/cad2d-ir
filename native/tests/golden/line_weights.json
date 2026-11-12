@@ -1,0 +1,372 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.3.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "source": {
+  "format": "unknown"
+ },
+ "tables": {
+  "layers": {
+   "layer0": {
+    "lineweight_mm": 0.07
+   },
+   "layer1": {
+    "lineweight_mm": 0.35
+   },
+   "layer2": {
+    "lineweight_mm": 1
+   },
+   "unused": {
+    "lineweight_mm": 0.22
+   }
+  },
+  "blocks": {
+   "B": {
+    "base_point": [
+     0.0,
+     0.0
+    ],
+    "entities": [
+     {
+      "id": "B1",
+      "kind": "CIRCLE",
+      "center": [
+       0.0,
+       0.0
+      ],
+      "radius": 1.0,
+      "lineweight_mm": 0.17
+     }
+    ]
+   }
+  }
+ },
+ "entities": [
+  {
+   "id": "L0",
+   "kind": "LINE",
+   "layer": "layer0",
+   "p1": [
+    0.0,
+    0.0
+   ],
+   "p2": [
+    10.0,
+    0.0
+   ],
+   "lineweight_mm": 0.0
+  },
+  {
+   "id": "L1",
+   "kind": "LINE",
+   "layer": "layer1",
+   "p1": [
+    0.0,
+    1.0
+   ],
+   "p2": [
+    10.0,
+    1.0
+   ],
+   "lineweight_mm": 0.05
+  },
+  {
+   "id": "L2",
+   "kind": "LINE",
+   "layer": "layer2",
+   "p1": [
+    0.0,
+    2.0
+   ],
+   "p2": [
+    10.0,
+    2.0
+   ],
+   "lineweight_mm": 0.06
+  },
+  {
+   "id": "L3",
+   "kind": "LINE",
+   "layer": "layer0",
+   "p1": [
+    0.0,
+    3.0
+   ],
+   "p2": [
+    10.0,
+    3.0
+   ],
+   "lineweight_mm": 0.07
+  },
+  {
+   "id": "L4",
+   "kind": "LINE",
+   "layer": "layer1",
+   "p1": [
+    0.0,
+    4.0
+   ],
+   "p2": [
+    10.0,
+    4.0
+   ],
+   "lineweight_mm": 0.08
+  },
+  {
+   "id": "L5",
+   "kind": "LINE",
+   "layer": "layer2",
+   "p1": [
+    0.0,
+    5.0
+   ],
+   "p2": [
+    10.0,
+    5.0
+   ],
+   "lineweight_mm": 0.13
+  },
+  {
+   "id": "L6",
+   "kind": "LINE",
+   "layer": "layer0",
+   "p1": [
+    0.0,
+    6.0
+   ],
+   "p2": [
+    10.0,
+    6.0
+   ],
+   "lineweight_mm": 0.14
+  },
+  {
+   "id": "L7",
+   "kind": "LINE",
+   "layer": "layer1",
+   "p1": [
+    0.0,
+    7.0
+   ],
+   "p2": [
+    10.0,
+    7.0
+   ],
+   "lineweight_mm": 0.17
+  },
+  {
+   "id": "L8",
+   "kind": "LINE",
+   "layer": "layer2",
+   "p1": [
+    0.0,
+    8.0
+   ],
+   "p2": [
+    10.0,
+    8.0
+   ],
+   "lineweight_mm": 0.18
+  },
+  {
+   "id": "L9",
+   "kind": "LINE",
+   "layer": "layer0",
+   "p1": [
+    0.0,
+    9.0
+   ],
+   "p2": [
+    10.0,
+    9.0
+   ],
+   "lineweight_mm": 0.25
+  },
+  {
+   "id": "L10",
+   "kind": "LINE",
+   "layer": "layer1",
+   "p1": [
+    0.0,
+    10.0
+   ],
+   "p2": [
+    10.0,
+    10.0
+   ],
+   "lineweight_mm": 0.3
+  },
+  {
+   "id": "L11",
+   "kind": "LINE",
+   "layer": "layer2",
+   "p1": [
+    0.0,
+    11.0
+   ],
+   "p2": [
+    10.0,
+    11.0
+   ],
+   "lineweight_mm": 0.42
+  },
+  {
+   "id": "L12",
+   "kind": "LINE",
+   "layer": "layer0",
+   "p1": [
+    0.0,
+    12.0
+   ],
+   "p2": [
+    10.0,
+    12.0
+   ],
+   "lineweight_mm": 0.5
+  },
+  {
+   "id": "L13",
+   "kind": "LINE",
+   "layer": "layer1",
+   "p1": [
+    0.0,
+    13.0
+   ],
+   "p2": [
+    10.0,
+    13.0
+   ],
+   "lineweight_mm": 0.53
+  },
+  {
+   "id": "L14",
+   "kind": "LINE",
+   "layer": "layer2",
+   "p1": [
+    0.0,
+    14.0
+   ],
+   "p2": [
+    10.0,
+    14.0
+   ],
+   "lineweight_mm": 0.565
+  },
+  {
+   "id": "L15",
+   "kind": "LINE",
+   "layer": "layer0",
+   "p1": [
+    0.0,
+    15.0
+   ],
+   "p2": [
+    10.0,
+    15.0
+   ],
+   "lineweight_mm": 1
+  },
+  {
+   "id": "L16",
+   "kind": "LINE",
+   "layer": "layer1",
+   "p1": [
+    0.0,
+    16.0
+   ],
+   "p2": [
+    10.0,
+    16.0
+   ],
+   "lineweight_mm": 1.5
+  },
+  {
+   "id": "L17",
+   "kind": "LINE",
+   "layer": "layer2",
+   "p1": [
+    0.0,
+    17.0
+   ],
+   "p2": [
+    10.0,
+    17.0
+   ],
+   "lineweight_mm": 2.11
+  },
+  {
+   "id": "L18",
+   "kind": "LINE",
+   "layer": "layer0",
+   "p1": [
+    0.0,
+    18.0
+   ],
+   "p2": [
+    10.0,
+    18.0
+   ],
+   "lineweight_mm": 3.0
+  },
+  {
+   "id": "L19",
+   "kind": "LINE",
+   "layer": "layer1",
+   "p1": [
+    0.0,
+    19.0
+   ],
+   "p2": [
+    10.0,
+    19.0
+   ],
+   "lineweight_mm": 1000000000.0
+  },
+  {
+   "id": "L20",
+   "kind": "LINE",
+   "layer": "layer2",
+   "p1": [
+    0.0,
+    20.0
+   ],
+   "p2": [
+    10.0,
+    20.0
+   ],
+   "lineweight_mm": -0.2
+  },
+  {
+   "id": "L21",
+   "kind": "LINE",
+   "layer": "layer0",
+   "p1": [
+    0.0,
+    21.0
+   ],
+   "p2": [
+    10.0,
+    21.0
+   ],
+   "lineweight_mm": 0.2549
+  },
+  {
+   "id": "L22",
+   "kind": "LINE",
+   "layer": "layer1",
+   "p1": [
+    0.0,
+    22.0
+   ],
+   "p2": [
+    10.0,
+    22.0
+   ],
+   "lineweight_mm": 0.2551
+  }
+ ]
+}

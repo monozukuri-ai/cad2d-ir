@@ -1,0 +1,48 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.2.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "tables": {
+  "layers": {
+   "0": {}
+  }
+ },
+ "entities": [
+  {
+   "id": "M0",
+   "kind": "MTEXT",
+   "insert": [
+    0.0,
+    0.0
+   ],
+   "height": 2.5,
+   "text": "HALF\nPLAIN",
+   "metadata": {
+    "dwg": {
+     "handle": 0,
+     "raw_text": "{\\W0.5;HALF}\\PPLAIN"
+    }
+   }
+  },
+  {
+   "id": "M1",
+   "kind": "MTEXT",
+   "insert": [
+    0.0,
+    10.0
+   ],
+   "height": 2.5,
+   "text": "EDITED",
+   "metadata": {
+    "dwg": {
+     "handle": 1,
+     "raw_text": "{\\W0.5;OLD}"
+    }
+   }
+  }
+ ]
+}

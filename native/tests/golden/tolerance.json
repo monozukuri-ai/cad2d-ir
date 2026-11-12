@@ -1,0 +1,163 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.3.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "source": {
+  "format": "dxf"
+ },
+ "entities": [
+  {
+   "id": "E2F_R1",
+   "source": {
+    "format": "dxf",
+    "id": "2F",
+    "kind": "TOLERANCE"
+   },
+   "layer": "DIM",
+   "metadata": {
+    "dxf": {
+     "tolerance_text": "{\\Fgdt;j}%%v0.1%%vA"
+    }
+   },
+   "kind": "LWPOLYLINE",
+   "vertices": [
+    [
+     10.0,
+     16.25
+    ],
+    [
+     39.5,
+     16.25
+    ],
+    [
+     39.5,
+     23.75
+    ],
+    [
+     10.0,
+     23.75
+    ]
+   ],
+   "closed": true
+  },
+  {
+   "id": "E2F_R1T1",
+   "source": {
+    "format": "dxf",
+    "id": "2F",
+    "kind": "TOLERANCE"
+   },
+   "layer": "DIM",
+   "metadata": {
+    "dxf": {
+     "tolerance_text": "{\\Fgdt;j}%%v0.1%%vA"
+    }
+   },
+   "kind": "TEXT",
+   "insert": [
+    14.25,
+    20.0
+   ],
+   "height": 5.0,
+   "text": "⌖",
+   "halign": "center",
+   "valign": "middle"
+  },
+  {
+   "id": "E2F_R1D1",
+   "source": {
+    "format": "dxf",
+    "id": "2F",
+    "kind": "TOLERANCE"
+   },
+   "layer": "DIM",
+   "metadata": {
+    "dxf": {
+     "tolerance_text": "{\\Fgdt;j}%%v0.1%%vA"
+    }
+   },
+   "kind": "LINE",
+   "p1": [
+    18.5,
+    16.25
+   ],
+   "p2": [
+    18.5,
+    23.75
+   ]
+  },
+  {
+   "id": "E2F_R1T2",
+   "source": {
+    "format": "dxf",
+    "id": "2F",
+    "kind": "TOLERANCE"
+   },
+   "layer": "DIM",
+   "metadata": {
+    "dxf": {
+     "tolerance_text": "{\\Fgdt;j}%%v0.1%%vA"
+    }
+   },
+   "kind": "TEXT",
+   "insert": [
+    25.75,
+    20.0
+   ],
+   "height": 5.0,
+   "text": "0.1",
+   "halign": "center",
+   "valign": "middle"
+  },
+  {
+   "id": "E2F_R1D2",
+   "source": {
+    "format": "dxf",
+    "id": "2F",
+    "kind": "TOLERANCE"
+   },
+   "layer": "DIM",
+   "metadata": {
+    "dxf": {
+     "tolerance_text": "{\\Fgdt;j}%%v0.1%%vA"
+    }
+   },
+   "kind": "LINE",
+   "p1": [
+    33.0,
+    16.25
+   ],
+   "p2": [
+    33.0,
+    23.75
+   ]
+  },
+  {
+   "id": "E2F_R1T3",
+   "source": {
+    "format": "dxf",
+    "id": "2F",
+    "kind": "TOLERANCE"
+   },
+   "layer": "DIM",
+   "metadata": {
+    "dxf": {
+     "tolerance_text": "{\\Fgdt;j}%%v0.1%%vA"
+    }
+   },
+   "kind": "TEXT",
+   "insert": [
+    36.25,
+    20.0
+   ],
+   "height": 5.0,
+   "text": "A",
+   "halign": "center",
+   "valign": "middle"
+  }
+ ]
+}

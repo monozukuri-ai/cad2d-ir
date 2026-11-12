@@ -515,14 +515,62 @@ pub(crate) fn r2010_structure(
     }
     block_out.push((0, Val::S("ENDSEC")));
 
-    // shared: every model space entity names it
+    // shared: every model space entity names the one, every paper space entity
+    // the other
     let model = Val::A(std::sync::Arc::from(
         record_handles["*model_space"].as_str(),
     ));
+    let paper = Val::A(std::sync::Arc::from(
+        record_handles["*paper_space"].as_str(),
+    ));
     for pair in entity_pairs.iter_mut() {
-        if pair.0 == 330 && pair.1.is_model_space_owner() {
+        if pair.0 != 330 {
+            continue;
+        }
+        if pair.1.is_model_space_owner() {
             pair.1 = model.clone();
+        } else if pair.1.is_paper_space_owner() {
+            pair.1 = paper.clone();
         }
     }
     (table_out, block_out)
+}
+
+/// ``_layer_record_handles``: the handles of the written LAYER records by layer
+/// name.
+pub(crate) fn layer_record_handles(table_pairs: &[Pair]) -> HashMap<String, Val> {
+    let mut handles: HashMap<String, Val> = HashMap::new();
+    let mut in_layer = false;
+    let mut name: Option<&str> = None;
+    let mut handle: Option<&Val> = None;
+    let mut flush = |name: Option<&str>, handle: Option<&Val>| {
+        if let (Some(name), Some(handle)) = (name, handle) {
+            if !name.is_empty() && !py_strip(handle.as_str()).is_empty() {
+                handles.insert(
+                    name.to_string(),
+                    Val::owned(py_strip(handle.as_str()).to_string()),
+                );
+            }
+        }
+    };
+    for (code, value) in table_pairs {
+        if *code == 0 {
+            if in_layer {
+                flush(name, handle);
+            }
+            in_layer = py_strip(value.as_str()).eq_ignore_ascii_case("LAYER");
+            name = None;
+            handle = None;
+        } else if in_layer {
+            if *code == 2 && name.is_none() {
+                name = Some(py_strip(value.as_str()));
+            } else if *code == 5 && handle.is_none() {
+                handle = Some(value);
+            }
+        }
+    }
+    if in_layer {
+        flush(name, handle);
+    }
+    handles
 }

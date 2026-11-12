@@ -1,0 +1,176 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.2.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "tables": {
+  "layers": {
+   "0": {},
+   "DIM": {},
+   "NOTES": {}
+  },
+  "blocks": {
+   "*D0": {
+    "base_point": [
+     0.0,
+     0.0
+    ],
+    "entities": [
+     {
+      "id": "A1",
+      "kind": "LINE",
+      "layer": "0",
+      "p1": [
+       0,
+       0
+      ],
+      "p2": [
+       10,
+       0
+      ]
+     },
+     {
+      "id": "A2",
+      "kind": "LINE",
+      "layer": "0",
+      "p1": [
+       10,
+       0
+      ],
+      "p2": [
+       9,
+       1
+      ]
+     },
+     {
+      "id": "A3",
+      "kind": "TEXT",
+      "layer": "NOTES",
+      "insert": [
+       5.0,
+       1.0
+      ],
+      "height": 3.5,
+      "text": "R5",
+      "width_factor": 0.667,
+      "halign": "center"
+     }
+    ]
+   },
+   "*D2": {
+    "base_point": [
+     1.0,
+     0.0
+    ],
+    "entities": [
+     {
+      "id": "B1",
+      "kind": "LINE",
+      "layer": "0",
+      "p1": [
+       0,
+       0
+      ],
+      "p2": [
+       10,
+       0
+      ]
+     },
+     {
+      "id": "B2",
+      "kind": "LINE",
+      "layer": "0",
+      "p1": [
+       10,
+       0
+      ],
+      "p2": [
+       9,
+       1
+      ]
+     },
+     {
+      "id": "B3",
+      "kind": "TEXT",
+      "layer": "NOTES",
+      "insert": [
+       5.0,
+       1.0
+      ],
+      "height": 3.5,
+      "text": "R5",
+      "width_factor": 0.667,
+      "halign": "center"
+     }
+    ]
+   }
+  }
+ },
+ "entities": [
+  {
+   "id": "D0",
+   "kind": "DIMENSION",
+   "dim_kind": "GENERIC",
+   "layer": "DIM",
+   "definition": {
+    "points": {
+     "location": [
+      0.0,
+      0.0
+     ],
+     "text_midpoint": [
+      5.0,
+      1.0
+     ]
+    },
+    "text": "R5",
+    "measurement": 5.0,
+    "block": "*D0"
+   }
+  },
+  {
+   "id": "D1",
+   "kind": "DIMENSION",
+   "dim_kind": "GENERIC",
+   "layer": "DIM",
+   "definition": {
+    "points": {
+     "location": [
+      0.0,
+      0.0
+     ],
+     "text_midpoint": [
+      5.0,
+      1.0
+     ]
+    },
+    "text": "R5",
+    "measurement": 5.0
+   }
+  },
+  {
+   "id": "D2",
+   "kind": "DIMENSION",
+   "dim_kind": "GENERIC",
+   "layer": "DIM",
+   "definition": {
+    "points": {
+     "location": [
+      0.0,
+      0.0
+     ],
+     "text_midpoint": [
+      5.0,
+      1.0
+     ]
+    },
+    "text": "R5",
+    "measurement": 5.0,
+    "block": "*D2"
+   }
+  }
+ ]
+}

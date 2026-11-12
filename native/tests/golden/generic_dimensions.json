@@ -1,0 +1,591 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.3.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "source": {
+  "format": "unknown"
+ },
+ "tables": {
+  "layers": {
+   "0": {}
+  },
+  "blocks": {
+   "detail": {
+    "base_point": [
+     0.0,
+     0.0
+    ],
+    "entities": [
+     {
+      "kind": "DIMENSION",
+      "dim_kind": "GENERIC",
+      "definition": {
+       "points": {
+        "location": [
+         0.0,
+         10.0
+        ],
+        "p1": [
+         0.0,
+         10.0
+        ],
+        "p2": [
+         50.0,
+         10.0
+        ]
+       },
+       "text": "50",
+       "source_geometry": {
+        "line": {
+         "start_x": 0.0,
+         "start_y": 10.0,
+         "end_x": 50.0,
+         "end_y": 10.0
+        },
+        "text": {
+         "start_x": 20.0,
+         "start_y": 11.0,
+         "end_x": 30.0,
+         "end_y": 11.0,
+         "content": "50",
+         "size_x": 2.0,
+         "size_y": 2.5,
+         "angle": 0.0,
+         "font_name": "ＭＳ ゴシック"
+        },
+        "sxf_mode": 1,
+        "aux_lines": [
+         {
+          "start_x": 0.0,
+          "start_y": 0.0,
+          "end_x": 0.0,
+          "end_y": 12.0
+         },
+         {
+          "start_x": 50.0,
+          "start_y": 0.0,
+          "end_x": 50.0,
+          "end_y": 12.0
+         },
+         {
+          "start_x": 50.0,
+          "start_y": 10.0,
+          "end_x": 0.0,
+          "end_y": 10.0
+         }
+        ],
+        "aux_points": [
+         {
+          "x": 0.0,
+          "y": 10.0
+         },
+         {
+          "x": 50.0,
+          "y": 10.0
+         }
+        ]
+       }
+      },
+      "id": "B1"
+     }
+    ]
+   }
+  }
+ },
+ "entities": [
+  {
+   "kind": "DIMENSION",
+   "dim_kind": "GENERIC",
+   "definition": {
+    "points": {
+     "location": [
+      0.0,
+      10.0
+     ],
+     "p1": [
+      0.0,
+      10.0
+     ],
+     "p2": [
+      50.0,
+      10.0
+     ]
+    },
+    "text": "50",
+    "source_geometry": {
+     "line": {
+      "start_x": 0.0,
+      "start_y": 10.0,
+      "end_x": 50.0,
+      "end_y": 10.0
+     },
+     "text": {
+      "start_x": 20.0,
+      "start_y": 11.0,
+      "end_x": 30.0,
+      "end_y": 11.0,
+      "content": "50",
+      "size_x": 2.0,
+      "size_y": 2.5,
+      "angle": 0.0,
+      "font_name": "ＭＳ ゴシック"
+     },
+     "sxf_mode": 1,
+     "aux_lines": [
+      {
+       "start_x": 0.0,
+       "start_y": 0.0,
+       "end_x": 0.0,
+       "end_y": 12.0
+      },
+      {
+       "start_x": 50.0,
+       "start_y": 0.0,
+       "end_x": 50.0,
+       "end_y": 12.0
+      },
+      {
+       "start_x": 50.0,
+       "start_y": 10.0,
+       "end_x": 0.0,
+       "end_y": 10.0
+      }
+     ],
+     "aux_points": [
+      {
+       "x": 0.0,
+       "y": 10.0
+      },
+      {
+       "x": 50.0,
+       "y": 10.0
+      }
+     ]
+    }
+   },
+   "id": "D1",
+   "layer": "寸法",
+   "linetype": "DASHED",
+   "linetype_scale": 2.0,
+   "color": "#3366cc",
+   "lineweight_mm": 0.35,
+   "style": "寸法の書体"
+  },
+  {
+   "kind": "DIMENSION",
+   "dim_kind": "GENERIC",
+   "definition": {
+    "points": {
+     "location": [
+      0.0,
+      10.0
+     ],
+     "p1": [
+      0.0,
+      10.0
+     ],
+     "p2": [
+      50.0,
+      10.0
+     ]
+    },
+    "text": "50",
+    "source_geometry": {
+     "line": {
+      "start_x": 0.0,
+      "start_y": 10.0,
+      "end_x": 50.0,
+      "end_y": 10.0
+     },
+     "text": {
+      "start_x": 20.0,
+      "start_y": 11.0,
+      "end_x": 30.0,
+      "end_y": 11.0,
+      "content": "50",
+      "size_x": 2.0,
+      "size_y": 2.5,
+      "angle": 0.0,
+      "font_name": "ＭＳ ゴシック"
+     },
+     "sxf_mode": 0,
+     "aux_lines": [
+      {
+       "start_x": 0.0,
+       "start_y": 0.0,
+       "end_x": 0.0,
+       "end_y": 12.0
+      },
+      {
+       "start_x": 50.0,
+       "start_y": 0.0,
+       "end_x": 50.0,
+       "end_y": 12.0
+      },
+      {
+       "start_x": 50.0,
+       "start_y": 10.0,
+       "end_x": 0.0,
+       "end_y": 10.0
+      }
+     ],
+     "aux_points": [
+      {
+       "x": 0.0,
+       "y": 10.0
+      },
+      {
+       "x": 50.0,
+       "y": 10.0
+      }
+     ]
+    }
+   },
+   "id": "D2",
+   "visible": false
+  },
+  {
+   "kind": "DIMENSION",
+   "dim_kind": "GENERIC",
+   "definition": {
+    "points": {
+     "location": [
+      0.0,
+      10.0
+     ],
+     "p1": [
+      0.0,
+      10.0
+     ],
+     "p2": [
+      50.0,
+      10.0
+     ]
+    },
+    "text": "50",
+    "source_geometry": {
+     "line": {
+      "start_x": 0.0,
+      "start_y": 10.0,
+      "end_x": 50.0,
+      "end_y": 10.0
+     },
+     "text": {
+      "start_x": 5,
+      "start_y": 30,
+      "content": "縦 5%%",
+      "size_x": 3,
+      "size_y": 2,
+      "angle": 90
+     },
+     "sxf_mode": null,
+     "aux_lines": [
+      {
+       "start_x": 0.0,
+       "start_y": 0.0,
+       "end_x": 0.0,
+       "end_y": 12.0
+      },
+      {
+       "start_x": 50.0,
+       "start_y": 0.0,
+       "end_x": 50.0,
+       "end_y": 12.0
+      },
+      {
+       "start_x": 50.0,
+       "start_y": 10.0,
+       "end_x": 0.0,
+       "end_y": 10.0
+      }
+     ],
+     "aux_points": [
+      {
+       "x": 0.0,
+       "y": 10.0
+      },
+      {
+       "x": 50.0,
+       "y": 10.0
+      }
+     ]
+    }
+   },
+   "id": "D3",
+   "color": 3
+  },
+  {
+   "kind": "DIMENSION",
+   "dim_kind": "GENERIC",
+   "definition": {
+    "points": {
+     "location": [
+      0.0,
+      10.0
+     ],
+     "p1": [
+      0.0,
+      10.0
+     ],
+     "p2": [
+      50.0,
+      10.0
+     ]
+    },
+    "text": "50",
+    "source_geometry": {
+     "line": {
+      "start_x": 0.0,
+      "start_y": 10.0,
+      "end_x": 50.0,
+      "end_y": 10.0
+     },
+     "text": {
+      "size_y": -1,
+      "size_x": 0,
+      "font_name": "  "
+     },
+     "sxf_mode": 1,
+     "aux_lines": [
+      {
+       "start_x": 0.0,
+       "start_y": 0.0,
+       "end_x": 0.0,
+       "end_y": 12.0
+      },
+      {
+       "start_x": 50.0,
+       "start_y": 0.0,
+       "end_x": 50.0,
+       "end_y": 12.0
+      },
+      {
+       "start_x": 50.0,
+       "start_y": 10.0,
+       "end_x": 0.0,
+       "end_y": 10.0
+      }
+     ],
+     "aux_points": "x"
+    }
+   },
+   "id": "D4"
+  },
+  {
+   "kind": "DIMENSION",
+   "dim_kind": "GENERIC",
+   "definition": {
+    "points": {
+     "location": [
+      0.0,
+      10.0
+     ],
+     "p1": [
+      0.0,
+      10.0
+     ],
+     "p2": [
+      50.0,
+      10.0
+     ]
+    },
+    "text": "50",
+    "source_geometry": {
+     "line": {
+      "p1": [
+       1,
+       2
+      ],
+      "p2": [
+       3,
+       4
+      ]
+     },
+     "text": null,
+     "sxf_mode": 1,
+     "aux_lines": [
+      5,
+      {
+       "p1": [
+        1
+       ]
+      }
+     ],
+     "aux_points": [
+      {
+       "x": 0.0,
+       "y": 10.0
+      },
+      {
+       "x": 50.0,
+       "y": 10.0
+      }
+     ]
+    }
+   },
+   "id": "D5"
+  },
+  {
+   "id": "D6",
+   "kind": "DIMENSION",
+   "dim_kind": "GENERIC",
+   "definition": {
+    "rendered_paths": [
+     {
+      "points": [
+       [
+        0,
+        0
+       ],
+       [
+        10,
+        0
+       ],
+       [
+        10,
+        5
+       ]
+      ],
+      "closed": 1
+     },
+     {
+      "points": [
+       [
+        0,
+        0
+       ],
+       [
+        20,
+        0
+       ]
+      ]
+     },
+     {
+      "points": [
+       [
+        20,
+        0
+       ],
+       [
+        0,
+        0
+       ]
+      ]
+     },
+     {
+      "points": [
+       [
+        0,
+        0
+       ]
+      ]
+     },
+     {
+      "points": [
+       [
+        0,
+        0
+       ],
+       [
+        1,
+        1
+       ],
+       "x"
+      ]
+     }
+    ],
+    "rendered_texts": [
+     {
+      "anchor": [
+       5,
+       5
+      ],
+      "height": 2.5,
+      "text": "寸法",
+      "angle_deg": 30
+     },
+     {
+      "anchor": [
+       5,
+       9
+      ],
+      "height": 0,
+      "text": ""
+     },
+     {
+      "anchor": [
+       5
+      ],
+      "height": 2,
+      "text": "no anchor"
+     }
+    ]
+   }
+  },
+  {
+   "id": "D7",
+   "kind": "DIMENSION",
+   "dim_kind": "GENERIC",
+   "definition": {
+    "points": {
+     "p1": [
+      0,
+      0
+     ],
+     "p2": [
+      9,
+      0
+     ],
+     "location": [
+      4,
+      1
+     ]
+    },
+    "text": "9",
+    "text_height": 3
+   }
+  },
+  {
+   "id": "D8",
+   "kind": "DIMENSION",
+   "dim_kind": "GENERIC",
+   "definition": {
+    "points": {
+     "text_midpoint": null
+    },
+    "location": [
+     7,
+     7
+    ],
+    "text": "x"
+   }
+  },
+  {
+   "id": "D9",
+   "kind": "DIMENSION",
+   "dim_kind": "GENERIC",
+   "definition": {
+    "text": "y"
+   }
+  },
+  {
+   "id": "D10",
+   "kind": "DIMENSION",
+   "dim_kind": "GENERIC",
+   "definition": {
+    "text": "z",
+    "text_height": 0
+   }
+  },
+  {
+   "id": "D11",
+   "kind": "DIMENSION",
+   "dim_kind": "GENERIC",
+   "definition": {}
+  }
+ ]
+}

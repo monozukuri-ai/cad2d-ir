@@ -1,0 +1,69 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.2.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "entities": [
+  {
+   "id": "H1",
+   "kind": "HATCH",
+   "solid": false,
+   "pattern": "ANSI31",
+   "loops": [
+    {
+     "vertices": [
+      [
+       0,
+       0
+      ],
+      [
+       100,
+       0
+      ],
+      [
+       100,
+       50
+      ],
+      [
+       0,
+       50
+      ]
+     ]
+    }
+   ],
+   "pattern_angle": 15.0,
+   "pattern_scale": 2.0,
+   "pattern_lines": [
+    {
+     "angle": 45.0,
+     "base": [
+      0.0,
+      0.0
+     ],
+     "offset": [
+      -2.0,
+      2.0
+     ]
+    },
+    {
+     "angle": 0.0,
+     "base": [
+      1.0,
+      0.5
+     ],
+     "offset": [
+      3.0,
+      4.0
+     ],
+     "dashes": [
+      6.0,
+      -3.0
+     ]
+    }
+   ]
+  }
+ ]
+}

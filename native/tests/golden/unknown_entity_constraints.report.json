@@ -1,0 +1,100 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_CONSTRAINTS_OMITTED",
+    "severity": "warning",
+    "message": "IR constraints are not representable in plain DXF and were omitted.",
+    "entity_id": null,
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_UNKNOWN_ENTITY_SKIPPED",
+    "severity": "warning",
+    "message": "[FUTURE_ENTITY:U1] unsupported IR entity kind was skipped during DXF export.",
+    "entity_id": "U1",
+    "action": "skipped"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "U1",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_UNKNOWN_ENTITY_SKIPPED"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_CONSTRAINTS_OMITTED",
+    "severity": "warning",
+    "message": "IR constraints are not representable in plain DXF and were omitted.",
+    "entity_id": null,
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_UNKNOWN_ENTITY_SKIPPED",
+    "severity": "warning",
+    "message": "[FUTURE_ENTITY:U1] unsupported IR entity kind was skipped during DXF export.",
+    "entity_id": "U1",
+    "action": "skipped"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "U1",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_UNKNOWN_ENTITY_SKIPPED"
+   }
+  ]
+ }
+}

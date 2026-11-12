@@ -8,9 +8,10 @@ use std::collections::HashSet;
 
 use indexmap::IndexMap;
 
+use super::common::Common;
 use super::pairs::{py_strip, Pair, Val};
-use super::{common_to_pairs, Context, HandleAllocator, WriteError};
-use crate::model::{Entity, Shape};
+use super::{Context, HandleAllocator, WriteError};
+use crate::model::Entity;
 use crate::num::{num, py_round_to_int};
 use crate::pystr::{casefold, repr};
 use crate::value::{Map, Value};
@@ -19,11 +20,6 @@ use crate::value::{Map, Value};
 const IMAGE_DISPLAY_FLAGS: &str = "3";
 /// How many characters of the base64 text are read for the header of the file.
 const PREFIX_LIMIT: usize = 1 << 20;
-
-/// Whether ``entity`` is an ``IMAGE``.
-pub(crate) fn is_image(entity: &Entity) -> bool {
-    matches!(entity.shape, Shape::Other) && entity.kind() == Some("IMAGE")
-}
 
 /// One IMAGEDEF object: the raster file the IMAGE entities showing it share.
 struct ImageDefinition {
@@ -90,6 +86,18 @@ impl ImageRegistry {
             definition
                 .reactors
                 .push((prepared.reactor_handle.clone(), handle));
+        }
+    }
+
+    /// The owners of the reactors that were bound before their image had its
+    /// handle.
+    pub(crate) fn resolve_owners(&mut self, resolve: &dyn Fn(&str) -> Option<Val>) {
+        for definition in self.definitions.values_mut() {
+            for (_, owner) in definition.reactors.iter_mut() {
+                if let Some(handle) = resolve(owner.as_str()) {
+                    *owner = handle;
+                }
+            }
         }
     }
 
@@ -243,15 +251,6 @@ fn positive_finite(value: Option<&Value>) -> Option<f64> {
     (number.is_finite() && number > 0.0).then_some(number)
 }
 
-/// The id of an entity for a message: ``str(entity.get("id", ""))``.
-fn entity_id(entity: &Entity) -> Result<&str, WriteError> {
-    match (&entity.id, entity.extra_get("id")) {
-        (Some(id), _) => Ok(id),
-        (None, None) => Ok(""),
-        (None, Some(_)) => Err(WriteError::unsupported("image id is not a string")),
-    }
-}
-
 /// ``_image_source_metadata``: the DXF or DWG image record the IR carried.
 fn image_source_metadata(entity: &Entity) -> Option<&Map> {
     let metadata = entity.extra_get("metadata")?.as_map()?;
@@ -290,12 +289,11 @@ fn image_pixel_size(entity: &Entity) -> Result<Option<(i64, i64)>, WriteError> {
         if size.len() == 2 {
             let mut rounded = [0_i64; 2];
             for (slot, value) in rounded.iter_mut().zip(size) {
-                let Some(number) = value.as_python_number() else {
-                    // ``float()`` of a string may still be a number
-                    return Err(WriteError::unsupported("image size is not a number"));
-                };
-                // a NaN or an infinity is no size
-                *slot = py_round_to_int(number).unwrap_or(0);
+                // a value that is no number, a NaN or an infinity is no size
+                *slot = value
+                    .as_python_number()
+                    .and_then(py_round_to_int)
+                    .unwrap_or(0);
             }
             let [columns, rows] = rounded;
             if columns > 0 && rows > 0 {
@@ -305,7 +303,7 @@ fn image_pixel_size(entity: &Entity) -> Result<Option<(i64, i64)>, WriteError> {
     }
     if let Some(Value::Str(data)) = entity.extra_get("data") {
         if !py_strip(data).is_empty() {
-            return Ok(sniff_image_size(&decode_image_prefix(data)?));
+            return Ok(sniff_image_size(&decode_image_prefix(data)));
         }
     }
     Ok(None)
@@ -322,12 +320,13 @@ fn base64_value(byte: u8) -> Option<u32> {
     }
 }
 
-/// ``_decode_image_prefix``: the bytes of the first characters of base64 text.
-/// Python decodes leniently (characters outside the alphabet are dropped);
-/// text that needs that is left to the Python writer.
-fn decode_image_prefix(data: &str) -> Result<Vec<u8>, WriteError> {
-    let unsupported = || WriteError::unsupported("image data is not plain base64");
-    let mut compact: Vec<u8> = Vec::with_capacity(data.len().min(PREFIX_LIMIT));
+/// ``_decode_image_prefix``: the bytes of the first characters of base64 text,
+/// as ``base64.b64decode(text, validate=False)`` reads them: white space is
+/// left out before, a character outside the alphabet is skipped, padding ends
+/// the data, and text that is no base64 (a character outside ASCII, a group
+/// that is not complete) gives no bytes.
+fn decode_image_prefix(data: &str) -> Vec<u8> {
+    let mut compact: Vec<char> = Vec::with_capacity(data.len().min(PREFIX_LIMIT));
     for character in data.chars() {
         if character.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&character) {
             continue;
@@ -335,35 +334,58 @@ fn decode_image_prefix(data: &str) -> Result<Vec<u8>, WriteError> {
         if compact.len() == PREFIX_LIMIT {
             break;
         }
-        if !character.is_ascii() {
-            return Err(unsupported());
-        }
-        compact.push(character as u8);
+        compact.push(character);
     }
     compact.truncate(compact.len() - compact.len() % 4);
+    if compact.iter().any(|character| !character.is_ascii()) {
+        return Vec::new();
+    }
     let mut out = Vec::with_capacity(compact.len() / 4 * 3);
-    // groups of four characters (the length is a multiple of four by now)
-    let (quads, _) = compact.as_chunks::<4>();
-    let groups = quads.len();
-    for (index, group) in quads.iter().enumerate() {
-        let padding = group.iter().rev().take_while(|byte| **byte == b'=').count();
-        if padding > 2 || (padding > 0 && index + 1 != groups) {
-            return Err(unsupported());
+    let mut quad_position = 0;
+    let mut left: u32 = 0;
+    let mut pads = 0;
+    for character in compact {
+        let byte = character as u8;
+        if byte == b'=' {
+            if quad_position >= 2 {
+                pads += 1;
+                if quad_position + pads >= 4 {
+                    // a pad sequence ends the data
+                    return out;
+                }
+            }
+            continue;
         }
-        let mut bits = 0_u32;
-        for byte in &group[..4 - padding] {
-            bits = (bits << 6) | base64_value(*byte).ok_or_else(unsupported)?;
-        }
-        bits <<= 6 * padding as u32;
-        out.push((bits >> 16) as u8);
-        if padding < 2 {
-            out.push((bits >> 8) as u8);
-        }
-        if padding < 1 {
-            out.push(bits as u8);
+        let Some(value) = base64_value(byte) else {
+            continue;
+        };
+        pads = 0;
+        match quad_position {
+            0 => {
+                quad_position = 1;
+                left = value;
+            }
+            1 => {
+                quad_position = 2;
+                out.push(((left << 2) | (value >> 4)) as u8);
+                left = value & 0x0f;
+            }
+            2 => {
+                quad_position = 3;
+                out.push(((left << 4) | (value >> 2)) as u8);
+                left = value & 0x03;
+            }
+            _ => {
+                quad_position = 0;
+                out.push(((left << 6) | value) as u8);
+                left = 0;
+            }
         }
     }
-    Ok(out)
+    if quad_position != 0 {
+        return Vec::new();
+    }
+    out
 }
 
 fn u16_le(raw: &[u8], at: usize) -> i64 {
@@ -481,8 +503,9 @@ fn image_file_reference(entity: &Entity, entity_id: &str) -> Result<(String, boo
     if embedded && !base.contains('.') {
         let mime_type = match entity.extra_get("mime_type") {
             None => String::new(),
-            Some(Value::Str(mime_type)) => py_strip(mime_type).to_lowercase(),
-            Some(_) => return Err(WriteError::unsupported("image mime_type is not a string")),
+            Some(value) => {
+                py_strip(&super::common::py_str(value, "image mime_type")?).to_lowercase()
+            }
         };
         base.push_str(match mime_type.as_str() {
             "image/png" => ".png",
@@ -540,7 +563,8 @@ pub(crate) fn prepare(
     entity: &Entity,
     context: &mut Context<'_>,
 ) -> Result<Option<Prepared>, WriteError> {
-    let id = entity_id(entity)?;
+    let id = super::common::entity_id(entity)?;
+    let id: &str = &id;
     let label = format!("[IMAGE:{}]", if id.is_empty() { "?" } else { id });
     let diagnostic_id = (!id.is_empty()).then(|| id.to_string());
     let (Some(width), Some(height)) = (
@@ -563,7 +587,7 @@ pub(crate) fn prepare(
             let pixels = |extent: f64| {
                 py_round_to_int(extent)
                     .map(|rounded| rounded.max(1))
-                    .ok_or_else(|| WriteError::unsupported("image extent is not finite"))
+                    .ok_or_else(|| WriteError::invalid("image extent is not finite"))
             };
             let size = (pixels(width)?, pixels(height)?);
             context.diagnose(
@@ -619,19 +643,20 @@ fn snap(value: f64, scale: f64) -> f64 {
     }
 }
 
-/// ``_image_to_pairs`` with the subclass markers and the handle of the entity.
+/// ``_image_to_pairs`` behind the head of the record (its kind, handle, owner
+/// and ``AcDbEntity`` marker).
 pub(crate) fn append_record(
     output: &mut Vec<Pair>,
     entity: &Entity,
     prepared: &Prepared,
-    handle: Val,
+    common: &Common,
 ) -> Result<(), WriteError> {
     let insert = match entity.extra_get("insert").and_then(Value::as_list) {
         Some([x, y, ..]) => match (x.as_python_number(), y.as_python_number()) {
             (Some(x), Some(y)) => [x, y],
-            _ => return Err(WriteError::unsupported("image insert is not a point")),
+            _ => return Err(WriteError::invalid("image insert is not a point")),
         },
-        _ => return Err(WriteError::unsupported("image insert is not a point")),
+        _ => return Err(WriteError::invalid("image insert is not a point")),
     };
     // ``float(entity.get("rotation", 0.0) or 0.0)``
     let rotation = match entity.extra_get("rotation") {
@@ -640,7 +665,7 @@ pub(crate) fn append_record(
             Some(rotation) if rotation != 0.0 => rotation,
             Some(_) => 0.0,
             None if !value.truthy() => 0.0,
-            None => return Err(WriteError::unsupported("image rotation is not a number")),
+            None => return Err(WriteError::invalid("image rotation is not a number")),
         },
     };
     let angle = rotation.to_radians();
@@ -658,10 +683,7 @@ pub(crate) fn append_record(
     let (brightness, contrast, fade) = image_display_values(entity);
     let (columns, rows) = (prepared.size.0 as f64, prepared.size.1 as f64);
 
-    output.push((0, Val::S("IMAGE")));
-    output.push((5, handle));
-    output.push((100, Val::S("AcDbEntity")));
-    common_to_pairs(entity, output)?;
+    common.write(output);
     output.push((100, Val::S("AcDbRasterImage")));
     output.push((90, Val::S("0")));
     output.push((10, Val::owned(num(insert[0]))));
@@ -732,10 +754,16 @@ mod tests {
 
     #[test]
     fn base64_prefix_is_decoded() {
-        assert_eq!(decode_image_prefix("QUJD\nRA==").unwrap(), b"ABCD");
+        // python3 -c "import base64; print(base64.b64decode('QUJDRA==', validate=False), base64.b64decode('QQ==QUJD', validate=False))"
+        assert_eq!(decode_image_prefix("QUJD\nRA=="), b"ABCD");
         // a tail that is no whole group is left out
-        assert_eq!(decode_image_prefix("QUJDR").unwrap(), b"ABC");
-        assert!(decode_image_prefix("QU-D").is_err());
-        assert!(decode_image_prefix("QQ==QUJD").is_err());
+        assert_eq!(decode_image_prefix("QUJDR"), b"ABC");
+        // a character outside the alphabet is skipped; the group it leaves
+        // incomplete is no base64
+        assert_eq!(decode_image_prefix("QU-D"), b"");
+        assert_eq!(decode_image_prefix("QU-DQQ=="), b"");
+        // padding ends the data
+        assert_eq!(decode_image_prefix("QQ==QUJD"), b"A");
+        assert_eq!(decode_image_prefix("QUJD\u{56f3}\u{9762}AA"), b"");
     }
 }

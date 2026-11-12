@@ -1,0 +1,238 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D0] GENERIC dimension was expanded into 3 primitive(s).",
+    "entity_id": "D0",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D1] GENERIC dimension was expanded into 1 primitive(s).",
+    "entity_id": "D1",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D2] GENERIC dimension was expanded into 1 primitive(s).",
+    "entity_id": "D2",
+    "action": "exploded"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "A1",
+    "handle": "109",
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "A2",
+    "handle": "10A",
+    "dxf_type": "LINE",
+    "index": 1,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "A3",
+    "handle": "10B",
+    "dxf_type": "TEXT",
+    "index": 2,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "B1",
+    "handle": "10E",
+    "dxf_type": "LINE",
+    "index": 3,
+    "scope": "block:*D2"
+   },
+   {
+    "ir_id": "B2",
+    "handle": "10F",
+    "dxf_type": "LINE",
+    "index": 4,
+    "scope": "block:*D2"
+   },
+   {
+    "ir_id": "B3",
+    "handle": "110",
+    "dxf_type": "TEXT",
+    "index": 5,
+    "scope": "block:*D2"
+   },
+   {
+    "ir_id": "D0",
+    "handle": "112",
+    "dxf_type": "LINE",
+    "index": 6,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D0",
+    "handle": "113",
+    "dxf_type": "LINE",
+    "index": 7,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D0",
+    "handle": "114",
+    "dxf_type": "TEXT",
+    "index": 8,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D1",
+    "handle": "115",
+    "dxf_type": "TEXT",
+    "index": 9,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D2",
+    "handle": "116",
+    "dxf_type": "TEXT",
+    "index": 10,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D0] GENERIC dimension was expanded into 3 primitive(s).",
+    "entity_id": "D0",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D1] GENERIC dimension was expanded into 1 primitive(s).",
+    "entity_id": "D1",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D2] GENERIC dimension was expanded into 1 primitive(s).",
+    "entity_id": "D2",
+    "action": "exploded"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "A1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "A2",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 1,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "A3",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 2,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 3,
+    "scope": "block:*D2"
+   },
+   {
+    "ir_id": "B2",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 4,
+    "scope": "block:*D2"
+   },
+   {
+    "ir_id": "B3",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 5,
+    "scope": "block:*D2"
+   },
+   {
+    "ir_id": "D0",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 6,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D0",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 7,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D0",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 8,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D1",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 9,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D2",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 10,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

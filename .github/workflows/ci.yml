@@ -19,6 +19,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # The DXF writer and the entity conversion of the JWW importer are the
+      # Rust code under native/ (the package cad2d-ir-native, a dependency of
+      # cad2d-ir): `uv sync` builds it from there.
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
       - name: Setup uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -30,9 +36,10 @@ jobs:
       - name: Run tests
         run: uv run --no-sync pytest -q
 
-  # The Rust extension under native/ (the package cad2d-ir-native): built from
-  # source on every kind of platform a release has a wheel for, and compared
-  # with the Python implementation by native/tests.
+  # The native code on every kind of platform a release has a wheel for: built
+  # from source, installed with cad2d-ir and checked by native/tests (the DXF
+  # the writer makes against the golden files, the JWW import of the sample
+  # drawings, the tables the native code carries).
   native:
     name: native / ${{ matrix.os }} / py${{ matrix.python-version }}
     runs-on: ${{ matrix.os }}
@@ -74,7 +81,7 @@ jobs:
           echo "EZJWW_TAG=$(python scripts/check_release.py --ezjww-tag)" >> "${GITHUB_ENV}"
 
       # The sample drawings of the reader the Rust code is built with: the
-      # JWW tests compare the native import with the Python one on real files.
+      # JWW tests import real files.
       - name: Checkout JWW samples
         uses: actions/checkout@v4
         with:
@@ -91,11 +98,15 @@ jobs:
           cargo clippy --workspace --all-targets --locked -- -D warnings
           cargo test -p cad2d-ir-core -p cad2d-ir-jww --locked
 
+      # The native package first: cad2d-ir pins its version, which is not on
+      # PyPI before the release. `ezjww` is the reader the Rust code is built
+      # with, so that a file (read by the native code) and its dict (read by
+      # `ezjww`) come from the same reader.
       - name: Build and install
         shell: bash
         run: |
-          python -m pip install -e ".[jww]" pytest
           python -m pip install ./native
+          python -m pip install -e ".[jww]" "ezjww==${EZJWW_TAG#v}" pytest
           python -m pip check
 
       - name: Native tests

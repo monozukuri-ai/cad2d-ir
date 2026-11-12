@@ -3,8 +3,8 @@
 //! A field is typed when its value has the type the IR schema gives it. Anything
 //! else (an unknown key, a value of another type) stays in ``extra`` as a dynamic
 //! [`Value`], so that a document converted from a ``dict`` converts back to an
-//! equal ``dict``. Code that writes a document checks ``extra`` for the keys it
-//! would have to understand and declines the document when it finds one.
+//! equal ``dict``. Code that writes a document reads those keys from ``extra``
+//! where a typed field is missing.
 
 use std::collections::HashMap;
 use std::sync::Arc;

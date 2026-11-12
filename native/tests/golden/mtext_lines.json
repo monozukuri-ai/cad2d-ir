@@ -1,0 +1,77 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.2.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "tables": {
+  "layers": {
+   "0": {}
+  },
+  "text_styles": {
+   "NARROW": {
+    "font": "arial.ttf",
+    "width_factor": 0.8
+   }
+  }
+ },
+ "entities": [
+  {
+   "id": "M0",
+   "kind": "MTEXT",
+   "insert": [
+    0.0,
+    100.0
+   ],
+   "height": 5.0,
+   "text": "one\\Ptwo",
+   "style": "NARROW"
+  },
+  {
+   "id": "M1",
+   "kind": "MTEXT",
+   "insert": [
+    100.0,
+    100.0
+   ],
+   "height": 5.0,
+   "text": "{\\H2x;BIG}\\Psmall",
+   "attach": "middle_center"
+  },
+  {
+   "id": "M2",
+   "kind": "MTEXT",
+   "insert": [
+    200.0,
+    100.0
+   ],
+   "height": 5.0,
+   "text": "a\\Pb",
+   "attach": "bottom_right",
+   "rotation": 90.0
+  },
+  {
+   "id": "M3",
+   "kind": "MTEXT",
+   "insert": [
+    300.0,
+    100.0
+   ],
+   "height": 5.0,
+   "text": "\\W0.5;\\H2.5;half",
+   "style": "NARROW"
+  },
+  {
+   "id": "M4",
+   "kind": "MTEXT",
+   "insert": [
+    400.0,
+    100.0
+   ],
+   "height": 5.0,
+   "text": "first\\P\\Pthird"
+  }
+ ]
+}

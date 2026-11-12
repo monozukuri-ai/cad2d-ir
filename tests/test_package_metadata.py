@@ -42,7 +42,7 @@ def project() -> dict[str, Any]:
 
 
 def test_native_package_is_released_under_the_same_version() -> None:
-    """cad2d-ir-native (native/) pins the cad2d-ir of its own version."""
+    """cad2d-ir pins the cad2d-ir-native (native/) of its own version."""
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(

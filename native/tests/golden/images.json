@@ -1,0 +1,181 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.3.0",
+ "header": {
+  "units": "m",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "source": {
+  "format": "unknown"
+ },
+ "tables": {
+  "layers": {
+   "0": {}
+  },
+  "blocks": {
+   "sheet": {
+    "base_point": [
+     0.0,
+     0.0
+    ],
+    "entities": [
+     {
+      "kind": "IMAGE",
+      "insert": [
+       10.0,
+       20.0
+      ],
+      "width": 40.0,
+      "height": 20.0,
+      "data": "iVBORw0KGgoAAAANSUhEUgAAAZAAAADICAIAAAA=",
+      "mime_type": "image/png",
+      "id": "B1",
+      "name": "b"
+     }
+    ]
+   }
+  }
+ },
+ "entities": [
+  {
+   "kind": "IMAGE",
+   "insert": [
+    10.0,
+    20.0
+   ],
+   "width": 40.0,
+   "height": 20.0,
+   "data": "iVBORw0KGgoAAAANSUhEUgAAAZAAAADICAIAAAA=",
+   "mime_type": "image/png",
+   "id": "IM1",
+   "name": "logo.png",
+   "rotation": 30.0,
+   "layer": "図"
+  },
+  {
+   "kind": "IMAGE",
+   "insert": [
+    100,
+    0
+   ],
+   "width": 40.0,
+   "height": 20.0,
+   "data": "iVBORw0KGgoAAAANSUhEUgAAAZAAAADICAIAAAA=",
+   "mime_type": "image/png",
+   "id": "IM2",
+   "name": "logo.png",
+   "color": 3
+  },
+  {
+   "kind": "IMAGE",
+   "insert": [
+    10.0,
+    20.0
+   ],
+   "width": 40.0,
+   "height": 20.0,
+   "data": "iVBORw0KGgoAAAANSUhEUgAAAZAAAADICAIAAAA=",
+   "mime_type": "image/png",
+   "id": "IM3",
+   "name": "dir\\LOGO.bmp",
+   "rotation": 0
+  },
+  {
+   "kind": "IMAGE",
+   "insert": [
+    10.0,
+    20.0
+   ],
+   "width": 12.5,
+   "height": 20.0,
+   "id": "IM4",
+   "href": " C:\\img\\site plan.jpg "
+  },
+  {
+   "kind": "IMAGE",
+   "insert": [
+    10.0,
+    20.0
+   ],
+   "width": 40.0,
+   "height": 20.0,
+   "id": "IM5",
+   "data": "Qk0AAAAAAAAAAAAAAAAoAAAAQAAAAOD///8=",
+   "mime_type": "image/bmp"
+  },
+  {
+   "kind": "IMAGE",
+   "insert": [
+    10.0,
+    20.0
+   ],
+   "width": 40.0,
+   "height": 20.0,
+   "id": "IM6",
+   "data": "R0lGODlhHgAPAA==",
+   "mime_type": "IMAGE/GIF ",
+   "name": "a:b?"
+  },
+  {
+   "kind": "IMAGE",
+   "insert": [
+    10.0,
+    20.0
+   ],
+   "width": 40.0,
+   "height": 20.0,
+   "id": "IM7",
+   "data": "/9j/4AAEYWL/wAALCAAJABA=",
+   "name": "photo",
+   "visible": false
+  },
+  {
+   "kind": "IMAGE",
+   "insert": [
+    10.0,
+    20.0
+   ],
+   "width": 40.0,
+   "height": 20.0,
+   "id": "IM8",
+   "data": "bm90IGFuIGltYWdl",
+   "name": "x.dat"
+  },
+  {
+   "kind": "IMAGE",
+   "insert": [
+    10.0,
+    20.0
+   ],
+   "width": 40.0,
+   "height": 20.0,
+   "id": "IM9",
+   "name": "scan.tif",
+   "metadata": {
+    "dxf": {
+     "image": {
+      "size": [
+       800,
+       400.4
+      ],
+      "brightness": 70,
+      "fade": 200
+     }
+    }
+   }
+  },
+  {
+   "id": "L1",
+   "kind": "LINE",
+   "p1": [
+    0,
+    0
+   ],
+   "p2": [
+    1,
+    1
+   ]
+  }
+ ]
+}

@@ -1,0 +1,595 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_LINEWEIGHT_NORMALIZED",
+    "severity": "info",
+    "message": "15 line weight(s) DXF has no value for were written as the nearest line weight it has.",
+    "entity_id": null,
+    "action": "normalized"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "B1",
+    "handle": "10B",
+    "dxf_type": "CIRCLE",
+    "index": 0,
+    "scope": "block:B"
+   },
+   {
+    "ir_id": "L0",
+    "handle": "10D",
+    "dxf_type": "LINE",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L1",
+    "handle": "10E",
+    "dxf_type": "LINE",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L2",
+    "handle": "10F",
+    "dxf_type": "LINE",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L3",
+    "handle": "110",
+    "dxf_type": "LINE",
+    "index": 4,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L4",
+    "handle": "111",
+    "dxf_type": "LINE",
+    "index": 5,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L5",
+    "handle": "112",
+    "dxf_type": "LINE",
+    "index": 6,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L6",
+    "handle": "113",
+    "dxf_type": "LINE",
+    "index": 7,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L7",
+    "handle": "114",
+    "dxf_type": "LINE",
+    "index": 8,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L8",
+    "handle": "115",
+    "dxf_type": "LINE",
+    "index": 9,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L9",
+    "handle": "116",
+    "dxf_type": "LINE",
+    "index": 10,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L10",
+    "handle": "117",
+    "dxf_type": "LINE",
+    "index": 11,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L11",
+    "handle": "118",
+    "dxf_type": "LINE",
+    "index": 12,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L12",
+    "handle": "119",
+    "dxf_type": "LINE",
+    "index": 13,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L13",
+    "handle": "11A",
+    "dxf_type": "LINE",
+    "index": 14,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L14",
+    "handle": "11B",
+    "dxf_type": "LINE",
+    "index": 15,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L15",
+    "handle": "11C",
+    "dxf_type": "LINE",
+    "index": 16,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L16",
+    "handle": "11D",
+    "dxf_type": "LINE",
+    "index": 17,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L17",
+    "handle": "11E",
+    "dxf_type": "LINE",
+    "index": 18,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L18",
+    "handle": "11F",
+    "dxf_type": "LINE",
+    "index": 19,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L19",
+    "handle": "120",
+    "dxf_type": "LINE",
+    "index": 20,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L20",
+    "handle": "121",
+    "dxf_type": "LINE",
+    "index": 21,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L21",
+    "handle": "122",
+    "dxf_type": "LINE",
+    "index": 22,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L22",
+    "handle": "123",
+    "dxf_type": "LINE",
+    "index": 23,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "Layer 'layer0' lineweight was omitted from DXF R12.",
+    "entity_id": null,
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "Layer 'layer1' lineweight was omitted from DXF R12.",
+    "entity_id": null,
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "Layer 'layer2' lineweight was omitted from DXF R12.",
+    "entity_id": null,
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "Layer 'unused' lineweight was omitted from DXF R12.",
+    "entity_id": null,
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[CIRCLE:B1] lineweight was omitted from DXF R12.",
+    "entity_id": "B1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L0] lineweight was omitted from DXF R12.",
+    "entity_id": "L0",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L1] lineweight was omitted from DXF R12.",
+    "entity_id": "L1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L2] lineweight was omitted from DXF R12.",
+    "entity_id": "L2",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L3] lineweight was omitted from DXF R12.",
+    "entity_id": "L3",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L4] lineweight was omitted from DXF R12.",
+    "entity_id": "L4",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L5] lineweight was omitted from DXF R12.",
+    "entity_id": "L5",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L6] lineweight was omitted from DXF R12.",
+    "entity_id": "L6",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L7] lineweight was omitted from DXF R12.",
+    "entity_id": "L7",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L8] lineweight was omitted from DXF R12.",
+    "entity_id": "L8",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L9] lineweight was omitted from DXF R12.",
+    "entity_id": "L9",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L10] lineweight was omitted from DXF R12.",
+    "entity_id": "L10",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L11] lineweight was omitted from DXF R12.",
+    "entity_id": "L11",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L12] lineweight was omitted from DXF R12.",
+    "entity_id": "L12",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L13] lineweight was omitted from DXF R12.",
+    "entity_id": "L13",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L14] lineweight was omitted from DXF R12.",
+    "entity_id": "L14",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L15] lineweight was omitted from DXF R12.",
+    "entity_id": "L15",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L16] lineweight was omitted from DXF R12.",
+    "entity_id": "L16",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L17] lineweight was omitted from DXF R12.",
+    "entity_id": "L17",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L18] lineweight was omitted from DXF R12.",
+    "entity_id": "L18",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L19] lineweight was omitted from DXF R12.",
+    "entity_id": "L19",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L20] lineweight was omitted from DXF R12.",
+    "entity_id": "L20",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L21] lineweight was omitted from DXF R12.",
+    "entity_id": "L21",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:L22] lineweight was omitted from DXF R12.",
+    "entity_id": "L22",
+    "action": "skipped"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": "CIRCLE",
+    "index": 0,
+    "scope": "block:B"
+   },
+   {
+    "ir_id": "L0",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L2",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L3",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 4,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L4",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 5,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L5",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 6,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L6",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 7,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L7",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 8,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L8",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 9,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L9",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 10,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L10",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 11,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L11",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 12,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L12",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 13,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L13",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 14,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L14",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 15,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L15",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 16,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L16",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 17,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L17",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 18,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L18",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 19,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L19",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 20,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L20",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 21,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L21",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 22,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L22",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 23,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

@@ -17,7 +17,7 @@ The registry in `cad2d_ir.importers.registry` currently dispatches:
 | Format | Suffix | Adapter state | Parser dependency |
 | --- | --- | --- | --- |
 | DXF | `.dxf` | implemented | built in |
-| JWW | `.jww` | implemented | `ezjww>=0.2.6,<0.3` |
+| JWW | `.jww` | implemented | `ezjww>=0.7.13,<0.8` |
 | DWG | `.dwg` | implemented | `ezdwg>=0.11,<1` |
 | DGN | `.dgn` | implemented (V7 2D, V8) | `ezdgn>=0.2.1,<0.3` |
 | DWF | `.dwf`, `.dwfx` | implemented (2D) | `ezdwf>=0.0.1,<0.1` |
@@ -27,7 +27,9 @@ The registry in `cad2d_ir.importers.registry` currently dispatches:
 
 ## JWW vertical slice
 
-The JWW adapter consumes `ezjww.read_document()` rather than `read_dxf_document()`. This avoids losing source semantics before IR construction.
+The JWW adapter maps the records of the `ezjww` reader, not the DXF `ezjww` can make of them. This avoids losing source semantics before IR construction.
+
+The entities are converted by native code (the `cad2d-ir-native` package, which is built with the reader, `ezjww-core`). `convert_jww_file_to_ir(path)` reads the header with `ezjww.read_header()` for the layers, line types and pens, and the native code reads the file for the entities, which never become Python objects on the way. `jww_document_to_ir(document)` takes the `dict` of `ezjww.read_document()` and converts its entities with the same code; a drawing whose strings are UTF-8 and a JWS symbol go this way. `cad2d_ir.importers.jww.import_jww_file(path)` returns the import with the document still held in native code (`NativeImportResult`), for a caller that hands it on to the DXF writer.
 
 | JWW source | IR mapping | Fidelity handling |
 | --- | --- | --- |

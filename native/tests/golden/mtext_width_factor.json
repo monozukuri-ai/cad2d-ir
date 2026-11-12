@@ -1,0 +1,70 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.2.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "tables": {
+  "layers": {
+   "0": {}
+  }
+ },
+ "entities": [
+  {
+   "id": "M0",
+   "kind": "MTEXT",
+   "insert": [
+    0,
+    0
+   ],
+   "height": 2.5,
+   "text": "narrow",
+   "width_factor": 0.667
+  },
+  {
+   "id": "M1",
+   "kind": "MTEXT",
+   "insert": [
+    0,
+    10
+   ],
+   "height": 2.5,
+   "text": "plain"
+  },
+  {
+   "id": "M2",
+   "kind": "MTEXT",
+   "insert": [
+    0,
+    20
+   ],
+   "height": 2.5,
+   "text": "one",
+   "width_factor": 1.0
+  },
+  {
+   "id": "M3",
+   "kind": "MTEXT",
+   "insert": [
+    0,
+    30
+   ],
+   "height": 2.5,
+   "text": "wide",
+   "width_factor": 25.0
+  },
+  {
+   "id": "M4",
+   "kind": "MTEXT",
+   "insert": [
+    0,
+    40
+   ],
+   "height": 2.5,
+   "text": "{\\W0.5;a}b\nc",
+   "width_factor": 1.5
+  }
+ ]
+}

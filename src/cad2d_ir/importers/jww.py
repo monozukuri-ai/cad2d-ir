@@ -6,21 +6,24 @@ drawing it was registered from, so the entity conversion is shared. Only the
 header differs: a symbol has an insertion origin, the scale denominator of each
 layer group and recorded bounds, but no layer names, pen palette, line type
 patterns, paper size or memo.
+
+The entities are converted by native code (the ``cad2d-ir-native`` package):
+of a file it reads itself, or of the ``dict`` of ``ezjww.read_document``. This
+module makes what comes from the header - layers, line types, the pen table,
+the metadata of the document - and the diagnostics about the document.
 """
 
 from __future__ import annotations
 
-import base64
-import gzip
 import hashlib
 import math
-import zlib
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
+from cad2d_ir._native import native_core
 from cad2d_ir.importers.base import (
     ImportDiagnostic,
     ImporterError,
@@ -34,17 +37,6 @@ from cad2d_ir.importers.linetypes import (
 )
 from cad2d_ir.schema import validate_ir
 
-_TAU = 2.0 * math.pi
-_EPSILON = 1e-12
-_METADATA_SETTING_KEYS = {
-    "Printer_Orientation",
-    "Printer_PaperSize",
-    "Printer_D2dBMP",
-    "Printer_BmpZENTAI",
-    "View_Direct2d",
-    "Draw_BmpTOUKA",
-}
-
 # One pattern bit prints as (printer pitch / 32) mm. Jw_cad stores, for its
 # SXF-compatible line types, both the bit pattern with its printer pitch and the
 # SXF segment lengths in millimetres; the two agree at exactly this ratio in every
@@ -53,10 +45,6 @@ _METADATA_SETTING_KEYS = {
 # older than 0.3.3 does not report them, and files older than JWW 3.00 do not
 # store them where it reads.
 _PATTERN_UNIT_MM = 1.0 / 32.0
-# Jw_cad は画像を「^@BM<パス>,<幅>,<高さ>,...」の文字で配置する。バージョン 700 は
-# 画像ファイル本体をファイル末尾の同梱領域に持ち、そのパスは %temp%<名前> になる
-_IMAGE_TEXT_PREFIX = "^@BM"
-_IMAGE_TEMP_PREFIX = "%temp%"
 
 
 def _bit_pattern(runs: tuple[int, ...], printer_pitch: int) -> list[float]:
@@ -455,6 +443,9 @@ def _used_linetype_table(
 
 @dataclass(slots=True)
 class _ConversionContext:
+    """The lookup tables a conversion works with (made from the header), and
+    what it reports about the entities."""
+
     options: ImportOptions
     layers: dict[str, dict[str, Any]]
     layer_names: dict[tuple[int, int], str]
@@ -466,11 +457,6 @@ class _ConversionContext:
     skipped_counts: Counter[str] = field(default_factory=Counter)
     approximation_counts: Counter[str] = field(default_factory=Counter)
     preserved_dimensions: int = 0
-    # 同梱画像: 参照名(小文字、.gz 無し) -> {name, data, compressed}
-    images: dict[str, dict[str, Any]] = field(default_factory=dict)
-    embedded_images: int = 0
-    linked_images: int = 0
-    next_entity_number: int = 1
     # "jww" (a drawing) or "jws" (a registered symbol); the entity records are the same
     source_format: str = "jww"
     # JWS: the scale denominator of each layer group, kept on the layers created on
@@ -489,10 +475,43 @@ class _ConversionContext:
     def label(self) -> str:
         return self.source_format.upper()
 
-    def allocate_id(self) -> str:
-        entity_id = f"{self.label}_E{self.next_entity_number:08d}"
-        self.next_entity_number += 1
-        return entity_id
+
+@dataclass(slots=True)
+class NativeImportResult:
+    """``ImportResult`` with the document held in native code.
+
+    ``document`` is a ``NativeDocument`` of the ``cad2d-ir-native`` package:
+    ``document.to_dict()`` is the IR ``dict``, and its entities do not become
+    Python objects unless that is asked for.
+    """
+
+    document: Any
+    diagnostics: list[ImportDiagnostic]
+    statistics: dict[str, Any]
+
+
+def _ezjww(kind: str) -> Any:
+    try:
+        import ezjww
+    except ImportError as exc:
+        raise MissingOptionalDependencyError(
+            f"{kind} support requires the optional dependency ezjww; "
+            'install it with `pip install "cad2d-ir[jww]"`.'
+        ) from exc
+    return ezjww
+
+
+def _as_import_result(
+    result: NativeImportResult, options: ImportOptions | None
+) -> ImportResult:
+    document = result.document.to_dict()
+    if (options or ImportOptions()).validate:
+        validate_ir(document)
+    return ImportResult(
+        document=document,
+        diagnostics=result.diagnostics,
+        statistics=result.statistics,
+    )
 
 
 def convert_jww_file_to_ir(
@@ -506,23 +525,64 @@ def convert_jww_file_to_ir(
 
         pip install "cad2d-ir[jww]"
     """
-    try:
-        from ezjww import read_document
-    except ImportError as exc:
-        raise MissingOptionalDependencyError(
-            "JWW support requires the optional dependency ezjww; "
-            'install it with `pip install "cad2d-ir[jww]"`.'
-        ) from exc
+    return _as_import_result(import_jww_file(path, options=options), options)
 
+
+def import_jww_file(
+    path: str | Path,
+    *,
+    options: ImportOptions | None = None,
+    core: Any = None,
+) -> NativeImportResult:
+    """Read a JWW file and convert it to the typed IR of the native code.
+
+    ``convert_jww_file_to_ir`` is this function followed by
+    ``result.document.to_dict()``. A caller that hands the document on to
+    native code (the DXF writer, a renderer) keeps it as it is: the entities of
+    a large drawing take a fraction of the memory of their ``dict``s. The
+    document is not validated here (``ImportOptions.validate`` applies where
+    the ``dict`` is made).
+
+    ``core`` is the module whose bindings do the work: ``cad2d_ir_native``, or
+    the extension module of an application that registers the bindings of
+    ``cad2d-ir-py`` next to native code of its own. The document of the result
+    is of that module.
+    """
+    ezjww = _ezjww("JWW")
+    bindings = native_core() if core is None else core
+    import_options = options or ImportOptions()
     source_path = Path(path)
-    jww_document = read_document(str(source_path))
-    # このドキュメントは当関数だけが参照するので、変換済みの生要素を逐次解放できる
-    return jww_document_to_ir(
-        jww_document,
+    # The header is read on its own: the layers, line types and pens the
+    # entities are converted with come from it.
+    header = _mapping(ezjww.read_header(str(source_path)), "header")
+    parsed = bindings.parse_jww(str(source_path))
+    parser_diagnostics = list(parsed.diagnostics())
+    if any(row.get("code") == "TEXT_ENCODING_DETECTED" for row in parser_diagnostics):
+        # The strings of this file are UTF-8 (those of a Jw_cad file are CP932,
+        # which is what the header above was read as). The document read as a
+        # whole has every string in the encoding the reader found.
+        return _import_document(
+            ezjww.read_document(str(source_path)),
+            source_format="jww",
+            source_name=source_path.name,
+            source_sha256=_sha256_file(source_path),
+            options=import_options,
+            consume_source=True,
+            bindings=bindings,
+        )
+    return _import(
+        source_format="jww",
+        header=header,
+        block_defs=parsed.block_defs(),
+        source_counts=parsed.entity_counts(),
+        parser_diagnostics={"diagnostics": parser_diagnostics},
+        validation={
+            "validation": {"unresolved_def_numbers": parsed.unresolved_def_numbers()}
+        },
+        convert=parsed.convert,
         source_name=source_path.name,
         source_sha256=_sha256_file(source_path),
-        options=options,
-        consume_source=True,
+        options=import_options,
     )
 
 
@@ -537,13 +597,7 @@ def convert_jws_file_to_ir(
 
         pip install "cad2d-ir[jww]"
     """
-    try:
-        import ezjww
-    except ImportError as exc:
-        raise MissingOptionalDependencyError(
-            "JWS support requires the optional dependency ezjww; "
-            'install it with `pip install "cad2d-ir[jww]"`.'
-        ) from exc
+    ezjww = _ezjww("JWS")
     read_jws_document = getattr(ezjww, "read_jws_document", None)
     if read_jws_document is None:
         raise MissingOptionalDependencyError(
@@ -573,17 +627,22 @@ def jww_document_to_ir(
     """Convert an ``ezjww.read_document`` result to CAD 2D IR.
 
     ``consume_source=True`` releases each raw entity as soon as it has been
-    converted (the caller must not reuse ``jww_document["entities"]`` afterwards).
+    read (the caller must not reuse ``jww_document["entities"]`` afterwards).
     pyo3 builds about 1.4 KB of dictionaries per JWW entity, so holding the raw
     document and the IR at the same time doubles the peak for large drawings.
+    (``convert_jww_file_to_ir`` reads a file without making those dictionaries.)
     """
-    return _jw_document_to_ir(
-        jww_document,
-        source_format="jww",
-        source_name=source_name,
-        source_sha256=source_sha256,
-        options=options,
-        consume_source=consume_source,
+    return _as_import_result(
+        _import_document(
+            jww_document,
+            source_format="jww",
+            source_name=source_name,
+            source_sha256=source_sha256,
+            options=options or ImportOptions(),
+            consume_source=consume_source,
+            bindings=native_core(),
+        ),
+        options,
     )
 
 
@@ -608,36 +667,79 @@ def jws_document_to_ir(
     patterns, paper size and memo a drawing would have fall back to the Jw_cad
     defaults (``JWS_DRAWING_SETTINGS_DEFAULTED``).
     """
-    return _jw_document_to_ir(
-        jws_document,
-        source_format="jws",
-        source_name=source_name,
-        source_sha256=source_sha256,
-        options=options,
-        consume_source=consume_source,
+    return _as_import_result(
+        _import_document(
+            jws_document,
+            source_format="jws",
+            source_name=source_name,
+            source_sha256=source_sha256,
+            options=options or ImportOptions(),
+            consume_source=consume_source,
+            bindings=native_core(),
+        ),
+        options,
     )
 
 
-def _jw_document_to_ir(
+def _import_document(
     jw_document: Mapping[str, Any],
     *,
     source_format: str,
     source_name: str | None,
     source_sha256: str | None,
-    options: ImportOptions | None,
+    options: ImportOptions,
     consume_source: bool,
-) -> ImportResult:
-    import_options = options or ImportOptions()
+    bindings: Any,
+) -> NativeImportResult:
+    """A document held as the ``dict`` of ``ezjww``: its entities are read from
+    the ``dict`` by the native code."""
+
+    def convert(**tables: Any) -> Any:
+        return bindings.convert_jw_document(
+            jw_document, consume=consume_source, **tables
+        )
+
+    return _import(
+        source_format=source_format,
+        header=_mapping(jw_document.get("header"), "header"),
+        block_defs=_mapping_sequence(jw_document.get("block_defs", []), "block_defs"),
+        source_counts=_mapping(jw_document.get("entity_counts", {}), "entity_counts"),
+        parser_diagnostics=jw_document,
+        validation=jw_document,
+        convert=convert,
+        source_name=source_name,
+        source_sha256=source_sha256,
+        options=options,
+    )
+
+
+def _import(
+    *,
+    source_format: str,
+    header: Mapping[str, Any],
+    block_defs: Sequence[Mapping[str, Any]],
+    source_counts: Mapping[str, Any],
+    parser_diagnostics: Mapping[str, Any],
+    validation: Mapping[str, Any],
+    convert: Any,
+    source_name: str | None,
+    source_sha256: str | None,
+    options: ImportOptions,
+) -> NativeImportResult:
+    """The document of a drawing or a symbol.
+
+    What comes from the header (layers, line types, pens, metadata) is made
+    here; the entities are converted by the native code (``convert``, which
+    takes the lookup tables), and stay there.
+    """
     is_symbol = source_format == "jws"
-    header = _mapping(jw_document.get("header"), "header")
     # A symbol has no layer table: layers are created on demand with the group scale
     layers, layer_names = _build_layers(header)
-    block_defs = _mapping_sequence(jw_document.get("block_defs", []), "block_defs")
     block_names = _build_block_names(block_defs)
     linetype_names, linetype_table, linetypes_from_file = _document_line_types(header)
     pen_table = None if is_symbol else _pen_table(header)
     context = _ConversionContext(
-        options=import_options,
+        options=options,
         layers=layers,
         layer_names=layer_names,
         block_names=block_names,
@@ -648,39 +750,94 @@ def _jw_document_to_ir(
         pen_colors=_pen_colors(pen_table),
     )
 
-    context.images = _embedded_images(jw_document)
+    try:
+        converted = convert(
+            label=context.label,
+            source_format=source_format,
+            entity_provenance=options.entity_provenance,
+            strict=options.strict,
+            curve_segments=options.curve_segments,
+            layer_names=layer_names,
+            layer_table=list(layers),
+            block_names=block_names,
+            linetype_names=linetype_names,
+            pen_widths=context.pen_widths,
+            pen_colors=context.pen_colors,
+        )
+    except ValueError as exc:
+        raise ImporterError(str(exc)) from exc
 
-    raw_entities = jw_document.get("entities", [])
-    if consume_source and isinstance(raw_entities, list):
-        for index, item in enumerate(raw_entities):
-            _mapping(item, f"entities[{index}]")
-        source_entities: Sequence[Any] = raw_entities
-    else:
-        source_entities = _mapping_sequence(raw_entities, "entities")
-    metadata_settings = _collect_metadata_settings(jw_document, source_entities)
-    metadata_entity_indexes = {
-        int(setting["entity_index"]) for setting in metadata_settings
-    }
-    # 文字スタイルの収集は生要素を読むので、逐次解放する変換ループより前に済ませる
-    text_styles = _collect_text_styles(
-        jw_document, skipped_entity_indexes=metadata_entity_indexes
+    # The layers of entities on a layer the header does not have (every layer
+    # of a symbol), in the order the entities came.
+    for (layer_group, layer), name in converted.added_layers():
+        layer_names[(layer_group, layer)] = name
+        layer_metadata: dict[str, Any] = {"layer_group": layer_group, "layer": layer}
+        if context.group_scales is not None and 0 <= layer_group < len(
+            context.group_scales
+        ):
+            layer_metadata["group_scale"] = context.group_scales[layer_group]
+        layers[name] = {
+            "color": (layer_group * 16 + layer) % 255 + 1,
+            "linetype": "CONTINUOUS",
+            "metadata": {"jww": layer_metadata},
+        }
+
+    context.diagnostics.extend(
+        ImportDiagnostic(
+            code=code,
+            severity=severity,
+            message=message,
+            source_id=source_id,
+            source_kind=source_kind,
+            action=action,
+        )
+        for code, severity, message, source_id, source_kind, action in (
+            converted.diagnostics()
+        )
     )
-    entities = _convert_entity_sequence(
-        source_entities,
-        context,
-        source_prefix="entities",
-        skipped_indexes=metadata_entity_indexes,
-        consume=consume_source,
-    )
-    blocks = _convert_blocks(block_defs, context)
+    context.converted_counts = Counter(converted.converted_counts())
+    context.skipped_counts = Counter(converted.skipped_counts())
+    context.approximation_counts = Counter(converted.approximation_counts())
+    context.preserved_dimensions = converted.preserved_dimensions()
+    context.pen_width_entities = converted.pen_width_entities()
+    context.used_linetypes = set(converted.used_linetypes())
+    metadata_settings = [
+        {"entity_index": index, "key": key, "value": value, "raw": raw}
+        for index, key, value, raw in converted.metadata_settings()
+    ]
 
     tables: dict[str, Any] = {
         "layers": context.layers,
         "linetypes": _used_linetype_table(linetype_table, context.used_linetypes),
-        "text_styles": text_styles,
+        "text_styles": {font: {"font": font} for font in converted.fonts()},
     }
-    if blocks:
-        tables["blocks"] = blocks
+    block_shells: list[tuple[str, dict[str, Any]]] = []
+    block_sizes: dict[str, int] = {}
+    for block_def, entity_count in zip(
+        block_defs, converted.block_entity_counts(), strict=True
+    ):
+        number = int(block_def.get("number", 0))
+        name = context.block_names[number]
+        block_sizes[name] = entity_count
+        block_shells.append(
+            (
+                name,
+                {
+                    "base_point": [0.0, 0.0],
+                    "metadata": {
+                        "jww": {
+                            "number": number,
+                            "is_referenced": bool(
+                                block_def.get("is_referenced", False)
+                            ),
+                            "base": dict(
+                                _mapping(block_def.get("base", {}), "block base")
+                            ),
+                        }
+                    },
+                },
+            )
+        )
 
     raw_version = int(header.get("version", 0))
     source: dict[str, Any] = {"format": source_format, "version": str(raw_version)}
@@ -707,9 +864,9 @@ def _jw_document_to_ir(
     if metadata_settings:
         format_metadata["settings"] = metadata_settings
 
-    document: dict[str, Any] = {
+    shell: dict[str, Any] = {
         "format": "cad2d-ir",
-        "version": import_options.ir_version,
+        "version": options.ir_version,
         "header": {
             "units": "mm",
             "angle_unit": "deg",
@@ -718,12 +875,11 @@ def _jw_document_to_ir(
         },
         "source": source,
         "tables": tables,
-        "entities": entities,
     }
 
     if is_symbol:
         _append_symbol_diagnostics(format_metadata, context)
-    _append_parser_diagnostics(jw_document, context)
+    _append_parser_diagnostics(parser_diagnostics, context)
     if metadata_settings:
         context.diagnostics.append(
             ImportDiagnostic(
@@ -741,7 +897,6 @@ def _jw_document_to_ir(
                 },
             )
         )
-    pen_table = format_metadata.get("pens")
     if isinstance(pen_table, dict):
         resolved = sum(
             1
@@ -768,34 +923,28 @@ def _jw_document_to_ir(
                 },
             )
         )
-    _append_summary_diagnostics(jw_document, context)
-    if import_options.validate:
-        validate_ir(document)
+    _append_summary_diagnostics(validation, context)
 
-    source_counts = {
-        str(key): int(value)
-        for key, value in _mapping(
-            jw_document.get("entity_counts", {}), "entity_counts"
-        ).items()
-    }
-    block_entity_count = sum(len(block["entities"]) for block in blocks.values())
     statistics: dict[str, Any] = {
         "source_format": source_format,
-        "source_entities": len(source_entities),
-        "source_entity_counts": dict(sorted(source_counts.items())),
+        "source_entities": converted.source_entities(),
+        "source_entity_counts": dict(
+            sorted((str(key), int(value)) for key, value in source_counts.items())
+        ),
         "metadata_settings": len(metadata_settings),
         "source_block_definitions": len(block_defs),
-        "converted_entities": len(entities),
-        "converted_block_entities": block_entity_count,
+        "converted_entities": converted.entity_count(),
+        "converted_block_entities": sum(block_sizes.values()),
         "converted_entity_counts": dict(sorted(context.converted_counts.items())),
         "skipped_entities": sum(context.skipped_counts.values()),
         "skipped_entity_counts": dict(sorted(context.skipped_counts.items())),
         "approximated_entities": sum(context.approximation_counts.values()),
         "preserved_dimensions": context.preserved_dimensions,
-        "embedded_images": context.embedded_images,
-        "linked_images": context.linked_images,
+        "embedded_images": converted.embedded_images(),
+        "linked_images": converted.linked_images(),
     }
-    return ImportResult(
+    document = converted.take_document(shell, block_shells)
+    return NativeImportResult(
         document=document, diagnostics=context.diagnostics, statistics=statistics
     )
 
@@ -942,806 +1091,6 @@ def _build_block_names(block_defs: Sequence[Mapping[str, Any]]) -> dict[int, str
     return result
 
 
-def _convert_blocks(
-    block_defs: Sequence[Mapping[str, Any]],
-    context: _ConversionContext,
-) -> dict[str, dict[str, Any]]:
-    blocks: dict[str, dict[str, Any]] = {}
-    for block_index, block_def in enumerate(block_defs):
-        number = int(block_def.get("number", 0))
-        name = context.block_names[number]
-        block_entities = _convert_entity_sequence(
-            _mapping_sequence(
-                block_def.get("entities", []),
-                f"block_defs[{block_index}].entities",
-            ),
-            context,
-            source_prefix=f"block_defs[{block_index}].entities",
-        )
-        blocks[name] = {
-            "base_point": [0.0, 0.0],
-            "entities": block_entities,
-            "metadata": {
-                "jww": {
-                    "number": number,
-                    "is_referenced": bool(block_def.get("is_referenced", False)),
-                    "base": dict(_mapping(block_def.get("base", {}), "block base")),
-                }
-            },
-        }
-    return blocks
-
-
-def _convert_entity_sequence(
-    source_entities: Sequence[Any],
-    context: _ConversionContext,
-    *,
-    source_prefix: str,
-    skipped_indexes: set[int] | None = None,
-    consume: bool = False,
-) -> list[dict[str, Any]]:
-    converted: list[dict[str, Any]] = []
-    for index, source_entity in enumerate(source_entities):
-        if source_entity is None:
-            continue
-        if skipped_indexes is not None and index in skipped_indexes:
-            continue
-        source_id = f"{source_prefix}[{index}]"
-        entity = _convert_entity_safe(source_entity, context, source_id=source_id)
-        if entity is not None:
-            converted.append(entity)
-            context.converted_counts[str(entity["kind"])] += 1
-        if consume:
-            # 呼び出し元が所有するリストの要素を解放する(長さは統計のため保つ)
-            cast(list[Any], source_entities)[index] = None
-    return converted
-
-
-def _convert_entity_safe(
-    source_entity: Mapping[str, Any],
-    context: _ConversionContext,
-    *,
-    source_id: str,
-) -> dict[str, Any] | None:
-    source_kind = str(source_entity.get("type", "UNKNOWN")).upper()
-    try:
-        return _convert_entity(
-            source_entity, context, source_id=source_id, source_kind=source_kind
-        )
-    except (KeyError, TypeError, ValueError) as exc:
-        if context.options.strict:
-            raise ImporterError(
-                f"Failed to convert {context.label} {source_kind} at {source_id}: {exc}"
-            ) from exc
-        context.skipped_counts[source_kind] += 1
-        context.diagnostics.append(
-            ImportDiagnostic(
-                code="JWW_ENTITY_CONVERSION_FAILED",
-                severity="error",
-                message=f"Failed to convert {context.label} {source_kind}: {exc}",
-                source_id=source_id,
-                source_kind=source_kind,
-                action="skipped",
-            )
-        )
-        return None
-
-
-def _convert_entity(
-    source_entity: Mapping[str, Any],
-    context: _ConversionContext,
-    *,
-    source_id: str,
-    source_kind: str,
-) -> dict[str, Any] | None:
-    common = _entity_common(
-        source_entity, context, source_id=source_id, source_kind=source_kind
-    )
-
-    if source_kind == "LINE":
-        return {
-            **common,
-            "kind": "LINE",
-            "p1": [
-                _number(source_entity, "start_x"),
-                _number(source_entity, "start_y"),
-            ],
-            "p2": [_number(source_entity, "end_x"), _number(source_entity, "end_y")],
-        }
-    if source_kind in {"ARC", "CIRCLE"}:
-        return _convert_arc(source_entity, common, context, source_id=source_id)
-    if source_kind == "POINT":
-        result = {
-            **common,
-            "kind": "POINT",
-            "position": [_number(source_entity, "x"), _number(source_entity, "y")],
-            "marker_code": int(source_entity.get("code", 0)),
-        }
-        if bool(source_entity.get("is_temporary", False)):
-            result["temporary"] = True
-        scale = float(source_entity.get("scale", 0.0))
-        if scale > 0.0:
-            result["scale"] = scale
-        angle = float(source_entity.get("angle", 0.0))
-        if angle != 0.0:
-            result["rotation"] = angle
-        return result
-    if source_kind == "TEXT":
-        if str(source_entity.get("content", "")).startswith(_IMAGE_TEXT_PREFIX):
-            image = _convert_image(source_entity, common, context, source_id=source_id)
-            if image is not None:
-                return image
-        return _convert_text(source_entity, common, context, source_id=source_id)
-    if source_kind == "SOLID":
-        return _convert_solid(source_entity, common)
-    if source_kind == "CIRCLE_SOLID":
-        return _convert_circle_solid(
-            source_entity, common, context, source_id=source_id
-        )
-    if source_kind == "BLOCK":
-        return _convert_block_reference(
-            source_entity, common, context, source_id=source_id
-        )
-    if source_kind == "DIMENSION":
-        context.preserved_dimensions += 1
-        return _convert_dimension(source_entity, common)
-
-    context.skipped_counts[source_kind] += 1
-    return None
-
-
-def _entity_common(
-    source_entity: Mapping[str, Any],
-    context: _ConversionContext,
-    *,
-    source_id: str,
-    source_kind: str,
-) -> dict[str, Any]:
-    base = _mapping(source_entity.get("base", {}), f"{source_id}.base")
-    layer_group = int(base.get("layer_group", 0))
-    layer = int(base.get("layer", 0))
-    layer_name = context.layer_names.get((layer_group, layer))
-    if layer_name is None:
-        fallback = f"{layer_group:X}-{layer:X}"
-        layer_name = _unique_name(fallback, fallback, context.layers)
-        context.layer_names[(layer_group, layer)] = layer_name
-        layer_metadata: dict[str, Any] = {"layer_group": layer_group, "layer": layer}
-        if context.group_scales is not None and 0 <= layer_group < len(
-            context.group_scales
-        ):
-            layer_metadata["group_scale"] = context.group_scales[layer_group]
-        context.layers[layer_name] = {
-            "color": (layer_group * 16 + layer) % 255 + 1,
-            "linetype": "CONTINUOUS",
-            "metadata": {"jww": layer_metadata},
-        }
-
-    pen_style = int(base.get("pen_style", 0))
-    pen_width = int(base.get("pen_width", 0))
-    linetype = context.linetype_names.get(pen_style, "BYLAYER")
-    context.used_linetypes.add(linetype)
-    common: dict[str, Any] = {
-        "id": context.allocate_id(),
-        "layer": layer_name,
-        "linetype": linetype,
-        # A pen color without a color of its own (0 the background, 10 a solid whose
-        # color follows below, 100 the spare slot) draws in 7
-        "color": context.pen_colors.get(int(base.get("pen_color", 0)), 7),
-    }
-    if context.options.entity_provenance:
-        common["source"] = {
-            "format": context.source_format,
-            "id": source_id,
-            "kind": source_kind,
-        }
-        common["metadata"] = {
-            "jww": {
-                "group": int(base.get("group", 0)),
-                "pen_style": pen_style,
-                "pen_color": int(base.get("pen_color", 0)),
-                "pen_width": pen_width,
-                "layer": layer,
-                "layer_group": layer_group,
-                "flag": int(base.get("flag", 0)),
-            }
-        }
-    if pen_width > 0:
-        common["lineweight_mm"] = min(pen_width, 211) / 100.0
-    else:
-        # The usual case: Jw_cad prints the entity at its pen color's width.
-        # metadata.jww.pen_width stays 0, so a JWW writer can leave the width to the
-        # pen table again.
-        by_pen = context.pen_widths.get(int(base.get("pen_color", 0)))
-        if by_pen is not None:
-            common["lineweight_mm"] = by_pen
-            context.pen_width_entities += 1
-    custom_color = source_entity.get("color")
-    if isinstance(custom_color, int):
-        common["color"] = f"#{custom_color & 0xFFFFFF:06X}"
-        jww_metadata = _jww_metadata(common)
-        if jww_metadata is not None:
-            jww_metadata["custom_color"] = custom_color
-    return common
-
-
-def _jww_metadata(entity: dict[str, Any]) -> dict[str, Any] | None:
-    """``entity["metadata"]["jww"]``, or ``None`` when entity provenance is off."""
-    metadata = entity.get("metadata")
-    if metadata is None:
-        return None
-    return metadata.setdefault("jww", {})
-
-
-def _convert_arc(
-    source: Mapping[str, Any],
-    common: dict[str, Any],
-    context: _ConversionContext,
-    *,
-    source_id: str,
-) -> dict[str, Any]:
-    radius = abs(_number(source, "radius"))
-    if radius <= _EPSILON:
-        raise ValueError("radius must be non-zero")
-    center = [_number(source, "center_x"), _number(source, "center_y")]
-    flatness = abs(float(source.get("flatness", 1.0)))
-    if flatness <= _EPSILON:
-        flatness = 1.0
-        context.diagnostics.append(
-            ImportDiagnostic(
-                code="JWW_ZERO_FLATNESS_NORMALIZED",
-                severity="warning",
-                message="Zero arc flatness was normalized to 1.0.",
-                source_id=source_id,
-                source_kind=str(source.get("type", "ARC")),
-                action="normalized",
-            )
-        )
-    is_full = (
-        bool(source.get("is_full_circle", False))
-        or str(source.get("type", "")).upper() == "CIRCLE"
-    )
-    start = float(source.get("start_angle", 0.0))
-    span = float(source.get("arc_angle", _TAU if is_full else 0.0))
-
-    if math.isclose(flatness, 1.0, rel_tol=1e-12, abs_tol=1e-12):
-        if is_full:
-            return {**common, "kind": "CIRCLE", "center": center, "radius": radius}
-        span_start, span_end = _ccw_span(start, span)
-        return {
-            **common,
-            "kind": "ARC",
-            "center": center,
-            "radius": radius,
-            "start_angle": _normalize_degrees(math.degrees(span_start)),
-            "end_angle": _normalize_degrees(math.degrees(span_end)),
-            "ccw": True,
-        }
-
-    major_radius = radius
-    ratio = flatness
-    tilt = float(source.get("tilt_angle", 0.0))
-    if ratio > 1.0:
-        major_radius *= ratio
-        ratio = 1.0 / ratio
-        tilt += math.pi / 2.0
-    span_start, span_end = _ccw_span(start, span)
-    return {
-        **common,
-        "kind": "ELLIPSE",
-        "center": center,
-        "major_axis": [major_radius * math.cos(tilt), major_radius * math.sin(tilt)],
-        "ratio": ratio,
-        "start_param": 0.0 if is_full else span_start,
-        "end_param": _TAU if is_full else span_end,
-        "ccw": True,
-    }
-
-
-def _convert_text(
-    source: Mapping[str, Any],
-    common: dict[str, Any],
-    context: _ConversionContext,
-    *,
-    source_id: str,
-) -> dict[str, Any]:
-    height = float(source.get("size_y", 0.0))
-    if height <= 0.0:
-        height = 2.5
-        context.diagnostics.append(
-            ImportDiagnostic(
-                code="JWW_TEXT_HEIGHT_DEFAULTED",
-                severity="warning",
-                message=f"Non-positive {context.label} text height was replaced with 2.5 mm.",
-                source_id=source_id,
-                source_kind="TEXT",
-                action="normalized",
-            )
-        )
-    font_name = str(source.get("font_name", "")).strip()
-    result: dict[str, Any] = {
-        **common,
-        "kind": "TEXT",
-        "insert": [_number(source, "start_x"), _number(source, "start_y")],
-        "height": height,
-        "text": str(source.get("content", "")),
-        "style": font_name or "STANDARD",
-    }
-    rotation = float(source.get("angle", 0.0))
-    if rotation != 0.0:
-        result["rotation"] = rotation
-    size_x = float(source.get("size_x", 0.0))
-    if size_x > 0.0:
-        result["width_factor"] = size_x / height
-    jww_metadata = _jww_metadata(result)
-    if jww_metadata is not None:
-        jww_metadata.update(
-            {
-                "end": [_number(source, "end_x"), _number(source, "end_y")],
-                "text_type": int(source.get("text_type", 0)),
-                "size_x": size_x,
-                "size_y": float(source.get("size_y", 0.0)),
-                "spacing": float(source.get("spacing", 0.0)),
-                "font_name": str(source.get("font_name", "")),
-            }
-        )
-    return result
-
-
-def _embedded_images(jww_document: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    """``read_document()["images"]`` keyed by the name a placement refers to (``.gz`` removed)."""
-    result: dict[str, dict[str, Any]] = {}
-    for image in jww_document.get("images", []) or []:
-        if not isinstance(image, Mapping) or not image.get("name"):
-            continue
-        name = str(image["name"])
-        compressed = image.get("compressed")
-        if compressed is None:
-            compressed = name.lower().endswith(".gz")
-        reference = name[:-3] if name.lower().endswith(".gz") else name
-        result[reference.lower()] = {
-            "name": name,
-            "data": image.get("data", b""),
-            "compressed": bool(compressed),
-        }
-    return result
-
-
-def _parse_image_reference(content: str) -> dict[str, Any] | None:
-    """Split ``^@BM<path>,<width>,<height>,...`` like ``ezjww.image_reference``."""
-    if not content.startswith(_IMAGE_TEXT_PREFIX):
-        return None
-    parts = content[len(_IMAGE_TEXT_PREFIX) :].split(",")
-    if len(parts) < 3 or not parts[0]:
-        return None
-    try:
-        width = float(parts[1])
-        height = float(parts[2])
-    except ValueError:
-        return None
-    if not (math.isfinite(width) and math.isfinite(height)):
-        return None
-    path = parts[0]
-    rest = (
-        path[len(_IMAGE_TEMP_PREFIX) :]
-        if path.lower().startswith(_IMAGE_TEMP_PREFIX)
-        else path
-    )
-    file_name = rest.replace("\\", "/").rsplit("/", 1)[-1]
-    return {
-        "path": path,
-        "file_name": file_name,
-        "width": width,
-        "height": height,
-        "extra": [part.strip() for part in parts[3:]],
-    }
-
-
-def _sniff_mime(data: bytes) -> str:
-    if data.startswith(b"BM"):
-        return "image/bmp"
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        return "image/png"
-    if data.startswith(b"\xff\xd8"):
-        return "image/jpeg"
-    if data.startswith((b"GIF87a", b"GIF89a")):
-        return "image/gif"
-    if data.startswith((b"II*\x00", b"MM\x00*")):
-        return "image/tiff"
-    return "application/octet-stream"
-
-
-def _convert_image(
-    source: Mapping[str, Any],
-    common: dict[str, Any],
-    context: _ConversionContext,
-    *,
-    source_id: str,
-) -> dict[str, Any] | None:
-    """A ``^@BM`` placement text becomes an ``IMAGE``; ``None`` keeps it as plain text."""
-    content = str(source.get("content", ""))
-    parsed = source.get("image")
-    if not isinstance(parsed, Mapping):
-        parsed = _parse_image_reference(content)
-    if parsed is None:
-        return None
-    width = float(parsed.get("width", 0.0))
-    height = float(parsed.get("height", 0.0))
-    if not (width > 0.0 and height > 0.0):
-        return None
-    path = str(parsed.get("path", ""))
-    file_name = str(parsed.get("file_name", "")) or path
-    result: dict[str, Any] = {
-        **common,
-        "kind": "IMAGE",
-        "insert": [_number(source, "start_x"), _number(source, "start_y")],
-        "width": width,
-        "height": height,
-        "name": file_name,
-    }
-    rotation = float(source.get("angle", 0.0))
-    if rotation != 0.0:
-        result["rotation"] = rotation
-    embedded = path.lower().startswith(_IMAGE_TEMP_PREFIX)
-    archive = context.images.get(file_name.lower()) if embedded else None
-    data: bytes | None = None
-    if archive is not None:
-        raw = bytes(archive.get("data") or b"")
-        try:
-            data = gzip.decompress(raw) if archive["compressed"] else raw
-        except (OSError, EOFError, zlib.error) as exc:
-            context.diagnostics.append(
-                ImportDiagnostic(
-                    code="JWW_IMAGE_DECODE_FAILED",
-                    severity="warning",
-                    message=f"Embedded image {archive['name']} could not be decompressed: {exc}",
-                    source_id=source_id,
-                    source_kind="TEXT",
-                    action="skipped",
-                )
-            )
-            data = None
-    if data:
-        result["data"] = base64.b64encode(data).decode("ascii")
-        result["mime_type"] = _sniff_mime(data)
-        context.embedded_images += 1
-        context.diagnostics.append(
-            ImportDiagnostic(
-                code="JWW_IMAGE_EMBEDDED",
-                severity="info",
-                message=f"Image {file_name} ({len(data)} bytes) was decoded from the drawing's archive.",
-                source_id=source_id,
-                source_kind="TEXT",
-                action="converted",
-            )
-        )
-    elif context.source_format == "jws":
-        # Jw_cad registers the placement text with the %temp% name of the drawing's
-        # archive entry, but a symbol file has no image archive to look it up in.
-        result["href"] = path
-        context.linked_images += 1
-        context.diagnostics.append(
-            ImportDiagnostic(
-                code="JWS_IMAGE_REFERENCE_ONLY",
-                severity="warning",
-                message=(
-                    f"Image {file_name} is referenced by the symbol, but a JWS file "
-                    "carries no image data; the placement keeps only the path."
-                ),
-                source_id=source_id,
-                source_kind="TEXT",
-            )
-        )
-    else:
-        result["href"] = path
-        context.linked_images += 1
-        reason = (
-            "is not in the drawing's image archive"
-            if embedded
-            else "is an external file that is not embedded in the drawing"
-        )
-        context.diagnostics.append(
-            ImportDiagnostic(
-                code="JWW_IMAGE_LINKED",
-                severity="warning",
-                message=f"Image {file_name} {reason}; the placement keeps only the path.",
-                source_id=source_id,
-                source_kind="TEXT",
-            )
-        )
-    jww_metadata = _jww_metadata(result)
-    if jww_metadata is not None:
-        jww_metadata.update(
-            {
-                "image_content": content,
-                "image_params": [str(value) for value in parsed.get("extra", [])],
-                "archive_name": archive["name"] if archive is not None else None,
-                "end": [_number(source, "end_x"), _number(source, "end_y")],
-                "text_type": int(source.get("text_type", 0)),
-                "size_x": float(source.get("size_x", 0.0)),
-                "size_y": float(source.get("size_y", 0.0)),
-                "spacing": float(source.get("spacing", 0.0)),
-                "font_name": str(source.get("font_name", "")),
-            }
-        )
-    return result
-
-
-def _convert_solid(source: Mapping[str, Any], common: dict[str, Any]) -> dict[str, Any]:
-    points = [
-        [_number(source, f"point{index}_x"), _number(source, f"point{index}_y")]
-        for index in range(1, 5)
-    ]
-    return {
-        **common,
-        "kind": "HATCH",
-        "solid": True,
-        "loops": [{"vertices": _order_solid_vertices(points), "is_outer": True}],
-    }
-
-
-def _convert_circle_solid(
-    source: Mapping[str, Any],
-    common: dict[str, Any],
-    context: _ConversionContext,
-    *,
-    source_id: str,
-) -> dict[str, Any]:
-    radius = abs(_number(source, "radius"))
-    if radius <= _EPSILON:
-        raise ValueError("circle-solid radius must be non-zero")
-    start = float(source.get("start_angle", 0.0))
-    span = float(source.get("arc_angle", _TAU))
-    mode = round(float(source.get("solid_mode", 0.0)))
-    is_full = mode == 100 or math.isclose(abs(span), _TAU, rel_tol=0.0, abs_tol=1e-6)
-    if is_full:
-        start = 0.0
-        span = _TAU
-    steps = _arc_segment_count(span, is_full, context.options.curve_segments)
-
-    outer = _ellipse_arc_points(source, radius, start, span, is_full, steps)
-    pen_style = int(
-        _mapping(source.get("base", {}), f"{source_id}.base").get("pen_style", 0)
-    )
-    loops: list[dict[str, Any]]
-    if pen_style in {105, 106}:
-        inner_radius = abs(float(source.get("solid_mode", 0.0)))
-        if _EPSILON < inner_radius < radius:
-            inner = _ellipse_arc_points(
-                source, inner_radius, start, span, is_full, steps
-            )
-            if is_full:
-                loops = [
-                    {"vertices": outer, "is_outer": True},
-                    {"vertices": list(reversed(inner)), "is_outer": False},
-                ]
-            else:
-                loops = [{"vertices": outer + list(reversed(inner)), "is_outer": True}]
-        else:
-            loops = [{"vertices": outer, "is_outer": True}]
-    elif mode in {-1, 5, 100} or is_full:
-        loops = [{"vertices": outer, "is_outer": True}]
-    else:
-        center = [_number(source, "center_x"), _number(source, "center_y")]
-        loops = [{"vertices": [center, *outer], "is_outer": True}]
-
-    if any(len(loop["vertices"]) < 3 for loop in loops):
-        raise ValueError(
-            "circle-solid approximation produced fewer than three vertices"
-        )
-    context.approximation_counts["CIRCLE_SOLID"] += 1
-    return {
-        **common,
-        "kind": "HATCH",
-        "solid": True,
-        "loops": loops,
-        "approximation": {
-            "method": "polyline",
-            "source_kind": "CIRCLE_SOLID",
-            "segments": steps,
-            "metadata": {"jww_solid_mode": float(source.get("solid_mode", 0.0))},
-        },
-    }
-
-
-def _convert_block_reference(
-    source: Mapping[str, Any],
-    common: dict[str, Any],
-    context: _ConversionContext,
-    *,
-    source_id: str,
-) -> dict[str, Any]:
-    number = int(source.get("def_number", 0))
-    block_name = context.block_names.get(number)
-    if block_name is None:
-        block_name = str(source.get("block_name") or f"BLOCK_{number}")
-    scale_x = float(source.get("scale_x", 1.0))
-    scale_y = float(source.get("scale_y", 1.0))
-    if scale_x == 0.0 or scale_y == 0.0:
-        if context.options.strict:
-            raise ValueError("block reference scale must be non-zero")
-        scale_x = 1.0 if scale_x == 0.0 else scale_x
-        scale_y = 1.0 if scale_y == 0.0 else scale_y
-        context.diagnostics.append(
-            ImportDiagnostic(
-                code="JWW_ZERO_BLOCK_SCALE_NORMALIZED",
-                severity="warning",
-                message=f"Zero {context.label} block scale was replaced with 1.0.",
-                source_id=source_id,
-                source_kind="BLOCK",
-                action="normalized",
-            )
-        )
-    result: dict[str, Any] = {
-        **common,
-        "kind": "INSERT",
-        "block": block_name,
-        "insert": [_number(source, "ref_x"), _number(source, "ref_y")],
-    }
-    if not (math.isclose(scale_x, 1.0) and math.isclose(scale_y, 1.0)):
-        result["scale"] = (
-            scale_x if math.isclose(scale_x, scale_y) else [scale_x, scale_y]
-        )
-    rotation = float(source.get("rotation", 0.0))
-    if rotation != 0.0:
-        result["rotation"] = math.degrees(rotation)
-    jww_metadata = _jww_metadata(result)
-    if jww_metadata is not None:
-        jww_metadata["def_number"] = number
-    return result
-
-
-def _convert_dimension(
-    source: Mapping[str, Any], common: dict[str, Any]
-) -> dict[str, Any]:
-    line = dict(_mapping(source.get("line", {}), "dimension.line"))
-    text = dict(_mapping(source.get("text", {}), "dimension.text"))
-    aux_lines = [
-        dict(value)
-        for value in _mapping_sequence(
-            source.get("aux_lines", []), "dimension.aux_lines"
-        )
-    ]
-    aux_points = [
-        dict(value)
-        for value in _mapping_sequence(
-            source.get("aux_points", []), "dimension.aux_points"
-        )
-    ]
-
-    line_start = [_number(line, "start_x"), _number(line, "start_y")]
-    line_end = [_number(line, "end_x"), _number(line, "end_y")]
-    text_start = [_number(text, "start_x"), _number(text, "start_y")]
-    text_end = [_number(text, "end_x"), _number(text, "end_y")]
-    sxf_mode = source.get("sxf_mode")
-    jww_metadata = _jww_metadata(common)
-    if jww_metadata is not None:
-        jww_metadata["sxf_mode"] = sxf_mode
-    return {
-        **common,
-        "kind": "DIMENSION",
-        "dim_kind": "GENERIC",
-        "definition": {
-            "points": {
-                "location": line_start,
-                "p1": line_start,
-                "p2": line_end,
-                "text_midpoint": [
-                    (text_start[0] + text_end[0]) / 2.0,
-                    (text_start[1] + text_end[1]) / 2.0,
-                ],
-            },
-            "text": str(text.get("content", "")),
-            "source_geometry": {
-                "line": line,
-                "text": text,
-                "sxf_mode": sxf_mode,
-                "aux_lines": aux_lines,
-                "aux_points": aux_points,
-            },
-        },
-    }
-
-
-def _collect_text_styles(
-    jww_document: Mapping[str, Any],
-    *,
-    skipped_entity_indexes: set[int] | None = None,
-) -> dict[str, dict[str, Any]]:
-    fonts: set[str] = {"STANDARD"}
-
-    def collect(entities: Sequence[Mapping[str, Any]]) -> None:
-        for entity in entities:
-            source_kind = str(entity.get("type", "")).upper()
-            if source_kind == "TEXT":
-                fonts.add(str(entity.get("font_name", "")).strip() or "STANDARD")
-            elif source_kind == "DIMENSION":
-                text = _mapping(entity.get("text", {}), "dimension.text")
-                fonts.add(str(text.get("font_name", "")).strip() or "STANDARD")
-
-    main_entities = _mapping_sequence(jww_document.get("entities", []), "entities")
-    collect(
-        [
-            entity
-            for index, entity in enumerate(main_entities)
-            if skipped_entity_indexes is None or index not in skipped_entity_indexes
-        ]
-    )
-    for block_def in _mapping_sequence(
-        jww_document.get("block_defs", []), "block_defs"
-    ):
-        collect(_mapping_sequence(block_def.get("entities", []), "block entities"))
-    return {font: {"font": font} for font in sorted(fonts)}
-
-
-def _collect_metadata_settings(
-    jww_document: Mapping[str, Any],
-    source_entities: Sequence[Mapping[str, Any]],
-) -> list[dict[str, Any]]:
-    """Normalize ezjww setting metadata with a fallback for older releases."""
-    by_index: dict[int, dict[str, Any]] = {}
-    for raw in jww_document.get("metadata_settings", []) or []:
-        if not isinstance(raw, Mapping):
-            continue
-        try:
-            index = int(raw["entity_index"])
-        except (KeyError, TypeError, ValueError):
-            continue
-        if not 0 <= index < len(source_entities):
-            continue
-        classified = _metadata_setting_from_entity(source_entities[index], index)
-        if classified is None:
-            continue
-        by_index[index] = {
-            "entity_index": index,
-            "key": str(raw.get("key", classified["key"])),
-            "value": str(raw.get("value", classified["value"])),
-            "raw": str(raw.get("raw", classified["raw"])),
-        }
-
-    for index, entity in enumerate(source_entities):
-        if index in by_index:
-            continue
-        classified = _metadata_setting_from_entity(entity, index)
-        if classified is not None:
-            by_index[index] = classified
-    return [by_index[index] for index in sorted(by_index)]
-
-
-def _metadata_setting_from_entity(
-    entity: Mapping[str, Any], entity_index: int
-) -> dict[str, Any] | None:
-    if str(entity.get("type", "")).upper() != "TEXT":
-        return None
-    try:
-        at_sentinel = (
-            math.isclose(float(entity.get("start_x")), 0.0, rel_tol=0.0, abs_tol=1e-9)
-            and math.isclose(
-                float(entity.get("start_y")), -1000.0, rel_tol=0.0, abs_tol=1e-9
-            )
-            and math.isclose(float(entity.get("end_x")), 0.0, rel_tol=0.0, abs_tol=1e-9)
-            and math.isclose(
-                float(entity.get("end_y")), -1000.0, rel_tol=0.0, abs_tol=1e-9
-            )
-        )
-    except (TypeError, ValueError):
-        return None
-    if not at_sentinel:
-        return None
-
-    raw = str(entity.get("content", ""))
-    if "=" not in raw:
-        return None
-    key, value = (part.strip() for part in raw.split("=", 1))
-    if key not in _METADATA_SETTING_KEYS:
-        return None
-    return {
-        "entity_index": entity_index,
-        "key": key,
-        "value": value,
-        "raw": raw,
-    }
-
-
 def _append_parser_diagnostics(
     jww_document: Mapping[str, Any],
     context: _ConversionContext,
@@ -1837,102 +1186,6 @@ def _append_summary_diagnostics(
         )
 
 
-def _ellipse_arc_points(
-    source: Mapping[str, Any],
-    radius: float,
-    start: float,
-    span: float,
-    is_full: bool,
-    steps: int,
-) -> list[list[float]]:
-    end_index = steps if is_full else steps + 1
-    return [
-        _ellipse_point(source, radius, start + span * (index / steps))
-        for index in range(end_index)
-    ]
-
-
-def _ellipse_point(
-    source: Mapping[str, Any], radius: float, angle: float
-) -> list[float]:
-    flatness = abs(float(source.get("flatness", 1.0)))
-    if flatness <= _EPSILON:
-        flatness = 1.0
-    major_radius = abs(radius)
-    ratio = flatness
-    tilt = float(source.get("tilt_angle", 0.0))
-    if ratio > 1.0:
-        major_radius *= ratio
-        ratio = 1.0 / ratio
-        tilt += math.pi / 2.0
-    minor_radius = major_radius * ratio
-    local_x = major_radius * math.cos(angle)
-    local_y = minor_radius * math.sin(angle)
-    cos_tilt = math.cos(tilt)
-    sin_tilt = math.sin(tilt)
-    return [
-        _number(source, "center_x") + local_x * cos_tilt - local_y * sin_tilt,
-        _number(source, "center_y") + local_x * sin_tilt + local_y * cos_tilt,
-    ]
-
-
-def _arc_segment_count(span: float, is_full: bool, full_segments: int) -> int:
-    effective_span = _TAU if is_full else max(abs(span), math.pi / 32.0)
-    return max(8, min(full_segments, math.ceil(effective_span / _TAU * full_segments)))
-
-
-def _order_solid_vertices(points: list[list[float]]) -> list[list[float]]:
-    if not _solid_vertices_cross(points):
-        return points
-    center_x = sum(point[0] for point in points) / len(points)
-    center_y = sum(point[1] for point in points) / len(points)
-    ordered = sorted(
-        points, key=lambda point: math.atan2(point[1] - center_y, point[0] - center_x)
-    )
-    first_index = next(
-        (index for index, point in enumerate(ordered) if _same_point(point, points[0])),
-        0,
-    )
-    return ordered[first_index:] + ordered[:first_index]
-
-
-def _solid_vertices_cross(points: list[list[float]]) -> bool:
-    return _segments_intersect(
-        points[0], points[1], points[2], points[3]
-    ) or _segments_intersect(points[1], points[2], points[3], points[0])
-
-
-def _segments_intersect(
-    a: list[float],
-    b: list[float],
-    c: list[float],
-    d: list[float],
-) -> bool:
-    return (
-        _orientation(a, b, c) * _orientation(a, b, d) < 0.0
-        and _orientation(c, d, a) * _orientation(c, d, b) < 0.0
-    )
-
-
-def _orientation(a: list[float], b: list[float], c: list[float]) -> float:
-    return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
-
-
-def _same_point(a: list[float], b: list[float]) -> bool:
-    return math.isclose(a[0], b[0], abs_tol=1e-9) and math.isclose(
-        a[1], b[1], abs_tol=1e-9
-    )
-
-
-def _ccw_span(start: float, span: float) -> tuple[float, float]:
-    return (start + span, start) if span < 0.0 else (start, start + span)
-
-
-def _normalize_degrees(value: float) -> float:
-    normalized = value % 360.0
-    return 0.0 if math.isclose(normalized, 360.0, abs_tol=1e-12) else normalized
-
-
 def _unique_name(candidate: str, fallback: str, used: Mapping[str, Any]) -> str:
     if candidate not in used:
         return candidate
@@ -1942,13 +1195,6 @@ def _unique_name(candidate: str, fallback: str, used: Mapping[str, Any]) -> str:
         suffixed = f"{candidate} [{fallback}-{serial}]"
         serial += 1
     return suffixed
-
-
-def _number(mapping: Mapping[str, Any], key: str) -> float:
-    value = mapping[key]
-    if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
-        raise ValueError(f"{key} must be a finite number")
-    return float(value)
 
 
 def _mapping(value: Any, path: str) -> Mapping[str, Any]:
@@ -1974,4 +1220,11 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-__all__ = ["convert_jww_file_to_ir", "jww_document_to_ir"]
+__all__ = [
+    "NativeImportResult",
+    "convert_jws_file_to_ir",
+    "convert_jww_file_to_ir",
+    "import_jww_file",
+    "jws_document_to_ir",
+    "jww_document_to_ir",
+]

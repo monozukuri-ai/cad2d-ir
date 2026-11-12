@@ -1,0 +1,168 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '注記/寸法' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '注記_寸法' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record '' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CENTER' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_LINEWEIGHT_NORMALIZED",
+    "severity": "info",
+    "message": "1 line weight(s) DXF has no value for were written as the nearest line weight it has.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_SYMBOL_NAME_NORMALIZED",
+    "severity": "warning",
+    "message": "1 layer, linetype or style name(s) with characters AutoCAD does not allow in a name (<>/\\\":;?*|,=`) were written with '_' in their place.",
+    "entity_id": null,
+    "action": "normalized"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "T1",
+    "handle": "10F",
+    "dxf_type": "TEXT",
+    "index": 0,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "T2",
+    "handle": "110",
+    "dxf_type": "TEXT",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L1",
+    "handle": "111",
+    "dxf_type": "LINE",
+    "index": 2,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '注記/寸法' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '注記_寸法' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record '' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CENTER' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "Layer 'HIDDEN' lineweight was omitted from DXF R12.",
+    "entity_id": null,
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_TRUE_COLOR_APPROXIMATED",
+    "severity": "warning",
+    "message": "Layer 'TRUE' true color #102030 was approximated as ACI 5 for DXF R12.",
+    "entity_id": null,
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_R12_TRUE_COLOR_APPROXIMATED",
+    "severity": "warning",
+    "message": "[TEXT:T1] true color #FF8000 was approximated as ACI 2 for DXF R12.",
+    "entity_id": "T1",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_SYMBOL_NAME_NORMALIZED",
+    "severity": "warning",
+    "message": "1 layer, linetype or style name(s) with characters AutoCAD does not allow in a name (<>/\\\":;?*|,=`) were written with '_' in their place.",
+    "entity_id": null,
+    "action": "normalized"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "T1",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 0,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "T2",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 2,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

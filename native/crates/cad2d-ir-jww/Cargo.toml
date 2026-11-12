@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "JWW (Jw_cad) to cad2d-ir mapping (experimental)"
+description = "JWW and JWS (Jw_cad) entities to the typed cad2d-ir"
 publish = false
 
 [dependencies]

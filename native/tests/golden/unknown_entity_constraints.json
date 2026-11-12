@@ -1,0 +1,26 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.2.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "entities": [
+  {
+   "id": "U1",
+   "kind": "FUTURE_ENTITY"
+  }
+ ],
+ "constraints": [
+  {
+   "kind": "HORIZONTAL",
+   "refs": [
+    {
+     "entity": "U1",
+     "feature": "axis"
+    }
+   ]
+  }
+ ]
+}

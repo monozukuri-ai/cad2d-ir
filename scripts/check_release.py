@@ -1,16 +1,17 @@
 """Check that a release is consistent before it is built or published.
 
-``cad2d-ir`` (pure Python) and ``cad2d-ir-native`` (the Rust extension under
-``native/``) are released together under one version: the Python code of the
-native package calls private functions of ``cad2d_ir.importers.jww``, so it pins
-the exact ``cad2d-ir`` it was written against.
+``cad2d-ir`` and ``cad2d-ir-native`` (the Rust extension under ``native/``) are
+released together under one version. The DXF writer and the entity conversion
+of the JWW importer of ``cad2d-ir`` are that native code, and the native code
+calls back into private functions of ``cad2d_ir``, so ``cad2d-ir`` pins the
+exact ``cad2d-ir-native`` it was written with.
 
 Without arguments the versions in the repository are compared. ``--tag`` also
 checks the git tag of a release (``v<version>``), and ``--artifacts`` the built
 files of a release bundle.
 
     python scripts/check_release.py
-    python scripts/check_release.py --tag v0.17.21 --artifacts dist
+    python scripts/check_release.py --tag v0.18.0 --artifacts dist
 
 ``--ezjww-tag`` only prints the tag of ``ezjww`` the Rust code is built with (the
 workflows check out its sample drawings at that tag).
@@ -50,6 +51,21 @@ def _toml(path: Path) -> dict:
     return tomllib.loads(path.read_text(encoding="utf-8"))
 
 
+def _requirement(value: str) -> str:
+    """A requirement as it is compared: no spaces, the name in its usual form."""
+    text = str(value).replace(" ", "")
+    match = re.match(r"[A-Za-z0-9._-]+", text)
+    if match is None:
+        return text
+    name = re.sub(r"[-_.]+", "-", match.group(0)).lower()
+    return name + text[match.end() :]
+
+
+def _names_cad2d_ir(requirement: str) -> bool:
+    """Whether a requirement is one on ``cad2d-ir`` itself."""
+    return re.match(r"cad2d-ir(?![A-Za-z0-9._-])", requirement) is not None
+
+
 def repository_problems() -> tuple[str, list[str]]:
     """The release version and what in the repository disagrees with it."""
     problems: list[str] = []
@@ -64,18 +80,25 @@ def repository_problems() -> tuple[str, list[str]]:
             f"src/cad2d_ir/__init__.py has {found}, pyproject.toml has {version}"
         )
 
+    # cad2d-ir installs the native code of its own version ...
+    dependencies = [_requirement(item) for item in project.get("dependencies", [])]
+    pin = f"cad2d-ir-native=={version}"
+    if pin not in dependencies:
+        problems.append(f"pyproject.toml does not depend on {pin}: {dependencies}")
+
+    # ... and the native package installs nothing: a requirement on cad2d-ir
+    # there would be a circle.
     native = _toml(ROOT / "native" / "pyproject.toml")["project"]
     if native["version"] != version:
         problems.append(
             f"native/pyproject.toml has version {native['version']}, pyproject.toml has {version}"
         )
-    dependencies = [
-        str(item).replace(" ", "") for item in native.get("dependencies", [])
+    native_dependencies = [
+        _requirement(item) for item in native.get("dependencies", [])
     ]
-    pin = f"cad2d-ir[jww]=={version}"
-    if pin not in dependencies:
+    if any(_names_cad2d_ir(item) for item in native_dependencies):
         problems.append(
-            f"native/pyproject.toml does not depend on {pin}: {dependencies}"
+            f"native/pyproject.toml depends on cad2d-ir, which depends on it: {native_dependencies}"
         )
 
     cargo = _toml(ROOT / "native" / "Cargo.toml")["workspace"]
@@ -92,18 +115,23 @@ def repository_problems() -> tuple[str, list[str]]:
                 f"(run `cargo build` in native/ after changing the version)"
             )
 
-    # The Rust code is built with one version of the ezjww reader; the Python
-    # package reads the header with ``ezjww`` from PyPI, of that version or later.
+    # The Rust code is built with one version of the ezjww reader; the header
+    # of a file is read with ``ezjww`` from PyPI (the ``jww`` extra), of that
+    # version or later.
     reader = cargo["dependencies"]["ezjww-core"]
     tag = str(reader.get("tag", ""))
     floor = f"ezjww>={tag.removeprefix('v')},"
-    if not tag.startswith("v") or not any(
-        item.startswith(floor) for item in dependencies
-    ):
-        problems.append(
-            f"native/Cargo.toml builds with ezjww-core {tag or reader}, but "
-            f"native/pyproject.toml does not require {floor.rstrip(',')}: {dependencies}"
-        )
+    extras = project.get("optional-dependencies", {})
+    for extra in ("jww", "all"):
+        requirements = [_requirement(item) for item in extras.get(extra, [])]
+        if not tag.startswith("v") or not any(
+            item.startswith(floor) for item in requirements
+        ):
+            problems.append(
+                f"native/Cargo.toml builds with ezjww-core {tag or reader}, but the "
+                f"{extra} extra of pyproject.toml does not require "
+                f"{floor.rstrip(',')}: {requirements}"
+            )
     return version, problems
 
 
@@ -120,7 +148,7 @@ def _wheel_requirements(path: Path) -> list[str]:
         )
         metadata = archive.read(name).decode("utf-8")
     return [
-        line.split(":", 1)[1].strip().replace(" ", "")
+        _requirement(line.split(":", 1)[1].strip())
         for line in metadata.splitlines()
         if line.startswith("Requires-Dist:")
     ]
@@ -163,15 +191,30 @@ def artifact_problems(version: str, directory: Path) -> list[str]:
         if name not in expected:
             problems.append(f"unexpected file {name}")
 
-    pin = f"cad2d-ir[jww]=={version}"
+    # The wheel of cad2d-ir installs the native code of this release, and no
+    # native wheel asks for cad2d-ir in turn.
+    pin = f"cad2d-ir-native=={version}"
+    wheel = f"cad2d_ir-{version}-py3-none-any.whl"
+    if wheel in archives:
+        try:
+            requirements = _wheel_requirements(directory / wheel)
+        except (zipfile.BadZipFile, StopIteration):
+            problems.append(f"{wheel} is not a wheel")
+        else:
+            if pin not in requirements:
+                problems.append(f"{wheel} does not require {pin}: {requirements}")
     for name in native_wheels:
+        if not name.endswith(".whl"):
+            continue
         try:
             requirements = _wheel_requirements(directory / name)
         except (zipfile.BadZipFile, StopIteration):
             problems.append(f"{name} is not a wheel")
             continue
-        if pin not in requirements:
-            problems.append(f"{name} does not require {pin}: {requirements}")
+        if any(_names_cad2d_ir(item) for item in requirements):
+            problems.append(
+                f"{name} requires cad2d-ir, which requires it: {requirements}"
+            )
     return problems
 
 

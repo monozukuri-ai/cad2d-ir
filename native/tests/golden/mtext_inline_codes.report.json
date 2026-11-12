@@ -1,0 +1,98 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "M0",
+    "handle": "106",
+    "dxf_type": "MTEXT",
+    "index": 0,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "M1",
+    "handle": "107",
+    "dxf_type": "MTEXT",
+    "index": 1,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_R12_MTEXT_EXPLODED",
+    "severity": "warning",
+    "message": "[MTEXT:M0] expanded into 2 TEXT entity/entities for DXF R12.",
+    "entity_id": "M0",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_R12_MTEXT_FORMATTING_NORMALIZED",
+    "severity": "warning",
+    "message": "[MTEXT:M0] formatting codes were removed for DXF R12.",
+    "entity_id": "M0",
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_R12_MTEXT_EXPLODED",
+    "severity": "warning",
+    "message": "[MTEXT:M1] expanded into 1 TEXT entity/entities for DXF R12.",
+    "entity_id": "M1",
+    "action": "exploded"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "M0",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 0,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "M0",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "M1",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 2,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

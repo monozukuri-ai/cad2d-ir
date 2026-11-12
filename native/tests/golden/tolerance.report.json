@@ -1,0 +1,168 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record 'DIM' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "E2F_R1",
+    "handle": "107",
+    "dxf_type": "LWPOLYLINE",
+    "index": 0,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2F_R1T1",
+    "handle": "108",
+    "dxf_type": "TEXT",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2F_R1D1",
+    "handle": "109",
+    "dxf_type": "LINE",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2F_R1T2",
+    "handle": "10A",
+    "dxf_type": "TEXT",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2F_R1D2",
+    "handle": "10B",
+    "dxf_type": "LINE",
+    "index": 4,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2F_R1T3",
+    "handle": "10C",
+    "dxf_type": "TEXT",
+    "index": 5,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record 'DIM' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_R12_LWPOLYLINE_EXPLODED",
+    "severity": "info",
+    "message": "[LWPOLYLINE:E2F_R1] emitted as POLYLINE/VERTEX.",
+    "entity_id": "E2F_R1",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_R12_CHARACTERS_REPLACED",
+    "severity": "warning",
+    "message": "1 character(s) that the code page ANSI_932 cannot store were written as a similar character (0, such as '2' for '²') or as '?' ('_' in a name) in DXF R12.",
+    "entity_id": null,
+    "action": "approximated"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "E2F_R1",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 0,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2F_R1T1",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2F_R1D1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2F_R1T2",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2F_R1D2",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 4,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2F_R1T3",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 5,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

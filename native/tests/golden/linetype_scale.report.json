@@ -1,0 +1,91 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "E1",
+    "handle": "107",
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2",
+    "handle": "108",
+    "dxf_type": "LINE",
+    "index": 1,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_R12_LINETYPE_SCALE_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:E1] linetype scale 0.5 was omitted from DXF R12.",
+    "entity_id": "E1",
+    "action": "skipped"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "E1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 1,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

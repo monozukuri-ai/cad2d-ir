@@ -1,0 +1,121 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_IMAGE_REFERENCED",
+    "severity": "warning",
+    "message": "[IMAGE:BI] the embedded image was written as a reference to 'part.png'; a DXF never embeds the pixels, so the file has to be placed next to the DXF.",
+    "entity_id": "BI",
+    "action": "approximated"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "BI",
+    "handle": "109",
+    "dxf_type": "IMAGE",
+    "index": 0,
+    "scope": "block:B"
+   },
+   {
+    "ir_id": "R",
+    "handle": "10B",
+    "dxf_type": "INSERT",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "LI",
+    "handle": "10E",
+    "dxf_type": "IMAGE",
+    "index": 2,
+    "scope": "layout:Sheet"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_IMAGE_SKIPPED",
+    "severity": "warning",
+    "message": "[IMAGE:BI] raster image placements need DXF R14 or later (IMAGE with IMAGEDEF objects); the placement was skipped for AC1009.",
+    "entity_id": "BI",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_IMAGE_SKIPPED",
+    "severity": "warning",
+    "message": "[IMAGE:LI] raster image placements need DXF R14 or later (IMAGE with IMAGEDEF objects); the placement was skipped for AC1009.",
+    "entity_id": "LI",
+    "action": "skipped"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "BI",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "block:B",
+    "reason_code": "DXF_IMAGE_SKIPPED"
+   },
+   {
+    "ir_id": "R",
+    "handle": null,
+    "dxf_type": "INSERT",
+    "index": 0,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "LI",
+    "handle": null,
+    "dxf_type": null,
+    "index": 1,
+    "scope": "layout:Sheet",
+    "reason_code": "DXF_IMAGE_SKIPPED"
+   }
+  ]
+ }
+}

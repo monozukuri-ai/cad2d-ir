@@ -1,0 +1,202 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TEMPORARY_POINT_SKIPPED",
+    "severity": "info",
+    "message": "[POINT:B1] temporary (construction) point was not written; DXF has no points that are left out of a plot.",
+    "entity_id": "B1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_TEMPORARY_POINT_SKIPPED",
+    "severity": "info",
+    "message": "[POINT:P1] temporary (construction) point was not written; DXF has no points that are left out of a plot.",
+    "entity_id": "P1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_TEMPORARY_POINT_SKIPPED",
+    "severity": "info",
+    "message": "[POINT:?] temporary (construction) point was not written; DXF has no points that are left out of a plot.",
+    "entity_id": null,
+    "action": "skipped"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "block:B",
+    "reason_code": "DXF_TEMPORARY_POINT_SKIPPED"
+   },
+   {
+    "ir_id": "B2",
+    "handle": "107",
+    "dxf_type": "POINT",
+    "index": 0,
+    "scope": "block:B"
+   },
+   {
+    "ir_id": "P1",
+    "handle": null,
+    "dxf_type": null,
+    "index": 1,
+    "scope": "modelspace",
+    "reason_code": "DXF_TEMPORARY_POINT_SKIPPED"
+   },
+   {
+    "ir_id": "L1",
+    "handle": "109",
+    "dxf_type": "LINE",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "",
+    "handle": null,
+    "dxf_type": null,
+    "index": 2,
+    "scope": "modelspace",
+    "reason_code": "DXF_TEMPORARY_POINT_SKIPPED"
+   },
+   {
+    "ir_id": "P3",
+    "handle": "10A",
+    "dxf_type": "POINT",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "P4",
+    "handle": "10B",
+    "dxf_type": "POINT",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "I1",
+    "handle": "10C",
+    "dxf_type": "INSERT",
+    "index": 4,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TEMPORARY_POINT_SKIPPED",
+    "severity": "info",
+    "message": "[POINT:B1] temporary (construction) point was not written; DXF has no points that are left out of a plot.",
+    "entity_id": "B1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_TEMPORARY_POINT_SKIPPED",
+    "severity": "info",
+    "message": "[POINT:P1] temporary (construction) point was not written; DXF has no points that are left out of a plot.",
+    "entity_id": "P1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_TEMPORARY_POINT_SKIPPED",
+    "severity": "info",
+    "message": "[POINT:?] temporary (construction) point was not written; DXF has no points that are left out of a plot.",
+    "entity_id": null,
+    "action": "skipped"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "block:B",
+    "reason_code": "DXF_TEMPORARY_POINT_SKIPPED"
+   },
+   {
+    "ir_id": "B2",
+    "handle": null,
+    "dxf_type": "POINT",
+    "index": 0,
+    "scope": "block:B"
+   },
+   {
+    "ir_id": "P1",
+    "handle": null,
+    "dxf_type": null,
+    "index": 1,
+    "scope": "modelspace",
+    "reason_code": "DXF_TEMPORARY_POINT_SKIPPED"
+   },
+   {
+    "ir_id": "L1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "",
+    "handle": null,
+    "dxf_type": null,
+    "index": 2,
+    "scope": "modelspace",
+    "reason_code": "DXF_TEMPORARY_POINT_SKIPPED"
+   },
+   {
+    "ir_id": "P3",
+    "handle": null,
+    "dxf_type": "POINT",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "P4",
+    "handle": null,
+    "dxf_type": "POINT",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "I1",
+    "handle": null,
+    "dxf_type": "INSERT",
+    "index": 4,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

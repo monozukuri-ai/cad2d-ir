@@ -1,0 +1,46 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.2.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "tables": {
+  "blocks": {
+   "B": {
+    "base_point": [
+     0.0,
+     0.0
+    ],
+    "entities": []
+   }
+  }
+ },
+ "entities": [
+  {
+   "id": "E1",
+   "kind": "INSERT",
+   "block": "B",
+   "insert": [
+    1.0,
+    2.0
+   ],
+   "attributes": {
+    "A": "1",
+    "B": "2"
+   },
+   "attribute_texts": [
+    {
+     "tag": "A",
+     "text": "1",
+     "insert": [
+      5.0,
+      6.0
+     ],
+     "height": 2.0
+    }
+   ]
+  }
+ ]
+}

@@ -289,6 +289,9 @@ pub fn entity_from_map(mut map: Map, interner: &mut Interner) -> Entity {
         extra: if map.is_empty() {
             None
         } else {
+            // the map was made for every key of the entity; what is left of
+            // it is kept for as long as the document is
+            map.shrink_to_fit();
             Some(Box::new(map))
         },
     }

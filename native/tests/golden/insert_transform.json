@@ -1,0 +1,89 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.2.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "tables": {
+  "layers": {
+   "0": {}
+  },
+  "blocks": {
+   "B": {
+    "base_point": [
+     2.0,
+     1.0
+    ],
+    "entities": [
+     {
+      "id": "L",
+      "kind": "LINE",
+      "p1": [
+       2,
+       1
+      ],
+      "p2": [
+       12,
+       4
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "entities": [
+  {
+   "id": "turned",
+   "kind": "INSERT",
+   "block": "B",
+   "insert": [
+    0,
+    0
+   ],
+   "transform": [
+    1.7320508075688774,
+    0.9999999999999999,
+    -0.9999999999999999,
+    1.7320508075688774,
+    5.0,
+    6.0
+   ]
+  },
+  {
+   "id": "mirrored",
+   "kind": "INSERT",
+   "block": "B",
+   "insert": [
+    0,
+    0
+   ],
+   "transform": [
+    0.8660254037844387,
+    0.49999999999999994,
+    0.24999999999999997,
+    -0.43301270189221935,
+    -3.0,
+    4.0
+   ]
+  },
+  {
+   "id": "sheared",
+   "kind": "INSERT",
+   "block": "B",
+   "insert": [
+    0,
+    0
+   ],
+   "transform": [
+    1.0,
+    0.0,
+    0.5,
+    1.0,
+    0.0,
+    0.0
+   ]
+  }
+ ]
+}

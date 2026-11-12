@@ -1,6 +1,7 @@
-//! Typed 2D CAD intermediate representation (the IR of ``cad2d-ir``) and a DXF
-//! writer for it. Experimental: the Python package stays the reference, and the
-//! writer here is checked against it byte for byte.
+//! Typed 2D CAD intermediate representation (the IR of ``cad2d-ir``) and the
+//! DXF writer of ``cad2d-ir``: the Python package hands its documents to it.
+//! The writer replaced one written in Python (up to cad2d-ir 0.17.22) and
+//! writes the same text; the golden files under ``native/tests`` keep it so.
 
 pub mod convert;
 pub mod dxf;

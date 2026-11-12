@@ -1,0 +1,126 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "B1",
+    "handle": "107",
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:SYM1"
+   },
+   {
+    "ir_id": "E1",
+    "handle": "109",
+    "dxf_type": "MTEXT",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2",
+    "handle": "10A",
+    "dxf_type": "INSERT",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E3",
+    "handle": "10D",
+    "dxf_type": "HATCH",
+    "index": 3,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_R12_MTEXT_EXPLODED",
+    "severity": "warning",
+    "message": "[MTEXT:E1] expanded into 1 TEXT entity/entities for DXF R12.",
+    "entity_id": "E1",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_R12_HATCH_EXPLODED",
+    "severity": "warning",
+    "message": "[HATCH:E3] fill was replaced by 1 boundary POLYLINE(s) for DXF R12.",
+    "entity_id": "E3",
+    "action": "exploded"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:SYM1"
+   },
+   {
+    "ir_id": "E1",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2",
+    "handle": null,
+    "dxf_type": "INSERT",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E3",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 3,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

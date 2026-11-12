@@ -1,0 +1,29 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.3.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "tables": {
+  "text_styles": {
+   "ＭＳ 明朝": {
+    "font": "ＭＳ 明朝"
+   }
+  }
+ },
+ "entities": [
+  {
+   "id": "T0",
+   "kind": "TEXT",
+   "insert": [
+    0,
+    0
+   ],
+   "height": 3.5,
+   "text": "日本語",
+   "style": "ＭＳ 明朝"
+  }
+ ]
+}

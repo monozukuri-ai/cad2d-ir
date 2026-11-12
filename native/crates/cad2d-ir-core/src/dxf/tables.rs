@@ -4,17 +4,21 @@ use std::collections::BTreeSet;
 
 use indexmap::IndexMap;
 
-use super::pairs::{Pair, Val};
-use super::{
-    check_common, dimension, dxf_lineweight, hex_color, image, lineweight_is_normalized, Context,
-    WriteError,
+use super::common::{
+    dxf_lineweight, hex_color, layer_val, lineweight_is_normalized, lineweight_of, nearest_aci,
+    py_str,
 };
+use super::dimension::{self, GeometryBlocks};
+use super::layout::LayoutScope;
+use super::pairs::{Pair, Val};
+use super::{Context, WriteError};
 use crate::model::{Document, Entity, Shape};
 use crate::num::{num, py_sum};
 use crate::pystr::{casefold, repr, upper};
 use crate::value::{Map, Value};
 
-pub(crate) type Table = IndexMap<String, Map>;
+/// A table of the document: its records by name.
+pub type Table = IndexMap<String, Map>;
 
 pub(crate) struct Normalized {
     pub(crate) layers: Table,
@@ -83,10 +87,74 @@ fn layer_default() -> Map {
     ])
 }
 
+/// What the entities of a document name: layers, linetypes and text styles.
+#[derive(Default)]
+struct Referenced {
+    layers: BTreeSet<String>,
+    linetypes: BTreeSet<String>,
+    styles: BTreeSet<String>,
+    /// Line weights DXF has no value for, of entities.
+    normalized_lineweights: u64,
+}
+
+impl Referenced {
+    fn visit(&mut self, entity: &Entity) -> Result<(), WriteError> {
+        if lineweight_of(entity).is_some_and(lineweight_is_normalized) {
+            self.normalized_lineweights += 1;
+        }
+        match &entity.layer {
+            Some(layer) => {
+                if !self.layers.contains(layer.as_ref()) {
+                    self.layers.insert(layer.to_string());
+                }
+            }
+            None => {
+                let layer = layer_val(entity)?;
+                if !self.layers.contains(layer.as_str()) {
+                    self.layers.insert(layer.as_str().to_string());
+                }
+            }
+        }
+        if let Some(linetype) = &entity.linetype {
+            if !self.linetypes.contains(linetype.as_ref()) {
+                self.linetypes.insert(linetype.to_string());
+            }
+        }
+        match &entity.shape {
+            Shape::Text(text) => {
+                if let Some(style) = &text.style {
+                    if !self.styles.contains(style.as_ref()) {
+                        self.styles.insert(style.to_string());
+                    }
+                }
+            }
+            Shape::Other => match entity.kind() {
+                Some("DIMENSION") => {
+                    for style in dimension::referenced_styles(entity)? {
+                        self.styles.insert(style);
+                    }
+                }
+                Some("TEXT" | "MTEXT") => {
+                    if let Some(Value::Str(style)) = entity.extra_get("style") {
+                        if !self.styles.contains(style.as_str()) {
+                            self.styles.insert(style.clone());
+                        }
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
 /// ``_normalized_tables``: the three tables with a record for every layer,
 /// linetype and text style the entities name.
 pub(crate) fn normalized_tables(
     document: &Document,
+    layouts: &[LayoutScope<'_>],
+    generated: &GeometryBlocks,
     context: &mut Context<'_>,
 ) -> Result<Normalized, WriteError> {
     let tables = document.tables.as_ref();
@@ -94,75 +162,65 @@ pub(crate) fn normalized_tables(
     let mut linetypes = definitions(tables.and_then(|t| t.linetypes.as_ref()));
     let mut text_styles = definitions(tables.and_then(|t| t.text_styles.as_ref()));
 
-    let mut referenced_layers: BTreeSet<String> = BTreeSet::new();
-    let mut referenced_linetypes: BTreeSet<String> = BTreeSet::new();
-    let mut referenced_styles: BTreeSet<String> = BTreeSet::new();
-    // line weights DXF has no value for, of entities and of layers
-    let mut normalized_lineweights: u64 = 0;
-    let mut visit = |entity: &Entity| -> Result<(), WriteError> {
-        check_common(entity)?;
-        if entity.lineweight_mm.is_some_and(lineweight_is_normalized) {
-            normalized_lineweights += 1;
+    let mut referenced = Referenced::default();
+    for entity in &document.entities {
+        referenced.visit(entity)?;
+    }
+    let blocks = tables.and_then(|t| t.blocks.as_ref());
+    for block in blocks
+        .into_iter()
+        .flat_map(|blocks| blocks.values())
+        .chain(generated.blocks.values())
+    {
+        for entity in &block.entities {
+            referenced.visit(entity)?;
         }
-        match &entity.layer {
-            Some(layer) => {
-                if !referenced_layers.contains(layer.as_ref()) {
-                    referenced_layers.insert(layer.to_string());
-                }
-            }
-            None => {
-                if !referenced_layers.contains("0") {
-                    referenced_layers.insert("0".to_string());
-                }
-            }
+    }
+    for layout in layouts {
+        for entity in layout.entities.iter().flatten() {
+            referenced.visit(entity)?;
         }
-        if let Some(linetype) = &entity.linetype {
-            if !referenced_linetypes.contains(linetype.as_ref()) {
-                referenced_linetypes.insert(linetype.to_string());
-            }
-        }
-        match &entity.shape {
-            Shape::Text(text) => {
-                if let Some(style) = &text.style {
-                    if !referenced_styles.contains(style.as_ref()) {
-                        referenced_styles.insert(style.to_string());
+    }
+    // the layers of the viewports, and the ones they freeze
+    for layout in layouts {
+        let Some(Value::List(viewports)) = layout.raw.get("viewports") else {
+            continue;
+        };
+        for viewport in viewports {
+            let Value::Map(viewport) = viewport else {
+                continue;
+            };
+            let layer = match viewport.get("layer") {
+                Some(value) if value.truthy() => py_str(value, "viewport layer")?.into_owned(),
+                _ => "0".to_string(),
+            };
+            referenced.layers.insert(layer);
+            match viewport.get("frozen_layers") {
+                Some(Value::List(names)) => {
+                    for name in names {
+                        referenced
+                            .layers
+                            .insert(py_str(name, "viewport frozen layer")?.into_owned());
                     }
                 }
-            }
-            Shape::Other if dimension::is_generic_dimension(entity) => {
-                for style in dimension::referenced_styles(entity)? {
-                    referenced_styles.insert(style);
+                Some(Value::Str(names)) => {
+                    // a string is walked a character at a time, as Python walks it
+                    for name in names.chars() {
+                        referenced.layers.insert(name.to_string());
+                    }
                 }
-            }
-            Shape::Other if image::is_image(entity) => {}
-            Shape::Other => {
-                return Err(WriteError::unsupported(format!(
-                    "entity kind {}",
-                    entity.kind().unwrap_or("?")
-                )));
-            }
-            _ => {}
-        }
-        Ok(())
-    };
-    for entity in &document.entities {
-        visit(entity)?;
-    }
-    if let Some(blocks) = tables.and_then(|t| t.blocks.as_ref()) {
-        for block in blocks.values() {
-            for entity in &block.entities {
-                visit(entity)?;
+                _ => {}
             }
         }
     }
     for definition in layers.values() {
         if let Some(Value::Str(linetype)) = definition.get("linetype") {
-            referenced_linetypes.insert(linetype.clone());
+            referenced.linetypes.insert(linetype.clone());
         }
     }
 
     ensure_table_record(&mut layers, "0", layer_default(), "LAYER", context);
-    for name in sorted_casefold(referenced_layers) {
+    for name in sorted_casefold(referenced.layers) {
         ensure_table_record(&mut layers, &name, layer_default(), "LAYER", context);
     }
 
@@ -176,7 +234,7 @@ pub(crate) fn normalized_tables(
         "LTYPE",
         context,
     );
-    for name in sorted_casefold(referenced_linetypes) {
+    for name in sorted_casefold(referenced.linetypes) {
         let default = map_of(vec![
             (
                 "description",
@@ -194,30 +252,34 @@ pub(crate) fn normalized_tables(
         "STYLE",
         context,
     );
-    for name in sorted_casefold(referenced_styles) {
+    for name in sorted_casefold(referenced.styles) {
         let default = map_of(vec![("font", Value::Str(name.clone()))]);
         ensure_table_record(&mut text_styles, &name, default, "STYLE", context);
     }
 
-    for definition in layers.values() {
-        let lineweight = definition
-            .get("lineweight_mm")
-            .and_then(Value::as_python_number);
-        if lineweight.is_some_and(lineweight_is_normalized) {
-            normalized_lineweights += 1;
+    if context.r2010() {
+        // DXF R12 has no line weights at all (they are reported one by one).
+        let mut normalized_lineweights = referenced.normalized_lineweights;
+        for definition in layers.values() {
+            let lineweight = definition
+                .get("lineweight_mm")
+                .and_then(Value::as_python_number);
+            if lineweight.is_some_and(lineweight_is_normalized) {
+                normalized_lineweights += 1;
+            }
         }
-    }
-    if normalized_lineweights > 0 {
-        context.diagnose(
-            "DXF_LINEWEIGHT_NORMALIZED",
-            "info",
-            format!(
-                "{normalized_lineweights} line weight(s) DXF has no value for were written as \
-                 the nearest line weight it has."
-            ),
-            None,
-            Some("normalized"),
-        );
+        if normalized_lineweights > 0 {
+            context.diagnose(
+                "DXF_LINEWEIGHT_NORMALIZED",
+                "info",
+                format!(
+                    "{normalized_lineweights} line weight(s) DXF has no value for were written \
+                     as the nearest line weight it has."
+                ),
+                None,
+                Some("normalized"),
+            );
+        }
     }
 
     Ok(Normalized {
@@ -234,13 +296,11 @@ fn sorted_names(table: &Table) -> Vec<&String> {
     names
 }
 
+/// ``str(definition.get(key, default))``.
 fn str_field(definition: &Map, key: &str, default: &str) -> Result<String, WriteError> {
     match definition.get(key) {
         None => Ok(default.to_string()),
-        Some(Value::Str(text)) => Ok(text.clone()),
-        Some(_) => Err(WriteError::unsupported(format!(
-            "table field {key} is not a string"
-        ))),
+        Some(value) => Ok(py_str(value, "a table field")?.into_owned()),
     }
 }
 
@@ -249,7 +309,7 @@ fn num_field(definition: &Map, key: &str, default: f64) -> Result<f64, WriteErro
         None => Ok(default),
         Some(value) => value
             .as_python_number()
-            .ok_or_else(|| WriteError::unsupported(format!("table field {key} is not a number"))),
+            .ok_or_else(|| WriteError::invalid(format!("table field {key} is not a number"))),
     }
 }
 
@@ -257,17 +317,18 @@ fn optional_str<'a>(definition: &'a Map, key: &str) -> Result<Option<&'a str>, W
     match definition.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::Str(text)) => Ok(Some(text)),
-        Some(_) => Err(WriteError::unsupported(format!(
+        Some(_) => Err(WriteError::invalid(format!(
             "table field {key} is not a string"
         ))),
     }
 }
 
-/// ``_tables_to_pairs`` for AC1024.
+/// ``_tables_to_pairs``.
 pub(crate) fn tables_to_pairs(
     tables: &Normalized,
     context: &mut Context<'_>,
 ) -> Result<Vec<Pair>, WriteError> {
+    let r2010 = context.r2010();
     let mut pairs: Vec<Pair> = vec![(0, Val::S("SECTION")), (2, Val::S("TABLES"))];
 
     let linetypes = &tables.linetypes;
@@ -313,12 +374,27 @@ pub(crate) fn tables_to_pairs(
                 pairs.push((62, Val::owned((*color).clamp(0, 256).to_string())));
             }
             Some(Value::Bool(_)) => {
-                return Err(WriteError::unsupported("layer color is a bool"));
+                return Err(WriteError::invalid("layer color is a bool"));
             }
             Some(Value::Str(color)) => match hex_color(color) {
-                Some(rgb) => {
+                Some(rgb) if r2010 => {
                     pairs.push((62, Val::S("7")));
                     pairs.push((420, Val::owned(rgb.to_string())));
+                }
+                Some(rgb) => {
+                    let aci = nearest_aci(rgb);
+                    pairs.push((62, Val::integer(aci)));
+                    context.diagnose(
+                        "DXF_R12_TRUE_COLOR_APPROXIMATED",
+                        "warning",
+                        format!(
+                            "Layer {} true color {color} was approximated as ACI {aci} for DXF \
+                             R12.",
+                            repr(name)
+                        ),
+                        None,
+                        Some("approximated"),
+                    );
                 }
                 None => pairs.push((62, Val::S("7"))),
             },
@@ -342,10 +418,22 @@ pub(crate) fn tables_to_pairs(
             .get("lineweight_mm")
             .and_then(Value::as_python_number)
         {
-            pairs.push((370, Val::owned(dxf_lineweight(lineweight).to_string())));
+            if r2010 {
+                pairs.push((370, Val::owned(dxf_lineweight(lineweight).to_string())));
+            } else {
+                context.diagnose(
+                    "DXF_R12_LINEWEIGHT_OMITTED",
+                    "warning",
+                    format!("Layer {} lineweight was omitted from DXF R12.", repr(name)),
+                    None,
+                    Some("skipped"),
+                );
+            }
         }
-        let plot = definition.get("plot").is_none_or(Value::truthy);
-        pairs.push((290, Val::S(if plot { "1" } else { "0" })));
+        if r2010 {
+            let plot = definition.get("plot").is_none_or(Value::truthy);
+            pairs.push((290, Val::S(if plot { "1" } else { "0" })));
+        }
     }
     pairs.push((0, Val::S("ENDTAB")));
 
@@ -377,7 +465,7 @@ pub(crate) fn tables_to_pairs(
         pairs.push((3, Val::owned(font.file)));
         pairs.push((4, Val::owned(str_field(definition, "big_font", "")?)));
         if let Some(family) = font.family {
-            if !family.is_empty() {
+            if !family.is_empty() && r2010 {
                 // AutoCAD finds the face inside a .ttc, and fonts it has no file
                 // for, by this family
                 pairs.push((1001, Val::S("ACAD")));

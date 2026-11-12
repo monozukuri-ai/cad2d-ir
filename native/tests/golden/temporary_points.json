@@ -1,0 +1,101 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.3.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "source": {
+  "format": "unknown"
+ },
+ "tables": {
+  "layers": {
+   "0": {}
+  },
+  "blocks": {
+   "B": {
+    "base_point": [
+     0.0,
+     0.0
+    ],
+    "entities": [
+     {
+      "id": "B1",
+      "kind": "POINT",
+      "position": [
+       0.0,
+       0.0
+      ],
+      "temporary": true
+     },
+     {
+      "id": "B2",
+      "kind": "POINT",
+      "position": [
+       1.0,
+       0.0
+      ]
+     }
+    ]
+   }
+  }
+ },
+ "entities": [
+  {
+   "id": "P1",
+   "kind": "POINT",
+   "position": [
+    1.0,
+    2.0
+   ],
+   "temporary": true
+  },
+  {
+   "id": "L1",
+   "kind": "LINE",
+   "p1": [
+    0.0,
+    0.0
+   ],
+   "p2": [
+    1.0,
+    1.0
+   ]
+  },
+  {
+   "kind": "POINT",
+   "position": [
+    3.0,
+    4.0
+   ],
+   "temporary": true
+  },
+  {
+   "id": "P3",
+   "kind": "POINT",
+   "position": [
+    5.0,
+    6.0
+   ],
+   "temporary": false
+  },
+  {
+   "id": "P4",
+   "kind": "POINT",
+   "position": [
+    7.0,
+    8.0
+   ]
+  },
+  {
+   "id": "I1",
+   "kind": "INSERT",
+   "block": "B",
+   "insert": [
+    0.0,
+    0.0
+   ]
+  }
+ ]
+}

@@ -1,5 +1,78 @@
 # Changelog
 
+## 0.18.0
+
+- The DXF writer and the entity conversion of the JWW / JWS importer exist
+  once, in Rust. They were written twice since 0.17.21: in Python here and in
+  Rust in `cad2d-ir-native`, kept equal by tests. The Python implementations
+  are removed and `cad2d-ir` now depends on `cad2d-ir-native` of the same
+  version (the dependency used to point the other way). `ir_to_dxf` validates
+  the document and hands it to the native writer; the importer makes what
+  comes from the header of a file (layers, line types, pens, metadata) and
+  leaves the entities to the native conversion. The native code now covers
+  everything the Python code did: DXF R12 and R2010, every entity kind, paper
+  space layouts and the entity map for the writer; JWS symbols, drawings whose
+  strings are UTF-8, entities on a layer the header does not have and embedded
+  images that do not decompress for the importer. Nothing falls back to
+  Python, and `Unsupported` is no longer raised by this package.
+- The output is the one the Python code made: before it was removed the two
+  were compared byte for byte on the tests, on real drawings of every format
+  and on generated documents. `native/tests/golden` now holds the DXF of a set
+  of documents as files, for DXF R12 and R2010 with their diagnostics and
+  entity maps; a change of the writer's output shows as a difference there.
+  What does differ from 0.17.22 is listed in the next items.
+- DXF export is several times faster and takes less memory than the Python
+  writer did. A `dict` is handed to the native writer one entity at a time
+  (with `consume=True` each entity is let go as it is taken), and without what
+  the writer never reads: the `source` of an entity, and the `metadata` of the
+  kinds that are written from their fields alone. For a large drawing the
+  export then stays under the peak of the import that made the document.
+- Installation: `pip install cad2d-ir` also installs `cad2d-ir-native`, from a
+  wheel on Linux (x86_64 and aarch64, glibc), Windows (x86_64) and macOS
+  (universal2) for every Python from 3.10. On another platform `pip` builds
+  its source distribution, which needs a Rust toolchain. `cad2d-ir` cannot be
+  used without the native code any more.
+- The `jww` extra requires `ezjww>=0.7.13,<0.8` (it accepted `>=0.2.6`): the
+  reader the native code is built with, or a later one. The header of a file is
+  read by `ezjww`, its entities by the native code.
+- DXF export writes the same text in every process for a document with names
+  that differ only in case (a dimension style `Standard` next to `STANDARD`,
+  two such layers, line types or text styles). The Python writer went through
+  such names in the order of a `set`, which changes from one process to the
+  next, so which of the names was kept could change between two runs.
+- DXF export takes a text with the two halves of a surrogate pair as two code
+  points (as a lenient decoder leaves them): the pair is written as the
+  character it stands for, and a half without the other as U+FFFD. The Python
+  writer returned a `str` that no encoder accepts.
+- DXF export with `validate=False` raises `ValueError`, naming the entity, for
+  a document it cannot read (a required key that is missing, a value of
+  another type). The Python writer raised `KeyError`, `TypeError` or
+  `AttributeError`, depending on where it met the value. Geometry blocks of
+  `GENERIC` dimensions that are nested more than 64 deep, or that name each
+  other in a circle, are a `ValueError` as well (they ended in
+  `RecursionError`).
+- JWW import: the message of `JWW_IMAGE_DECODE_FAILED` ends with the reason the
+  native reader gives (`incomplete deflate stream`), not the one of Python's
+  `gzip`. For a hand-made `dict` handed to `jww_document_to_ir`, the parts of
+  a dimension that have no `base` get one with zeros in
+  `definition.source_geometry`; a `dict` from `ezjww` always has it, and the
+  import of a file is unchanged.
+- New: `cad2d_ir.importers.jww.import_jww_file(path, options=...)` reads a JWW
+  file into a document held in native code (`NativeImportResult`, whose
+  `document` is a `cad2d_ir_native.NativeDocument`). `document.to_dict()` is
+  the `dict` of `convert_jww_file_to_ir`, and `document.to_dxf_bytes()`
+  writes DXF without the entities becoming Python objects. It replaces
+  `cad2d_ir_native.jww.convert_jww_file`.
+- New: `convert_ir_to_dxf_text(..., entity_map=False)` leaves the entity map
+  out, for a caller that does not read it.
+- `cad2d_ir_native`: `write_dxf(document, target_version=..., curve_segments=...,
+  generic_dimensions=..., entity_map=..., consume=...)` replaces `ir_to_dxf`,
+  and `NativeDocument.to_dxf` takes the same options. Both return the entity
+  map as a third item. `convert_jw_document`, `sample_ellipse`,
+  `sample_spline` and `text_cells` are new, and the module
+  `cad2d_ir_native.jww` is gone. The package no longer depends on `cad2d-ir`
+  and is not meant to be installed on its own.
+
 ## 0.17.22
 
 - DXF R2010 export writes line weights AutoCAD and ODA keep. Group 370 was the

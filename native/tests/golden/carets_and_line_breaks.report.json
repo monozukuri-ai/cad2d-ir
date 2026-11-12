@@ -1,0 +1,98 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "T0",
+    "handle": "106",
+    "dxf_type": "TEXT",
+    "index": 0,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "T1",
+    "handle": "107",
+    "dxf_type": "TEXT",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "M",
+    "handle": "108",
+    "dxf_type": "MTEXT",
+    "index": 2,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_R12_MTEXT_EXPLODED",
+    "severity": "warning",
+    "message": "[MTEXT:M] expanded into 1 TEXT entity/entities for DXF R12.",
+    "entity_id": "M",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_R12_MTEXT_FORMATTING_NORMALIZED",
+    "severity": "warning",
+    "message": "[MTEXT:M] formatting codes were removed for DXF R12.",
+    "entity_id": "M",
+    "action": "normalized"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "T0",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 0,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "T1",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "M",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 2,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

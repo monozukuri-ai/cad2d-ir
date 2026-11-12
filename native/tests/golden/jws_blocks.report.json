@@ -1,0 +1,133 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "JWS_E00000007",
+    "handle": "115",
+    "dxf_type": "INSERT",
+    "index": 0,
+    "scope": "block:入れ子@@SfigorgFlag@@4"
+   },
+   {
+    "ir_id": "JWS_E00000005",
+    "handle": "118",
+    "dxf_type": "LINE",
+    "index": 1,
+    "scope": "block:部品𠮷@@SfigorgFlag@@4"
+   },
+   {
+    "ir_id": "JWS_E00000006",
+    "handle": "119",
+    "dxf_type": "CIRCLE",
+    "index": 2,
+    "scope": "block:部品𠮷@@SfigorgFlag@@4"
+   },
+   {
+    "ir_id": "JWS_E00000001",
+    "handle": "11B",
+    "dxf_type": "LINE",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "JWS_E00000002",
+    "handle": "11C",
+    "dxf_type": "LINE",
+    "index": 4,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "JWS_E00000003",
+    "handle": "11D",
+    "dxf_type": "INSERT",
+    "index": 5,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "JWS_E00000004",
+    "handle": "11E",
+    "dxf_type": "INSERT",
+    "index": 6,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_R12_CHARACTERS_REPLACED",
+    "severity": "warning",
+    "message": "4 character(s) that the code page ANSI_932 cannot store were written as a similar character (0, such as '2' for '²') or as '?' ('_' in a name) in DXF R12.",
+    "entity_id": null,
+    "action": "approximated"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "JWS_E00000007",
+    "handle": null,
+    "dxf_type": "INSERT",
+    "index": 0,
+    "scope": "block:入れ子@@SfigorgFlag@@4"
+   },
+   {
+    "ir_id": "JWS_E00000005",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 1,
+    "scope": "block:部品𠮷@@SfigorgFlag@@4"
+   },
+   {
+    "ir_id": "JWS_E00000006",
+    "handle": null,
+    "dxf_type": "CIRCLE",
+    "index": 2,
+    "scope": "block:部品𠮷@@SfigorgFlag@@4"
+   },
+   {
+    "ir_id": "JWS_E00000001",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "JWS_E00000002",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 4,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "JWS_E00000003",
+    "handle": null,
+    "dxf_type": "INSERT",
+    "index": 5,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "JWS_E00000004",
+    "handle": null,
+    "dxf_type": "INSERT",
+    "index": 6,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

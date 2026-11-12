@@ -2,9 +2,11 @@ name: release
 
 # A tag v<version> builds and publishes one release of two packages:
 #
-#   cad2d-ir         pure Python: one wheel and a source distribution
-#   cad2d-ir-native  the Rust extension under native/: an abi3 wheel for every
-#                    platform below and a source distribution
+#   cad2d-ir         Python: one wheel and a source distribution. It depends
+#                    on cad2d-ir-native of the same version.
+#   cad2d-ir-native  the Rust extension under native/ (the DXF writer and the
+#                    JWW entity conversion of cad2d-ir): an abi3 wheel for
+#                    every platform below and a source distribution
 #
 # Run by hand (workflow_dispatch) it builds and checks everything and publishes
 # nothing.
@@ -69,8 +71,10 @@ jobs:
         with:
           python-version: "3.13"
 
+      # --no-sources: the metadata as PyPI gets it (cad2d-ir-native by its
+      # version, not the path a checkout builds it from)
       - name: Build wheel and source distribution
-        run: uv build --out-dir dist
+        run: uv build --no-sources --out-dir dist
 
       - name: Upload artifact
         uses: actions/upload-artifact@v5
@@ -142,17 +146,19 @@ jobs:
           name: distributions-python
           path: dist-python
 
-      # The wheel as it will be published, with the cad2d-ir of this release:
-      # the native import and the DXF writer against the Python ones, on the
-      # platform the wheel is for.
+      # The wheel as it will be published, with the cad2d-ir of this release,
+      # on the platform the wheel is for: the DXF the writer makes against the
+      # golden files and the JWW import of the sample drawings. The native
+      # wheel goes in first (cad2d-ir pins its version, which is not on PyPI
+      # yet), and `ezjww` is the reader the Rust code is built with.
       - name: Install the wheels and run the native tests
         shell: bash
         env:
           EZJWW_SAMPLES: ${{ github.workspace }}/.ezjww/jww_samples
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "$(ls dist-python/cad2d_ir-*.whl)[jww]" pytest
           python -m pip install native/dist/*.whl
+          python -m pip install "$(ls dist-python/cad2d_ir-*.whl)[jww]" "ezjww==${EZJWW_TAG#v}" pytest
           python -m pip check
           python -m pytest native/tests -q -rs
 
@@ -231,17 +237,18 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: python scripts/check_release.py --tag "${RELEASE_TAG}" --artifacts dist
       - uses: astral-sh/setup-uv@v5
-      # cad2d-ir-native pins the cad2d-ir of the same version, so cad2d-ir goes
-      # up first. Each project gets its own upload token from PyPI. A file that
-      # is already on PyPI is left alone, and a run that failed half-way can be
-      # run again.
-      - name: Publish cad2d-ir
-        run: >-
-          uv publish --trusted-publishing always
-          --check-url https://pypi.org/simple
-          dist/cad2d_ir-*
+      # cad2d-ir pins the cad2d-ir-native of the same version, so
+      # cad2d-ir-native goes up first: nobody installs a cad2d-ir whose native
+      # code is not there yet. Each project gets its own upload token from
+      # PyPI. A file that is already on PyPI is left alone, and a run that
+      # failed half-way can be run again.
       - name: Publish cad2d-ir-native
         run: >-
           uv publish --trusted-publishing always
           --check-url https://pypi.org/simple
           dist/cad2d_ir_native-*
+      - name: Publish cad2d-ir
+        run: >-
+          uv publish --trusted-publishing always
+          --check-url https://pypi.org/simple
+          dist/cad2d_ir-*

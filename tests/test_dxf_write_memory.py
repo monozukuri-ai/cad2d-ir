@@ -1,4 +1,4 @@
-"""Writing a DXF without holding copies of its pairs, and using the IR up (``consume``)."""
+"""Writing a DXF while using the IR up (``consume``)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import copy
 import pytest
 
 from cad2d_ir import convert_ir_to_dxf_text
-from cad2d_ir.codecs import dxf as dxf_codec
 from cad2d_ir.constants import CURRENT_IR_VERSION
 
 
@@ -82,23 +81,3 @@ def test_consume_writes_the_same_dxf_and_empties_the_model_space(
     assert result.entity_map == expected.entity_map
     assert used["entities"] == []
     assert used["tables"] == untouched["tables"]
-
-
-def test_pairs_are_written_out_in_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
-    pairs = [(0, "LINE"), (8, "A"), (10, "1.5"), (1, "two\nlines"), (0, "EOF")]
-    whole = dxf_codec._format_pairs(list(pairs))
-    assert whole.startswith("0\nLINE\n8\nA\n10\n1.5\n1\n") and whole.endswith(
-        "\n0\nEOF\n"
-    )
-    assert whole.count("\n") == 2 * len(pairs)
-    for size in (2, 4, 6, 1 << 16):
-        monkeypatch.setattr(dxf_codec, "_FORMAT_CHUNK_LINES", size)
-        assert dxf_codec._format_pairs(list(pairs)) == whole
-    assert dxf_codec._format_pairs([]) == "\n"
-
-
-def test_literal_percents_are_escaped_in_place() -> None:
-    pairs = [(0, "TEXT"), (1, "100%% of 50%"), (0, "LINE"), (1, "%%")]
-    result = dxf_codec._escape_literal_percents(pairs)
-    assert result is pairs
-    assert pairs == [(0, "TEXT"), (1, "100%%%%%% of 50%"), (0, "LINE"), (1, "%%")]

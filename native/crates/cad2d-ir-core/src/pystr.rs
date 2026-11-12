@@ -73,6 +73,66 @@ pub fn repr(text: &str) -> String {
     out
 }
 
+/// ``repr`` of a Python ``float`` (what ``str`` gives as well): the shortest
+/// digits that read back as the value, in positional notation from 1e-4 up to
+/// 1e16 and with an exponent outside of it.
+pub fn float_repr(value: f64) -> String {
+    if value.is_nan() {
+        return "nan".to_string();
+    }
+    if value.is_infinite() {
+        return if value > 0.0 { "inf" } else { "-inf" }.to_string();
+    }
+    let scientific = format!("{value:e}");
+    let (mantissa, exponent) = scientific
+        .split_once('e')
+        .expect("scientific notation has an exponent");
+    let exponent: i32 = exponent.parse().expect("exponent is an integer");
+    let negative = mantissa.starts_with('-');
+    let digits: String = mantissa.chars().filter(|c| c.is_ascii_digit()).collect();
+    let mut out = String::with_capacity(24);
+    if negative {
+        out.push('-');
+    }
+    if (-4..16).contains(&exponent) {
+        if exponent < 0 {
+            out.push_str("0.");
+            for _ in 0..(-exponent - 1) {
+                out.push('0');
+            }
+            out.push_str(&digits);
+        } else {
+            let whole = (exponent + 1) as usize;
+            if digits.len() <= whole {
+                out.push_str(&digits);
+                for _ in digits.len()..whole {
+                    out.push('0');
+                }
+                out.push_str(".0");
+            } else {
+                out.push_str(&digits[..whole]);
+                out.push('.');
+                out.push_str(&digits[whole..]);
+            }
+        }
+        return out;
+    }
+    out.push_str(&digits[..1]);
+    if digits.len() > 1 {
+        out.push('.');
+        out.push_str(&digits[1..]);
+    }
+    out.push('e');
+    out.push(if exponent < 0 { '-' } else { '+' });
+    out.push_str(&format!("{:02}", exponent.abs()));
+    out
+}
+
+/// ``str.strip`` of Python: Unicode white space and the separators U+001C to U+001F.
+pub fn strip(text: &str) -> &str {
+    text.trim_matches(|c: char| c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -86,6 +146,20 @@ mod tests {
         assert_eq!(repr("a\nb"), "'a\\nb'");
         assert_eq!(repr("\u{0}"), "'\\x00'");
         assert_eq!(repr("\u{3000}"), "'\\u3000'");
+    }
+
+    #[test]
+    fn float_repr_matches_python() {
+        // python3 -c "print(repr(0.1), repr(1.0), repr(123456.789), repr(1e16), repr(1.5e-5), repr(0.0001), repr(-0.0), repr(1e15), repr(2.5e-7))"
+        assert_eq!(float_repr(0.1), "0.1");
+        assert_eq!(float_repr(1.0), "1.0");
+        assert_eq!(float_repr(123456.789), "123456.789");
+        assert_eq!(float_repr(1e16), "1e+16");
+        assert_eq!(float_repr(1.5e-5), "1.5e-05");
+        assert_eq!(float_repr(0.0001), "0.0001");
+        assert_eq!(float_repr(-0.0), "-0.0");
+        assert_eq!(float_repr(1e15), "1000000000000000.0");
+        assert_eq!(float_repr(2.5e-7), "2.5e-07");
     }
 
     #[test]

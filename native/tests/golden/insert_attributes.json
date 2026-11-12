@@ -1,0 +1,75 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.3.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "source": {
+  "format": "dxf"
+ },
+ "entities": [
+  {
+   "id": "EA0",
+   "source": {
+    "format": "dxf",
+    "id": "A0",
+    "kind": "INSERT"
+   },
+   "layer": "PARTS",
+   "kind": "INSERT",
+   "block": "TITLE",
+   "insert": [
+    100.0,
+    50.0
+   ],
+   "attributes": {
+    "NUMBER": "A-100",
+    "OWNER": "secret",
+    "NOTE": "first\nsecond",
+    "COUNT": "42"
+   },
+   "attribute_texts": [
+    {
+     "tag": "NUMBER",
+     "insert": [
+      101.0,
+      51.0
+     ],
+     "height": 2.5,
+     "text": "A-100",
+     "rotation": 90.0,
+     "style": "ROMANS",
+     "width_factor": 0.8,
+     "layer": "TEXT",
+     "color": 3
+    },
+    {
+     "tag": "OWNER",
+     "insert": [
+      115.0,
+      61.5
+     ],
+     "height": 3.0,
+     "text": "secret",
+     "halign": "center",
+     "valign": "middle",
+     "layer": "TEXT",
+     "visible": false
+    },
+    {
+     "tag": "NOTE",
+     "insert": [
+      120.0,
+      70.0
+     ],
+     "height": 2.0,
+     "text": "first\nsecond",
+     "valign": "top",
+     "layer": "TEXT"
+    }
+   ]
+  }
+ ]
+}

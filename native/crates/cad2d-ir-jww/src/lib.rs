@@ -1,10 +1,13 @@
 //! JWW (Jw_cad) entities to the typed IR.
 //!
-//! A port of the entity conversion of ``cad2d_ir/importers/jww.py``
-//! (``_convert_entity_sequence`` and what it calls). The parts of a document that
-//! come from the header (layers, linetypes, pens, metadata) stay in Python and
-//! reach this code as the lookup tables of [`Context`]. The result is checked
-//! against the Python importer: the same entities, counts and diagnostics.
+//! The entity conversion of the JWW and JWS importer of ``cad2d-ir``. The parts
+//! of a document that come from the header (layers, linetypes, pens, metadata)
+//! are made in Python (``cad2d_ir.importers.jww``) and reach this code as the
+//! lookup tables of [`Context`].
+//!
+//! The entities come from the reader ([`convert`]) or, one by one, from a
+//! caller that holds them in another form ([`convert_sources`]): the Python
+//! binding reads the ``dict`` of ``ezjww.read_document`` that way.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::io::Read;
@@ -15,8 +18,8 @@ use cad2d_ir_core::{
     TextData, Value, Vertex,
 };
 use ezjww_core::{
-    Arc as JwArc, Block as JwBlock, CircleSolid, Dimension, Entity as JwEntity, EntityBase,
-    JwwDocument, Line as JwLine, Point as JwPoint, Solid, Text as JwText,
+    Arc as JwArc, Block as JwBlock, CircleSolid, Dimension, EmbeddedImage, Entity as JwEntity,
+    EntityBase, JwwDocument, Line as JwLine, Point as JwPoint, Solid, Text as JwText,
 };
 
 const TAU: f64 = 2.0 * std::f64::consts::PI;
@@ -33,7 +36,11 @@ pub struct Context {
     pub entity_provenance: bool,
     pub strict: bool,
     pub curve_segments: i64,
+    /// The layers of the header by layer group and layer.
     pub layer_names: HashMap<(i64, i64), Arc<str>>,
+    /// Every name of the layer table: a layer an entity is on and the header
+    /// does not have gets a name that is none of these.
+    pub layer_table: BTreeSet<String>,
     pub block_names: HashMap<i64, Arc<str>>,
     pub linetype_names: HashMap<i64, Arc<str>>,
     pub pen_widths: HashMap<i64, f64>,
@@ -77,30 +84,43 @@ pub struct Converted {
     /// Image placements whose file the drawing carries, and those that only name a path.
     pub embedded_images: u64,
     pub linked_images: u64,
+    /// The layers made for entities on a layer the header does not have, in
+    /// the order they were made: layer group, layer and name.
+    pub added_layers: Vec<((i64, i64), String)>,
 }
 
+/// A conversion failure of a strict import (``ImporterError`` in Python).
 #[derive(Clone, Debug, PartialEq)]
-pub enum ConvertError {
-    /// Something this code has not been taught: the caller uses the Python importer.
-    Unsupported(String),
-    /// A conversion failure of a strict import (``ImporterError`` in Python).
-    Failed(String),
-}
+pub struct ConvertError(pub String);
 
 /// An entity conversion that fails like a Python ``ValueError``.
 struct Rejected(String);
 
-type EntityResult = Result<Option<Entity>, EntityError>;
+type EntityResult = Result<Option<Entity>, Rejected>;
 
-enum EntityError {
-    Rejected(Rejected),
-    Unsupported(String),
+/// One record of an entity list.
+#[derive(Clone, Copy)]
+pub enum Source<'a> {
+    /// An entity, and the kind its record names (``LINE``, ``ARC``, ``CIRCLE``, ...).
+    Entity(&'a JwEntity, &'a str),
+    /// A record of a kind this importer does not convert.
+    Unknown { kind: &'a str, base: &'a EntityBase },
+    /// A record that could not be read as its kind: why, and its common part
+    /// when that could be read.
+    Malformed {
+        kind: &'a str,
+        base: Option<&'a EntityBase>,
+        message: &'a str,
+    },
+    /// No record (a hole in the list).
+    Absent,
 }
 
-impl From<Rejected> for EntityError {
-    fn from(rejected: Rejected) -> Self {
-        EntityError::Rejected(rejected)
-    }
+/// The entities of a drawing, of its block definitions, and its image archive.
+pub struct Sources<'a> {
+    pub entities: Vec<Source<'a>>,
+    pub blocks: Vec<Vec<Source<'a>>>,
+    pub images: &'a [EmbeddedImage],
 }
 
 /// ``str.strip`` of Python.
@@ -231,9 +251,9 @@ struct ArchiveImage<'a> {
 
 /// ``_embedded_images``: the archive by the name a placement refers to (``.gz``
 /// removed, lower case).
-fn embedded_images(document: &JwwDocument) -> HashMap<String, ArchiveImage<'_>> {
+fn embedded_images(archive: &[EmbeddedImage]) -> HashMap<String, ArchiveImage<'_>> {
     let mut images = HashMap::new();
-    for image in &document.images {
+    for image in archive {
         let name = image.name.as_str();
         if name.is_empty() {
             continue;
@@ -324,8 +344,8 @@ impl Base64Writer {
 }
 
 /// ``gzip.decompress`` into base64 text: every member of the stream, with zero
-/// bytes allowed between and after them. ``None`` for a stream Python raises on.
-fn gunzip_to_base64(mut rest: &[u8]) -> Option<EncodedImage> {
+/// bytes allowed between and after them. The error says why a stream is none.
+fn gunzip_to_base64(mut rest: &[u8]) -> Result<EncodedImage, String> {
     // the size a member announces in its last four bytes (modulo 2^32), for the
     // room the text takes
     let announced = match rest {
@@ -336,10 +356,10 @@ fn gunzip_to_base64(mut rest: &[u8]) -> Option<EncodedImage> {
     let mut buffer = vec![0_u8; 3 * (1 << 16)];
     loop {
         if rest.is_empty() {
-            return Some(writer.finish());
+            return Ok(writer.finish());
         }
         if !rest.starts_with(&[0x1f, 0x8b]) {
-            return None;
+            return Err("not a gzip stream".to_string());
         }
         let mut decoder = flate2::bufread::GzDecoder::new(rest);
         loop {
@@ -347,7 +367,7 @@ fn gunzip_to_base64(mut rest: &[u8]) -> Option<EncodedImage> {
                 Ok(0) => break,
                 Ok(count) => writer.write(&buffer[..count]),
                 Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
-                Err(_) => return None,
+                Err(error) => return Err(error.to_string()),
             }
         }
         rest = decoder.into_inner();
@@ -388,6 +408,25 @@ struct Converter<'a> {
     out: Converted,
     next_entity_number: u64,
     images: HashMap<String, ArchiveImage<'a>>,
+    /// The layers by layer group and layer: those of the header and the ones
+    /// made since.
+    layer_names: HashMap<(i64, i64), Arc<str>>,
+    layer_table: BTreeSet<String>,
+}
+
+/// ``_unique_name``: ``candidate``, or the first of ``candidate [fallback]``,
+/// ``candidate [fallback-2]``, ... that is not in use.
+fn unique_name(candidate: &str, fallback: &str, used: &BTreeSet<String>) -> String {
+    if !used.contains(candidate) {
+        return candidate.to_string();
+    }
+    let mut suffixed = format!("{candidate} [{fallback}]");
+    let mut serial = 2;
+    while used.contains(&suffixed) {
+        suffixed = format!("{candidate} [{fallback}-{serial}]");
+        serial += 1;
+    }
+    suffixed
 }
 
 impl Converter<'_> {
@@ -424,14 +463,23 @@ impl Converter<'_> {
         custom_color: Option<u32>,
         source_id: &str,
         source_kind: &str,
-    ) -> Result<Entity, EntityError> {
+    ) -> Entity {
         let layer_group = base.layer_group as i64;
         let layer = base.layer as i64;
-        let Some(layer_name) = self.context.layer_names.get(&(layer_group, layer)) else {
-            // the Python importer adds a layer to the table here
-            return Err(EntityError::Unsupported(format!(
-                "an entity on layer {layer_group:X}-{layer:X}, which the header does not have"
-            )));
+        let layer_name = match self.layer_names.get(&(layer_group, layer)) {
+            Some(name) => Arc::clone(name),
+            None => {
+                // a layer the header does not have (every layer of a symbol,
+                // which has no layer table): made here, named by its numbers
+                let fallback = format!("{layer_group:X}-{layer:X}");
+                let name = unique_name(&fallback, &fallback, &self.layer_table);
+                let shared: Arc<str> = Arc::from(name.as_str());
+                self.layer_names
+                    .insert((layer_group, layer), Arc::clone(&shared));
+                self.layer_table.insert(name.clone());
+                self.out.added_layers.push(((layer_group, layer), name));
+                shared
+            }
         };
         let pen_style = base.pen_style as i64;
         let pen_width = base.pen_width as i64;
@@ -445,7 +493,7 @@ impl Converter<'_> {
         }
         let mut entity = Entity::new(Shape::Other);
         entity.id = Some(self.allocate_id());
-        entity.layer = Some(Arc::clone(layer_name));
+        entity.layer = Some(layer_name);
         entity.linetype = Some(linetype);
         entity.color = Some(Color::Index(
             self.context
@@ -492,7 +540,7 @@ impl Converter<'_> {
             )));
             jww_metadata_insert(&mut entity, "custom_color", int(custom as i64));
         }
-        Ok(entity)
+        entity
     }
 
     fn convert_entity(
@@ -506,7 +554,7 @@ impl Converter<'_> {
             JwEntity::CircleSolid(solid) => solid.color,
             _ => None,
         };
-        let mut entity = self.common(source.base(), custom_color, source_id, source_kind)?;
+        let mut entity = self.common(source.base(), custom_color, source_id, source_kind);
         match source {
             JwEntity::Line(line) => {
                 entity.shape = Shape::Line {
@@ -560,19 +608,9 @@ impl Converter<'_> {
         source: &JwText,
         entity: &mut Entity,
         source_id: &str,
-    ) -> Result<bool, EntityError> {
+    ) -> Result<bool, Rejected> {
         let content = source.content.as_str();
         let Some(parsed) = ezjww_core::parse_image_reference(content) else {
-            // Without a reference from the reader the Python importer splits
-            // the text itself, with ``float``, which reads a few spellings of a
-            // number the reader does not. Where that could matter, leave it.
-            let mut parts = content[IMAGE_TEXT_PREFIX.len()..].split(',');
-            let path_is_empty = parts.next().is_none_or(str::is_empty);
-            if !path_is_empty && parts.nth(1).is_some() {
-                return Err(EntityError::Unsupported(
-                    "an image placement the reader does not parse".to_string(),
-                ));
-            }
             return Ok(false);
         };
         let (width, height) = (parsed.width, parsed.height);
@@ -605,14 +643,23 @@ impl Converter<'_> {
             None
         };
         let data = match archive {
-            Some(archive) if archive.compressed => {
-                Some(gunzip_to_base64(archive.data).ok_or_else(|| {
-                    // Python reports the error of its gzip module in a diagnostic
-                    EntityError::Unsupported(
-                        "an embedded image that does not decompress".to_string(),
-                    )
-                })?)
-            }
+            Some(archive) if archive.compressed => match gunzip_to_base64(archive.data) {
+                Ok(data) => Some(data),
+                Err(reason) => {
+                    self.diagnose(
+                        "JWW_IMAGE_DECODE_FAILED",
+                        "warning",
+                        format!(
+                            "Embedded image {} could not be decompressed: {reason}",
+                            archive.name
+                        ),
+                        source_id,
+                        "TEXT",
+                        "skipped",
+                    );
+                    None
+                }
+            },
             Some(archive) => Some(plain_to_base64(archive.data)),
             None => None,
         };
@@ -637,24 +684,34 @@ impl Converter<'_> {
                 );
             }
             None => {
-                if self.context.source_format == "jws" {
-                    return Err(EntityError::Unsupported(
-                        "an image of a JWS symbol".to_string(),
-                    ));
-                }
                 entity.extra_insert("href", Value::Str(path.to_string()));
                 self.out.linked_images += 1;
-                let reason = if embedded {
-                    "is not in the drawing's image archive"
+                let (code, message) = if self.context.source_format == "jws" {
+                    // Jw_cad registers the placement text with the %temp% name
+                    // of the archive entry of the drawing, but a symbol file
+                    // has no image archive to look it up in.
+                    (
+                        "JWS_IMAGE_REFERENCE_ONLY",
+                        format!(
+                            "Image {file_name} is referenced by the symbol, but a JWS file \
+                             carries no image data; the placement keeps only the path."
+                        ),
+                    )
                 } else {
-                    "is an external file that is not embedded in the drawing"
+                    let reason = if embedded {
+                        "is not in the drawing's image archive"
+                    } else {
+                        "is an external file that is not embedded in the drawing"
+                    };
+                    (
+                        "JWW_IMAGE_LINKED",
+                        format!("Image {file_name} {reason}; the placement keeps only the path."),
+                    )
                 };
                 self.out.diagnostics.push(ImportDiagnostic {
-                    code: "JWW_IMAGE_LINKED",
+                    code,
                     severity: "warning",
-                    message: format!(
-                        "Image {file_name} {reason}; the placement keeps only the path."
-                    ),
+                    message,
                     source_id: Some(source_id.to_string()),
                     source_kind: Some("TEXT".to_string()),
                     action: None,
@@ -971,10 +1028,43 @@ impl Converter<'_> {
         Ok(())
     }
 
+    /// A record that fails to convert: an error of a strict import, otherwise
+    /// counted and reported (``_convert_entity_safe``).
+    fn rejected(
+        &mut self,
+        reason: &str,
+        source_id: &str,
+        source_kind: &str,
+    ) -> Result<(), ConvertError> {
+        if self.context.strict {
+            return Err(ConvertError(format!(
+                "Failed to convert {} {source_kind} at {source_id}: {reason}",
+                self.context.label
+            )));
+        }
+        *self
+            .out
+            .skipped_counts
+            .entry(source_kind.to_string())
+            .or_insert(0) += 1;
+        self.diagnose(
+            "JWW_ENTITY_CONVERSION_FAILED",
+            "error",
+            format!(
+                "Failed to convert {} {source_kind}: {reason}",
+                self.context.label
+            ),
+            source_id,
+            source_kind,
+            "skipped",
+        );
+        Ok(())
+    }
+
     /// ``_convert_entity_sequence`` with ``_convert_entity_safe``.
     fn convert_sequence(
         &mut self,
-        sources: &[JwEntity],
+        sources: &[Source<'_>],
         source_prefix: &str,
         skipped: Option<&BTreeSet<usize>>,
     ) -> Result<Vec<Entity>, ConvertError> {
@@ -984,40 +1074,36 @@ impl Converter<'_> {
                 continue;
             }
             let source_id = format!("{source_prefix}[{index}]");
-            let source_kind = source.entity_type();
-            match self.convert_entity(source, &source_id, source_kind) {
-                Ok(Some(entity)) => {
-                    let kind = entity.kind().unwrap_or("").to_string();
-                    *self.out.converted_counts.entry(kind).or_insert(0) += 1;
-                    converted.push(entity);
-                }
-                Ok(None) => {}
-                Err(EntityError::Unsupported(reason)) => {
-                    return Err(ConvertError::Unsupported(reason))
-                }
-                Err(EntityError::Rejected(Rejected(reason))) => {
-                    if self.context.strict {
-                        return Err(ConvertError::Failed(format!(
-                            "Failed to convert {} {source_kind} at {source_id}: {reason}",
-                            self.context.label
-                        )));
+            match *source {
+                Source::Absent => {}
+                Source::Entity(entity, source_kind) => {
+                    match self.convert_entity(entity, &source_id, source_kind) {
+                        Ok(Some(entity)) => {
+                            let kind = entity.kind().unwrap_or("").to_string();
+                            *self.out.converted_counts.entry(kind).or_insert(0) += 1;
+                            converted.push(entity);
+                        }
+                        Ok(None) => {}
+                        Err(Rejected(reason)) => {
+                            self.rejected(&reason, &source_id, source_kind)?;
+                        }
                     }
-                    *self
-                        .out
-                        .skipped_counts
-                        .entry(source_kind.to_string())
-                        .or_insert(0) += 1;
-                    self.diagnose(
-                        "JWW_ENTITY_CONVERSION_FAILED",
-                        "error",
-                        format!(
-                            "Failed to convert {} {source_kind}: {reason}",
-                            self.context.label
-                        ),
-                        &source_id,
-                        source_kind,
-                        "skipped",
-                    );
+                }
+                Source::Unknown { kind, base } => {
+                    // its common part is read like that of any record (its
+                    // layer and linetype count as used), then it is left out
+                    self.common(base, None, &source_id, kind);
+                    *self.out.skipped_counts.entry(kind.to_string()).or_insert(0) += 1;
+                }
+                Source::Malformed {
+                    kind,
+                    base,
+                    message,
+                } => {
+                    if let Some(base) = base {
+                        self.common(base, None, &source_id, kind);
+                    }
+                    self.rejected(message, &source_id, kind)?;
                 }
             }
         }
@@ -1252,60 +1338,90 @@ fn font_of(entity: &JwEntity) -> Option<&str> {
     Some(if font.is_empty() { "STANDARD" } else { font })
 }
 
+/// The font a record names, as the text style table has it.
+fn font_of_source<'a>(source: &Source<'a>) -> Option<&'a str> {
+    match source {
+        Source::Entity(entity, _) => font_of(entity),
+        _ => None,
+    }
+}
+
 /// Convert the entities and block definitions of a parsed JWW document.
 pub fn convert(document: &JwwDocument, context: &Context) -> Result<Converted, ConvertError> {
+    fn of(entities: &[JwEntity]) -> Vec<Source<'_>> {
+        entities
+            .iter()
+            .map(|entity| Source::Entity(entity, entity.entity_type()))
+            .collect()
+    }
+    let sources = Sources {
+        entities: of(&document.entities),
+        blocks: document
+            .block_defs
+            .iter()
+            .map(|block_def| of(&block_def.entities))
+            .collect(),
+        images: &document.images,
+    };
+    convert_sources(&sources, context)
+}
+
+/// Convert the records of a drawing and of its block definitions.
+pub fn convert_sources(
+    sources: &Sources<'_>,
+    context: &Context,
+) -> Result<Converted, ConvertError> {
     let mut converter = Converter {
         context,
         out: Converted::default(),
         next_entity_number: 1,
-        images: embedded_images(document),
+        images: embedded_images(sources.images),
+        layer_names: context.layer_names.clone(),
+        layer_table: context.layer_table.clone(),
     };
-    converter.out.source_entities = document.entities.len();
+    converter.out.source_entities = sources.entities.len();
 
-    let settings = ezjww_core::collect_metadata_settings(&document.entities);
-    let skipped: BTreeSet<usize> = settings
-        .iter()
-        .map(|setting| setting.entity_index)
-        .collect();
-    converter.out.metadata_settings = settings
-        .into_iter()
-        .map(|setting| MetadataSetting {
-            entity_index: setting.entity_index,
-            key: setting.key,
-            value: setting.value,
-            raw: setting.raw,
-        })
-        .collect();
+    // The records Jw_cad keeps its own settings in (zero-length texts at a
+    // fixed place) are metadata of the document, no geometry.
+    let mut skipped: BTreeSet<usize> = BTreeSet::new();
+    for (entity_index, source) in sources.entities.iter().enumerate() {
+        let Source::Entity(JwEntity::Text(text), _) = source else {
+            continue;
+        };
+        if let Some((key, value)) = ezjww_core::metadata_setting_from_text(text) {
+            skipped.insert(entity_index);
+            converter.out.metadata_settings.push(MetadataSetting {
+                entity_index,
+                key: key.to_string(),
+                value: value.to_string(),
+                raw: text.content.clone(),
+            });
+        }
+    }
 
     // ``_collect_text_styles``: the fonts of the texts, STANDARD among them
     let mut fonts: BTreeSet<String> = BTreeSet::new();
     fonts.insert("STANDARD".to_string());
-    for (index, entity) in document.entities.iter().enumerate() {
-        if skipped.contains(&index) {
-            continue;
-        }
-        if let Some(font) = font_of(entity) {
+    let listed = sources
+        .entities
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| !skipped.contains(index))
+        .map(|(_, source)| source);
+    for source in listed.chain(sources.blocks.iter().flatten()) {
+        if let Some(font) = font_of_source(source) {
             if !fonts.contains(font) {
                 fonts.insert(font.to_string());
-            }
-        }
-    }
-    for block_def in &document.block_defs {
-        for entity in &block_def.entities {
-            if let Some(font) = font_of(entity) {
-                if !fonts.contains(font) {
-                    fonts.insert(font.to_string());
-                }
             }
         }
     }
     converter.out.fonts = fonts;
 
     converter.out.entities =
-        converter.convert_sequence(&document.entities, "entities", Some(&skipped))?;
-    for (index, block_def) in document.block_defs.iter().enumerate() {
+        converter.convert_sequence(&sources.entities, "entities", Some(&skipped))?;
+    for (index, block) in sources.blocks.iter().enumerate() {
         let prefix = format!("block_defs[{index}].entities");
-        let entities = converter.convert_sequence(&block_def.entities, &prefix, None)?;
+        let entities = converter.convert_sequence(block, &prefix, None)?;
         converter.out.blocks.push(entities);
     }
     Ok(converter.out)

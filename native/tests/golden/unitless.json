@@ -1,0 +1,10 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.2.0",
+ "header": {
+  "units": "unitless",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "entities": []
+}

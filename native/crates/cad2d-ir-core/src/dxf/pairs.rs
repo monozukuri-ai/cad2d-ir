@@ -20,6 +20,9 @@ pub enum Val {
 /// can be taken for it.
 pub(crate) static MODEL_SPACE_OWNER: &str = "\u{1}*Model_Space";
 
+/// The owner of a paper space entity, in the same way.
+pub(crate) static PAPER_SPACE_OWNER: &str = "\u{1}*Paper_Space";
+
 const SMALL_INTEGERS: usize = 512;
 
 fn small_integers() -> &'static [String] {
@@ -45,6 +48,10 @@ impl Val {
         matches!(self, Val::S(text) if std::ptr::eq(*text, MODEL_SPACE_OWNER))
     }
 
+    pub(crate) fn is_paper_space_owner(&self) -> bool {
+        matches!(self, Val::S(text) if std::ptr::eq(*text, PAPER_SPACE_OWNER))
+    }
+
     pub fn as_str(&self) -> &str {
         match self {
             Val::S(text) => text,
@@ -62,10 +69,7 @@ impl PartialEq for Val {
 
 pub type Pair = (i32, Val);
 
-/// ``str.strip`` of Python: Unicode white space and the separators U+001C to U+001F.
-pub(crate) fn py_strip(text: &str) -> &str {
-    text.trim_matches(|c: char| c.is_whitespace() || ('\u{1c}'..='\u{1f}').contains(&c))
-}
+pub(crate) use crate::pystr::strip as py_strip;
 
 /// ``_first_string``: the stripped value of the first pair with ``code``.
 pub(crate) fn first_string(pairs: &[Pair], code: i32) -> Option<&str> {

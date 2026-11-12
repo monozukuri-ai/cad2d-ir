@@ -4,7 +4,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Typed 2D CAD intermediate representation and a DXF writer (experimental)"
+description = "Typed 2D CAD intermediate representation and the DXF writer of cad2d-ir"
 publish = false
 
 [dependencies]

@@ -1,0 +1,140 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_CONSTRAINTS_OMITTED",
+    "severity": "warning",
+    "message": "IR constraints are not representable in plain DXF and were omitted.",
+    "entity_id": null,
+    "action": "skipped"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "B1",
+    "handle": "107",
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:door"
+   },
+   {
+    "ir_id": "B2",
+    "handle": "108",
+    "dxf_type": "ARC",
+    "index": 1,
+    "scope": "block:door"
+   },
+   {
+    "ir_id": "I1",
+    "handle": "10A",
+    "dxf_type": "INSERT",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "I2",
+    "handle": "10B",
+    "dxf_type": "INSERT",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "H1",
+    "handle": "10C",
+    "dxf_type": "HATCH",
+    "index": 4,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_CONSTRAINTS_OMITTED",
+    "severity": "warning",
+    "message": "IR constraints are not representable in plain DXF and were omitted.",
+    "entity_id": null,
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_HATCH_EXPLODED",
+    "severity": "warning",
+    "message": "[HATCH:H1] fill was replaced by 2 boundary POLYLINE(s) for DXF R12.",
+    "entity_id": "H1",
+    "action": "exploded"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:door"
+   },
+   {
+    "ir_id": "B2",
+    "handle": null,
+    "dxf_type": "ARC",
+    "index": 1,
+    "scope": "block:door"
+   },
+   {
+    "ir_id": "I1",
+    "handle": null,
+    "dxf_type": "INSERT",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "I2",
+    "handle": null,
+    "dxf_type": "INSERT",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "H1",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 4,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "H1",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 5,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

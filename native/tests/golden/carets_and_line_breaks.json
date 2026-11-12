@@ -1,0 +1,49 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.2.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "tables": {
+  "layers": {
+   "0": {}
+  }
+ },
+ "entities": [
+  {
+   "id": "T0",
+   "kind": "TEXT",
+   "layer": "0",
+   "insert": [
+    0.0,
+    0.0
+   ],
+   "height": 5.0,
+   "text": "A^B"
+  },
+  {
+   "id": "T1",
+   "kind": "TEXT",
+   "layer": "0",
+   "insert": [
+    0.0,
+    10.0
+   ],
+   "height": 5.0,
+   "text": "2^J"
+  },
+  {
+   "id": "M",
+   "kind": "MTEXT",
+   "layer": "0",
+   "insert": [
+    0.0,
+    50.0
+   ],
+   "height": 5.0,
+   "text": "{\\H0.7x;\\S+0.1^-0.2;}"
+  }
+ ]
+}

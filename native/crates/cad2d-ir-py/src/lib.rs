@@ -2,13 +2,11 @@
 // reports on every function that returns a `PyResult`.
 #![allow(clippy::useless_conversion)]
 
-//! Python bindings of the native IR core (experimental).
+//! Python bindings of the native IR core.
 //!
-//! ``cad2d_ir`` stays the reference implementation. What is here is checked
-//! against it: a document converted to the typed IR and back is an equal
-//! ``dict``, and the DXF text written here is the text ``ir_to_dxf`` writes.
-//! A document the native writer has not learnt raises [`Unsupported`], and the
-//! caller uses the Python writer.
+//! The typed IR (a document converted from a ``dict`` and back is an equal
+//! ``dict``), the DXF writer behind ``cad2d_ir.codecs.dxf.ir_to_dxf`` and the
+//! conversion of the entities of a JWW file.
 //!
 //! This is a library: an extension module calls [`register`] to get the
 //! functions and classes. ``cad2d_ir_native._core`` is that and nothing else.
@@ -18,15 +16,20 @@
 //! of two extension modules are different types to Python, so such an
 //! application uses the bindings of its own module throughout.
 
+mod jww_dict;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use cad2d_ir_core::convert::{
     document_from_map, document_to_map, entity_from_map, entity_to_map, entity_typed_map,
 };
-use cad2d_ir_core::dxf::{self, Host, StyleFont, WriteError};
+use cad2d_ir_core::dxf::{
+    self, DxfOutput, GenericDimensions, Host, Options, R12TextPlan, StyleFont, Table, Target,
+    ViewportView, WriteError,
+};
 use cad2d_ir_core::{Block, Document, Entity, Interner, Map, Tables, Value};
-use cad2d_ir_jww::{ConvertError, Converted};
+use cad2d_ir_jww::{ConvertError, Converted, Sources};
 use indexmap::IndexMap;
 use pyo3::exceptions::{PyOSError, PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
@@ -36,15 +39,40 @@ pyo3::create_exception!(
     cad2d_ir_native,
     Unsupported,
     pyo3::exceptions::PyException,
-    "The document needs something the native code has not been taught."
+    "Native code of an application has not been taught what the document needs."
 );
 
 /// The ``Unsupported`` error with ``reason`` as its message.
+///
+/// Nothing in these bindings raises it: the DXF writer and the JWW conversion
+/// handle every document. It is the exception of an application that works on
+/// the typed IR with native code of its own and declines a document (a
+/// renderer that draws some entity kinds only), so that its Python side can
+/// tell that from a failure.
 pub fn unsupported(reason: impl Into<String>) -> PyErr {
     Unsupported::new_err(reason.into())
 }
 
-fn value_from_py(object: &Bound<'_, PyAny>) -> PyResult<Value> {
+/// The text of a Python ``str``. A ``str`` can hold half of a surrogate pair
+/// (text read from UTF-16 a code unit at a time), which no UTF-8 text can:
+/// two halves that belong together become their character, and a half on its
+/// own becomes U+FFFD.
+pub(crate) fn text_from_py(text: &Bound<'_, PyString>) -> PyResult<String> {
+    if let Ok(text) = text.to_str() {
+        return Ok(text.to_owned());
+    }
+    text.call_method1("encode", ("utf-16-le", "surrogatepass"))?
+        .call_method1("decode", ("utf-16-le", "replace"))?
+        .extract()
+}
+
+/// The dynamic value of a Python object of the kinds JSON has.
+///
+/// ``lenient`` is for a document that is only written: a value of another kind
+/// (which nothing of the writer reads) becomes ``None``, and a key that is no
+/// string its ``str``. Otherwise such a document is an error, since it could
+/// not be given back as it came.
+fn value_of(object: &Bound<'_, PyAny>, lenient: bool) -> PyResult<Value> {
     if object.is_none() {
         return Ok(Value::Null);
     }
@@ -54,47 +82,66 @@ fn value_from_py(object: &Bound<'_, PyAny>) -> PyResult<Value> {
     if object.is_instance_of::<PyInt>() {
         return match object.extract::<i64>() {
             Ok(number) => Ok(Value::Int(number)),
-            Err(_) => Err(Unsupported::new_err("an integer outside 64 bits")),
+            Err(_) => Ok(Value::BigInt(
+                object.str()?.to_str()?.to_owned().into_boxed_str(),
+            )),
         };
     }
     if let Ok(number) = object.downcast::<PyFloat>() {
         return Ok(Value::Float(number.value()));
     }
     if let Ok(text) = object.downcast::<PyString>() {
-        return Ok(Value::Str(text.to_str()?.to_owned()));
+        return Ok(Value::Str(text_from_py(text)?));
     }
     if let Ok(items) = object.downcast::<PyList>() {
         let mut values = Vec::with_capacity(items.len());
         for item in items.iter() {
-            values.push(value_from_py(&item)?);
+            values.push(value_of(&item, lenient)?);
         }
         return Ok(Value::List(values));
     }
     if let Ok(items) = object.downcast::<PyTuple>() {
         let mut values = Vec::with_capacity(items.len());
         for item in items.iter() {
-            values.push(value_from_py(&item)?);
+            values.push(value_of(&item, lenient)?);
         }
         return Ok(Value::List(values));
     }
     if let Ok(dict) = object.downcast::<PyDict>() {
-        return Ok(Value::Map(map_from_py(dict)?));
+        return Ok(Value::Map(map_of(dict, lenient)?));
     }
-    Err(Unsupported::new_err(format!(
-        "a value of type {}",
+    if lenient {
+        return Ok(Value::Null);
+    }
+    Err(PyTypeError::new_err(format!(
+        "an IR document holds a value of type {}, which is none of the types JSON has",
         object.get_type().name()?
     )))
 }
 
-fn map_from_py(dict: &Bound<'_, PyDict>) -> PyResult<Map> {
+fn map_of(dict: &Bound<'_, PyDict>, lenient: bool) -> PyResult<Map> {
     let mut map = Map::with_capacity(dict.len());
     for (key, value) in dict.iter() {
-        let Ok(key) = key.downcast::<PyString>() else {
-            return Err(Unsupported::new_err("a dict key that is not a string"));
+        let key = match key.downcast::<PyString>() {
+            Ok(key) => text_from_py(key)?,
+            Err(_) if lenient => text_from_py(&key.str()?)?,
+            Err(_) => {
+                return Err(PyTypeError::new_err(
+                    "an IR document holds a dict key that is not a string",
+                ))
+            }
         };
-        map.insert(key.to_str()?.to_owned(), value_from_py(&value)?);
+        map.insert(key, value_of(&value, lenient)?);
     }
     Ok(map)
+}
+
+fn value_from_py(object: &Bound<'_, PyAny>) -> PyResult<Value> {
+    value_of(object, false)
+}
+
+fn map_from_py(dict: &Bound<'_, PyDict>) -> PyResult<Map> {
+    map_of(dict, false)
 }
 
 fn value_to_py(py: Python<'_>, value: &Value) -> PyResult<PyObject> {
@@ -102,6 +149,10 @@ fn value_to_py(py: Python<'_>, value: &Value) -> PyResult<PyObject> {
         Value::Null => py.None(),
         Value::Bool(flag) => flag.into_py(py),
         Value::Int(number) => number.into_py(py),
+        Value::BigInt(digits) => py
+            .get_type_bound::<PyInt>()
+            .call1((digits.as_ref(),))?
+            .unbind(),
         Value::Float(number) => number.into_py(py),
         Value::Str(text) => text.into_py(py),
         Value::List(items) => {
@@ -285,25 +336,61 @@ fn document_to_py<'py>(py: Python<'py>, document: &Document) -> PyResult<Bound<'
     Ok(dict)
 }
 
-/// The lookups that still live in Python: the font table and the code pages.
+/// What the writer asks the Python package for: the font table, the code
+/// pages, the inline codes of MTEXT and the view of a viewport.
 struct PythonHost<'py> {
+    py: Python<'py>,
     style_font: Bound<'py, PyAny>,
     select_codepage: Bound<'py, PyAny>,
+    r12_text_plan: Bound<'py, PyAny>,
+    mtext_text: Bound<'py, PyAny>,
+    explode_mtext: Bound<'py, PyAny>,
+    viewport_view: Bound<'py, PyAny>,
 }
 
 impl<'py> PythonHost<'py> {
     fn new(py: Python<'py>) -> PyResult<Self> {
+        let codec = py.import_bound("cad2d_ir.codecs.dxf")?;
         Ok(PythonHost {
+            py,
             style_font: py.import_bound("cad2d_ir.fonts")?.getattr("style_font")?,
-            select_codepage: py
-                .import_bound("cad2d_ir.codecs.dxf")?
-                .getattr("_select_r12_codepage")?,
+            select_codepage: codec.getattr("_select_r12_codepage")?,
+            r12_text_plan: codec.getattr("_r12_text_plan")?,
+            mtext_text: codec.getattr("_mtext_dxf_text")?,
+            explode_mtext: codec.getattr("_explode_mtext")?,
+            viewport_view: py
+                .import_bound("cad2d_ir.layouts")?
+                .getattr("viewport_to_dxf_view")?,
         })
+    }
+
+    /// ``{character: count}``.
+    fn counts(&self, characters: &[(char, u64)]) -> PyResult<Bound<'py, PyDict>> {
+        let counts = PyDict::new_bound(self.py);
+        for (character, count) in characters {
+            counts.set_item(character.to_string(), count)?;
+        }
+        Ok(counts)
     }
 }
 
 fn host_error(error: PyErr) -> WriteError {
     WriteError::Invalid(error.to_string())
+}
+
+/// ``{character: text}`` of Python as pairs.
+fn character_table(table: &Bound<'_, PyAny>) -> PyResult<Vec<(char, String)>> {
+    let table = table.downcast::<PyDict>()?;
+    let mut pairs = Vec::with_capacity(table.len());
+    for (key, value) in table.iter() {
+        let key: String = key.extract()?;
+        let mut characters = key.chars();
+        match (characters.next(), characters.next()) {
+            (Some(character), None) => pairs.push((character, value.extract()?)),
+            _ => return Err(PyValueError::new_err("a key that is not one character")),
+        }
+    }
+    Ok(pairs)
 }
 
 impl Host for PythonHost<'_> {
@@ -330,32 +417,132 @@ impl Host for PythonHost<'_> {
     }
 
     fn select_codepage(&self, characters: &[(char, u64)]) -> Result<String, WriteError> {
-        let py = self.select_codepage.py();
-        let counts = PyDict::new_bound(py);
-        for (character, count) in characters {
-            counts
-                .set_item(character.to_string(), count)
-                .map_err(host_error)?;
-        }
-        self.select_codepage
-            .call1((counts,))
+        self.counts(characters)
+            .and_then(|counts| self.select_codepage.call1((counts,)))
             .and_then(|value| value.extract())
             .map_err(host_error)
+    }
+
+    fn r12_text_plan(
+        &self,
+        text_characters: &[(char, u64)],
+        other_characters: &[(char, u64)],
+    ) -> Result<R12TextPlan, WriteError> {
+        let plan = || -> PyResult<R12TextPlan> {
+            let result = self.r12_text_plan.call1((
+                self.counts(text_characters)?,
+                self.counts(other_characters)?,
+            ))?;
+            let (codepage, coded, lost, replaced, similar): (
+                String,
+                Bound<'_, PyAny>,
+                Bound<'_, PyAny>,
+                u64,
+                u64,
+            ) = result.extract()?;
+            Ok(R12TextPlan {
+                codepage,
+                coded: character_table(&coded)?,
+                lost: character_table(&lost)?,
+                replaced,
+                similar,
+            })
+        };
+        plan().map_err(host_error)
+    }
+
+    fn mtext_text(&self, entity: &Entity) -> Result<String, WriteError> {
+        entity_to_py(self.py, entity, &[])
+            .and_then(|entity| self.mtext_text.call1((entity,)))
+            .and_then(|value| value.extract())
+            .map_err(host_error)
+    }
+
+    fn explode_mtext(
+        &self,
+        entity: &Entity,
+        text_styles: &Table,
+    ) -> Result<(Vec<Entity>, bool), WriteError> {
+        let explode = || -> PyResult<(Vec<Entity>, bool)> {
+            let styles = PyDict::new_bound(self.py);
+            for (name, definition) in text_styles {
+                styles.set_item(name, map_to_py(self.py, definition)?)?;
+            }
+            let result = self
+                .explode_mtext
+                .call1((entity_to_py(self.py, entity, &[])?, styles))?;
+            let (texts, formatting_changed): (Bound<'_, PyList>, bool) = result.extract()?;
+            let mut interner = Interner::new();
+            let mut entities = Vec::with_capacity(texts.len());
+            for text in texts.iter() {
+                let text = text.downcast::<PyDict>()?;
+                entities.push(entity_from_map(map_from_py(text)?, &mut interner));
+            }
+            Ok((entities, formatting_changed))
+        };
+        explode().map_err(host_error)
+    }
+
+    fn viewport_view(&self, viewport: &Map) -> Result<Option<ViewportView>, WriteError> {
+        let view = || -> PyResult<Option<ViewportView>> {
+            let result = self.viewport_view.call1((map_to_py(self.py, viewport)?,))?;
+            if result.is_none() {
+                return Ok(None);
+            }
+            let center: Vec<f64> = result.get_item("view_center")?.extract()?;
+            if center.len() < 2 {
+                return Err(PyValueError::new_err("view_center is not a point"));
+            }
+            Ok(Some(ViewportView {
+                center: [center[0], center[1]],
+                height: result.get_item("view_height")?.extract()?,
+                twist: result.get_item("twist_deg")?.extract()?,
+            }))
+        };
+        view().map_err(host_error)
     }
 }
 
 fn write_error(error: WriteError) -> PyErr {
     match error {
-        WriteError::Unsupported(reason) => Unsupported::new_err(reason),
         WriteError::Invalid(reason) => PyValueError::new_err(reason),
     }
 }
 
-fn document_from_py(document: &Bound<'_, PyAny>) -> PyResult<Document> {
-    let Ok(dict) = document.downcast::<PyDict>() else {
-        return Err(PyTypeError::new_err("an IR document is a dict"));
+/// The options of ``ir_to_dxf`` as the writer takes them.
+fn dxf_options(
+    target_version: &str,
+    curve_segments: i64,
+    generic_dimensions: &str,
+    entity_map: bool,
+) -> PyResult<Options> {
+    let target = match target_version {
+        "AC1009" => Target::R12,
+        "AC1024" => Target::R2010,
+        _ => {
+            return Err(PyValueError::new_err(
+                "target_version must be one of: AC1009, AC1024",
+            ))
+        }
     };
-    Ok(document_from_map(map_from_py(dict)?))
+    if !(8..=4096).contains(&curve_segments) {
+        return Err(PyValueError::new_err("curve_segments must be in [8, 4096]"));
+    }
+    let generic_dimensions = match generic_dimensions {
+        "explode" => GenericDimensions::Explode,
+        "skip" => GenericDimensions::Skip,
+        _ => {
+            return Err(PyValueError::new_err(
+                "generic_dimensions must be 'explode' or 'skip'",
+            ))
+        }
+    };
+    Ok(Options {
+        target,
+        curve_segments: curve_segments as u32,
+        generic_dimensions,
+        entity_map,
+    })
 }
 
 /// An export diagnostic: ``(code, severity, message, entity_id, action)``.
@@ -367,35 +554,368 @@ type DiagnosticTuple = (
     Option<&'static str>,
 );
 
+fn diagnostic_tuples(output: &mut DxfOutput) -> Vec<DiagnosticTuple> {
+    std::mem::take(&mut output.diagnostics)
+        .into_iter()
+        .map(|d| (d.code, d.severity, d.message, d.entity_id, d.action))
+        .collect()
+}
+
+/// The entity map as the ``dict``s ``ir_to_dxf`` collects: ``ir_id``,
+/// ``handle``, ``dxf_type``, ``index`` and ``scope``, and ``reason_code`` for
+/// an entity nothing was written for.
+fn entity_map_to_py<'py>(py: Python<'py>, output: &DxfOutput) -> PyResult<Bound<'py, PyList>> {
+    let list = PyList::empty_bound(py);
+    let (ir_id, handle, dxf_type, index, scope, reason_code) = (
+        pyo3::intern!(py, "ir_id"),
+        pyo3::intern!(py, "handle"),
+        pyo3::intern!(py, "dxf_type"),
+        pyo3::intern!(py, "index"),
+        pyo3::intern!(py, "scope"),
+        pyo3::intern!(py, "reason_code"),
+    );
+    // the scope of many entries is one string
+    let mut last_scope: Option<(*const u8, Bound<'py, PyString>)> = None;
+    for entry in &output.entity_map {
+        let row = PyDict::new_bound(py);
+        row.set_item(ir_id, &*entry.ir_id)?;
+        row.set_item(handle, entry.handle.as_deref())?;
+        row.set_item(dxf_type, entry.dxf_type)?;
+        row.set_item(index, entry.index)?;
+        let scope_text = match &last_scope {
+            Some((address, text)) if *address == entry.scope.as_ptr() => text.clone(),
+            _ => {
+                let text = PyString::new_bound(py, &entry.scope);
+                last_scope = Some((entry.scope.as_ptr(), text.clone()));
+                text
+            }
+        };
+        row.set_item(scope, scope_text)?;
+        if entry.dxf_type.is_none() {
+            row.set_item(reason_code, entry.reason_code)?;
+        }
+        list.append(row)?;
+    }
+    Ok(list)
+}
+
+/// How a document ``dict`` is read into the typed document.
+#[derive(Clone, Copy)]
+struct Reading {
+    /// The document is only written: a value of a kind JSON does not have is
+    /// passed over, and what the writer never reads of an entity is left out
+    /// (``dxf::reads_entity_key``). Otherwise the typed document is the whole
+    /// ``dict``, and such a value an error.
+    to_write: bool,
+    /// The entities of model space are let go from their list one by one as
+    /// they are converted, and the list is empty afterwards.
+    consume: bool,
+}
+
+const KEEP: Reading = Reading {
+    to_write: false,
+    consume: false,
+};
+
+fn key_text(key: &Bound<'_, PyAny>, lenient: bool) -> PyResult<String> {
+    match key.downcast::<PyString>() {
+        Ok(key) => text_from_py(key),
+        Err(_) if lenient => text_from_py(&key.str()?),
+        Err(_) => Err(PyTypeError::new_err(
+            "an IR document holds a dict key that is not a string",
+        )),
+    }
+}
+
+/// The typed entity of an entity ``dict``.
+fn entity_from_py(
+    entity: &Bound<'_, PyDict>,
+    reading: Reading,
+    interner: &mut Interner,
+) -> PyResult<Entity> {
+    if !reading.to_write {
+        return Ok(entity_from_map(map_of(entity, false)?, interner));
+    }
+    let kind = match entity.get_item("kind")? {
+        Some(kind) => match kind.downcast::<PyString>() {
+            Ok(kind) => Some(text_from_py(kind)?),
+            Err(_) => None,
+        },
+        None => None,
+    };
+    let mut map = Map::with_capacity(entity.len());
+    for (key, value) in entity.iter() {
+        let key = key_text(&key, true)?;
+        if dxf::reads_entity_key(kind.as_deref(), &key) {
+            map.insert(key, value_of(&value, true)?);
+        }
+    }
+    Ok(entity_from_map(map, interner))
+}
+
+/// The list under ``key`` when every item of it is a ``dict``: a list of
+/// entities that is converted one entity at a time.
+fn entity_list<'py>(owner: &Bound<'py, PyDict>, key: &str) -> PyResult<Option<Bound<'py, PyList>>> {
+    let Some(value) = owner.get_item(key)? else {
+        return Ok(None);
+    };
+    let Ok(list) = value.downcast_into::<PyList>() else {
+        return Ok(None);
+    };
+    if list.iter().all(|item| item.is_instance_of::<PyDict>()) {
+        Ok(Some(list))
+    } else {
+        Ok(None)
+    }
+}
+
+/// ``owner`` without ``key`` (a new ``dict``; the values are shared).
+fn without_key<'py>(owner: &Bound<'py, PyDict>, key: &str) -> PyResult<Bound<'py, PyDict>> {
+    let copy = PyDict::new_bound(owner.py());
+    for (name, value) in owner.iter() {
+        if name.extract::<&str>().is_ok_and(|name| name == key) {
+            continue;
+        }
+        copy.set_item(name, value)?;
+    }
+    Ok(copy)
+}
+
+/// The entity lists of the blocks, taken out of ``tables``: the tables with
+/// those blocks lacking their ``entities``, and the lists by block name. ``None``
+/// when the block table is not a ``dict`` of ``dict``s with text for names.
+type BlockEntities<'py> = Vec<(String, Bound<'py, PyList>)>;
+
+fn blocks_apart<'py>(
+    tables: &Bound<'py, PyDict>,
+) -> PyResult<Option<(Bound<'py, PyDict>, BlockEntities<'py>)>> {
+    let Some(blocks) = tables.get_item("blocks")? else {
+        return Ok(None);
+    };
+    let Ok(blocks) = blocks.downcast_into::<PyDict>() else {
+        return Ok(None);
+    };
+    let mut lists = Vec::new();
+    let shells = PyDict::new_bound(tables.py());
+    for (name, block) in blocks.iter() {
+        let (Ok(name_text), Ok(block)) = (name.downcast::<PyString>(), block.downcast::<PyDict>())
+        else {
+            return Ok(None);
+        };
+        match entity_list(block, "entities")? {
+            Some(list) => {
+                shells.set_item(&name, without_key(block, "entities")?)?;
+                lists.push((text_from_py(name_text)?, list));
+            }
+            None => shells.set_item(&name, block)?,
+        }
+    }
+    if lists.is_empty() {
+        return Ok(None);
+    }
+    let copy = PyDict::new_bound(tables.py());
+    for (name, value) in tables.iter() {
+        if name.extract::<&str>().is_ok_and(|name| name == "blocks") {
+            copy.set_item(name, &shells)?;
+        } else {
+            copy.set_item(name, value)?;
+        }
+    }
+    Ok(Some((copy, lists)))
+}
+
+/// The typed document of a document ``dict``.
+///
+/// The entities of model space and of the blocks are converted one at a time,
+/// so that the dynamic form of an entity (every key and value as an object of
+/// its own) exists for one entity only: for a large drawing all of them at
+/// once take more memory than the ``dict``.
+fn document_from_py(document: &Bound<'_, PyAny>, reading: Reading) -> PyResult<Document> {
+    let Ok(dict) = document.downcast::<PyDict>() else {
+        return Err(PyTypeError::new_err("an IR document is a dict"));
+    };
+    let lenient = reading.to_write;
+    let entities = entity_list(dict, "entities")?;
+    let blocks = match dict.get_item("tables")? {
+        Some(tables) => match tables.downcast::<PyDict>() {
+            Ok(tables) => blocks_apart(tables)?,
+            Err(_) => None,
+        },
+        None => None,
+    };
+    if entities.is_none() && blocks.is_none() {
+        return Ok(document_from_map(map_of(dict, lenient)?));
+    }
+
+    // the document without those lists
+    let shell = PyDict::new_bound(dict.py());
+    for (key, value) in dict.iter() {
+        match key.extract::<&str>() {
+            Ok("entities") if entities.is_some() => {}
+            Ok("tables") => match &blocks {
+                Some((tables, _)) => shell.set_item(key, tables)?,
+                None => shell.set_item(key, value)?,
+            },
+            _ => shell.set_item(key, value)?,
+        }
+    }
+    let mut typed = document_from_map(map_of(&shell, lenient)?);
+    let mut interner = Interner::new();
+
+    if let Some((_, lists)) = blocks {
+        let Some(typed_blocks) = typed
+            .tables
+            .as_mut()
+            .and_then(|tables| tables.blocks.as_mut())
+        else {
+            return Err(PyRuntimeError::new_err("the block table was not converted"));
+        };
+        for (name, list) in lists {
+            let Some(block) = typed_blocks.get_mut(&name) else {
+                return Err(PyRuntimeError::new_err("a block was not converted"));
+            };
+            block.entities.reserve(list.len());
+            for entity in list.iter() {
+                let entity = entity.downcast_into::<PyDict>()?;
+                block
+                    .entities
+                    .push(entity_from_py(&entity, reading, &mut interner)?);
+            }
+            block.has_entities = true;
+        }
+    }
+
+    if let Some(entities) = entities {
+        let none = dict.py().None();
+        typed.entities.reserve(entities.len());
+        for index in 0..entities.len() {
+            let entity = entities.get_item(index)?;
+            if reading.consume {
+                // the list lets the entity go before the next one is converted
+                entities.set_item(index, &none)?;
+            }
+            let entity = entity.downcast_into::<PyDict>()?;
+            typed
+                .entities
+                .push(entity_from_py(&entity, reading, &mut interner)?);
+        }
+        typed.has_entities = true;
+        if reading.consume {
+            entities.call_method0("clear")?;
+        }
+    }
+    Ok(typed)
+}
+
+fn points_to_py(points: Vec<[f64; 2]>) -> Vec<Vec<f64>> {
+    points.into_iter().map(|[x, y]| vec![x, y]).collect()
+}
+
+/// Points on an ellipse from ``start_param`` to ``end_param`` (radians),
+/// ``curve_segments`` of them for a whole turn; the end point is among them
+/// unless the ellipse is whole.
+#[pyfunction]
+fn sample_ellipse(
+    center: [f64; 2],
+    major_axis: [f64; 2],
+    ratio: f64,
+    start_param: f64,
+    end_param: f64,
+    curve_segments: u32,
+) -> PyResult<Vec<Vec<f64>>> {
+    dxf::sample_ellipse(
+        center,
+        major_axis,
+        ratio,
+        start_param,
+        end_param,
+        curve_segments,
+    )
+    .map(points_to_py)
+    .map_err(write_error)
+}
+
+/// The width of a text in character cells, each as wide as the text is high,
+/// as the DXF writer measures a justified text: a character that takes two
+/// bytes in Shift_JIS is one cell, any other half a cell, and the ``%%`` codes
+/// count as what a reader draws for them.
+#[pyfunction]
+fn text_cells(text: &Bound<'_, PyString>) -> PyResult<f64> {
+    Ok(dxf::text_cells(&text_from_py(text)?))
+}
+
+/// ``curve_segments + 1`` points on a (rational) B-spline. Knots and weights
+/// that do not fit the control points and the degree are replaced by clamped
+/// uniform knots and by ones. ``ValueError`` for a spline without a domain.
+#[pyfunction]
+#[pyo3(signature = (control_points, degree, knots, weights, curve_segments))]
+fn sample_spline(
+    control_points: Vec<[f64; 2]>,
+    degree: i64,
+    knots: Option<Vec<f64>>,
+    weights: Option<Vec<f64>>,
+    curve_segments: u32,
+) -> PyResult<Vec<Vec<f64>>> {
+    dxf::sample_spline(
+        &control_points,
+        degree,
+        knots.as_deref(),
+        weights.as_deref(),
+        curve_segments,
+    )
+    .map(points_to_py)
+    .map_err(write_error)
+}
+
 /// The document as the typed IR and back (for checking the conversion).
 #[pyfunction]
 fn document_roundtrip<'py>(
     py: Python<'py>,
     document: &Bound<'py, PyAny>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let typed = document_from_py(document)?;
+    let typed = document_from_py(document, KEEP)?;
     document_to_py(py, &typed)
 }
 
-/// ``ir_to_dxf(document, target_version="AC1024")`` in native code.
+/// What ``write_dxf`` returns: the text, the diagnostics and the entity map.
+type Written<'py> = (String, Vec<DiagnosticTuple>, Bound<'py, PyList>);
+
+/// The DXF text of an IR document: ``cad2d_ir.codecs.dxf.ir_to_dxf`` without
+/// its validation.
 ///
-/// Returns ``(dxf_text, diagnostics)`` where a diagnostic is
-/// ``(code, severity, message, entity_id, action)``. Raises ``Unsupported``
-/// for a document the native writer has not learnt.
+/// Returns ``(dxf_text, diagnostics, entity_map)``. A diagnostic is
+/// ``(code, severity, message, entity_id, action)``; the entity map is filled
+/// when ``entity_map`` is true. With ``consume`` the entities of model space
+/// are taken out of ``document["entities"]`` as they are read.
 #[pyfunction]
-fn ir_to_dxf<'py>(
+#[pyo3(signature = (document, *, target_version = "AC1024", curve_segments = 96, generic_dimensions = "explode", entity_map = false, consume = false))]
+fn write_dxf<'py>(
     py: Python<'py>,
     document: &Bound<'py, PyAny>,
-) -> PyResult<(String, Vec<DiagnosticTuple>)> {
-    let typed = document_from_py(document)?;
+    target_version: &str,
+    curve_segments: i64,
+    generic_dimensions: &str,
+    entity_map: bool,
+    consume: bool,
+) -> PyResult<Written<'py>> {
+    let options = dxf_options(
+        target_version,
+        curve_segments,
+        generic_dimensions,
+        entity_map,
+    )?;
+    let typed = document_from_py(
+        document,
+        Reading {
+            to_write: true,
+            consume,
+        },
+    )?;
     let host = PythonHost::new(py)?;
-    let output = dxf::write_r2010(&typed, &host).map_err(write_error)?;
-    let diagnostics = output
-        .diagnostics
-        .into_iter()
-        .map(|d| (d.code, d.severity, d.message, d.entity_id, d.action))
-        .collect();
-    Ok((output.text, diagnostics))
+    let mut output = dxf::write(&typed, &options, &host).map_err(write_error)?;
+    let diagnostics = diagnostic_tuples(&mut output);
+    let map = entity_map_to_py(py, &output)?;
+    Ok((output.text, diagnostics, map))
 }
 
 /// An entity with where it is: the name of its block (``None`` for model
@@ -422,7 +942,7 @@ impl NativeDocument {
     #[staticmethod]
     fn from_dict(document: &Bound<'_, PyAny>) -> PyResult<Self> {
         Ok(NativeDocument {
-            document: document_from_py(document)?,
+            document: document_from_py(document, KEEP)?,
         })
     }
 
@@ -431,31 +951,43 @@ impl NativeDocument {
         document_to_py(py, &self.document)
     }
 
-    /// DXF R2010 text and the export diagnostics, as ``ir_to_dxf`` returns them.
-    fn to_dxf(&self, py: Python<'_>) -> PyResult<(String, Vec<DiagnosticTuple>)> {
+    /// The DXF text of the document, the export diagnostics and the entity map
+    /// (see ``write_dxf``).
+    #[pyo3(signature = (*, target_version = "AC1024", curve_segments = 96, generic_dimensions = "explode", entity_map = false))]
+    fn to_dxf<'py>(
+        &self,
+        py: Python<'py>,
+        target_version: &str,
+        curve_segments: i64,
+        generic_dimensions: &str,
+        entity_map: bool,
+    ) -> PyResult<Written<'py>> {
+        let options = dxf_options(
+            target_version,
+            curve_segments,
+            generic_dimensions,
+            entity_map,
+        )?;
         let host = PythonHost::new(py)?;
-        let output = dxf::write_r2010(&self.document, &host).map_err(write_error)?;
-        let diagnostics = output
-            .diagnostics
-            .into_iter()
-            .map(|d| (d.code, d.severity, d.message, d.entity_id, d.action))
-            .collect();
-        Ok((output.text, diagnostics))
+        let mut output = dxf::write(&self.document, &options, &host).map_err(write_error)?;
+        let diagnostics = diagnostic_tuples(&mut output);
+        let map = entity_map_to_py(py, &output)?;
+        Ok((output.text, diagnostics, map))
     }
 
-    /// ``to_dxf`` with the text as UTF-8 bytes (what a DXF R2010 file holds),
+    /// DXF R2010 as the bytes of its file (UTF-8) with the export diagnostics,
     /// without a Python ``str`` of the whole file in between.
+    #[pyo3(signature = (*, curve_segments = 96, generic_dimensions = "explode"))]
     fn to_dxf_bytes<'py>(
         &self,
         py: Python<'py>,
+        curve_segments: i64,
+        generic_dimensions: &str,
     ) -> PyResult<(Bound<'py, pyo3::types::PyBytes>, Vec<DiagnosticTuple>)> {
+        let options = dxf_options("AC1024", curve_segments, generic_dimensions, false)?;
         let host = PythonHost::new(py)?;
-        let output = dxf::write_r2010(&self.document, &host).map_err(write_error)?;
-        let diagnostics = output
-            .diagnostics
-            .into_iter()
-            .map(|d| (d.code, d.severity, d.message, d.entity_id, d.action))
-            .collect();
+        let mut output = dxf::write(&self.document, &options, &host).map_err(write_error)?;
+        let diagnostics = diagnostic_tuples(&mut output);
         Ok((
             pyo3::types::PyBytes::new_bound(py, output.text.as_bytes()),
             diagnostics,
@@ -735,7 +1267,7 @@ impl ParsedJww {
     }
 
     /// Convert the entities with the lookup tables the importer made from the header.
-    #[pyo3(signature = (*, label, source_format, entity_provenance, strict, curve_segments, layer_names, block_names, linetype_names, pen_widths, pen_colors))]
+    #[pyo3(signature = (*, label, source_format, entity_provenance, strict, curve_segments, layer_names, layer_table, block_names, linetype_names, pen_widths, pen_colors))]
     #[allow(clippy::too_many_arguments)]
     fn convert(
         &mut self,
@@ -746,32 +1278,25 @@ impl ParsedJww {
         strict: bool,
         curve_segments: i64,
         layer_names: HashMap<(i64, i64), String>,
+        layer_table: Vec<String>,
         block_names: HashMap<i64, String>,
         linetype_names: HashMap<i64, String>,
         pen_widths: HashMap<i64, f64>,
         pen_colors: HashMap<i64, i64>,
     ) -> PyResult<ConvertedJww> {
-        let shared = |names: HashMap<i64, String>| -> HashMap<i64, Arc<str>> {
-            names
-                .into_iter()
-                .map(|(key, name)| (key, Arc::from(name.as_str())))
-                .collect()
-        };
-        let context = cad2d_ir_jww::Context {
+        let context = conversion_context(
             label,
             source_format,
             entity_provenance,
             strict,
             curve_segments,
-            layer_names: layer_names
-                .into_iter()
-                .map(|(key, name)| (key, Arc::from(name.as_str())))
-                .collect(),
-            block_names: shared(block_names),
-            linetype_names: shared(linetype_names),
+            layer_names,
+            layer_table,
+            block_names,
+            linetype_names,
             pen_widths,
             pen_colors,
-        };
+        );
         let parsed = self.get()?;
         let converted = py.allow_threads(|| cad2d_ir_jww::convert(&parsed.document, &context));
         match converted {
@@ -782,9 +1307,110 @@ impl ParsedJww {
                     converted: Some(converted),
                 })
             }
-            Err(ConvertError::Unsupported(reason)) => Err(Unsupported::new_err(reason)),
-            Err(ConvertError::Failed(reason)) => Err(PyValueError::new_err(reason)),
+            Err(ConvertError(reason)) => Err(PyValueError::new_err(reason)),
         }
+    }
+}
+
+/// The lookup tables of a conversion as ``cad2d-ir-jww`` takes them.
+#[allow(clippy::too_many_arguments)]
+fn conversion_context(
+    label: String,
+    source_format: String,
+    entity_provenance: bool,
+    strict: bool,
+    curve_segments: i64,
+    layer_names: HashMap<(i64, i64), String>,
+    layer_table: Vec<String>,
+    block_names: HashMap<i64, String>,
+    linetype_names: HashMap<i64, String>,
+    pen_widths: HashMap<i64, f64>,
+    pen_colors: HashMap<i64, i64>,
+) -> cad2d_ir_jww::Context {
+    let shared = |names: HashMap<i64, String>| -> HashMap<i64, Arc<str>> {
+        names
+            .into_iter()
+            .map(|(key, name)| (key, Arc::from(name.as_str())))
+            .collect()
+    };
+    cad2d_ir_jww::Context {
+        label,
+        source_format,
+        entity_provenance,
+        strict,
+        curve_segments,
+        layer_names: layer_names
+            .into_iter()
+            .map(|(key, name)| (key, Arc::from(name.as_str())))
+            .collect(),
+        layer_table: layer_table.into_iter().collect(),
+        block_names: shared(block_names),
+        linetype_names: shared(linetype_names),
+        pen_widths,
+        pen_colors,
+    }
+}
+
+/// Convert the entities of a document held as the ``dict`` of
+/// ``ezjww.read_document`` or ``ezjww.read_jws_document``, with the lookup
+/// tables the importer made from its header.
+///
+/// With ``consume`` each entity of the drawing is let go from
+/// ``document["entities"]`` (``None`` takes its place) once it is read.
+#[pyfunction]
+#[pyo3(signature = (document, *, consume, label, source_format, entity_provenance, strict, curve_segments, layer_names, layer_table, block_names, linetype_names, pen_widths, pen_colors))]
+#[allow(clippy::too_many_arguments)]
+fn convert_jw_document(
+    py: Python<'_>,
+    document: &Bound<'_, PyDict>,
+    consume: bool,
+    label: String,
+    source_format: String,
+    entity_provenance: bool,
+    strict: bool,
+    curve_segments: i64,
+    layer_names: HashMap<(i64, i64), String>,
+    layer_table: Vec<String>,
+    block_names: HashMap<i64, String>,
+    linetype_names: HashMap<i64, String>,
+    pen_widths: HashMap<i64, f64>,
+    pen_colors: HashMap<i64, i64>,
+) -> PyResult<ConvertedJww> {
+    let context = conversion_context(
+        label,
+        source_format,
+        entity_provenance,
+        strict,
+        curve_segments,
+        layer_names,
+        layer_table,
+        block_names,
+        linetype_names,
+        pen_widths,
+        pen_colors,
+    );
+    let records = jww_dict::records_of(document, consume)?;
+    let converted = py.allow_threads(|| {
+        let sources = Sources {
+            entities: records
+                .entities
+                .iter()
+                .map(jww_dict::Record::source)
+                .collect(),
+            blocks: records
+                .blocks
+                .iter()
+                .map(|block| block.iter().map(jww_dict::Record::source).collect())
+                .collect(),
+            images: &records.images,
+        };
+        cad2d_ir_jww::convert_sources(&sources, &context)
+    });
+    match converted {
+        Ok(converted) => Ok(ConvertedJww {
+            converted: Some(converted),
+        }),
+        Err(ConvertError(reason)) => Err(PyValueError::new_err(reason)),
     }
 }
 
@@ -924,6 +1550,12 @@ impl ConvertedJww {
         Ok(self.get()?.entities.len())
     }
 
+    /// The layers made for entities on a layer the header does not have, in
+    /// the order they were made: ``((layer_group, layer), name)``.
+    fn added_layers(&self) -> PyResult<Vec<((i64, i64), String)>> {
+        Ok(self.get()?.added_layers.clone())
+    }
+
     /// The number of entities of each block definition.
     fn block_entity_counts(&self) -> PyResult<Vec<usize>> {
         Ok(self.get()?.blocks.iter().map(Vec::len).collect())
@@ -937,7 +1569,7 @@ impl ConvertedJww {
         shell: &Bound<'_, PyAny>,
         blocks: Vec<(String, Bound<'_, PyDict>)>,
     ) -> PyResult<NativeDocument> {
-        let mut document = document_from_py(shell)?;
+        let mut document = document_from_py(shell, KEEP)?;
         let converted = self.converted.take().ok_or_else(|| {
             PyRuntimeError::new_err("the entities were moved into a document already")
         })?;
@@ -984,8 +1616,12 @@ pub fn register(module: &Bound<'_, PyModule>) -> PyResult<()> {
     module.add("Unsupported", module.py().get_type_bound::<Unsupported>())?;
     module.add("__version__", env!("CARGO_PKG_VERSION"))?;
     module.add_function(wrap_pyfunction!(document_roundtrip, module)?)?;
-    module.add_function(wrap_pyfunction!(ir_to_dxf, module)?)?;
+    module.add_function(wrap_pyfunction!(write_dxf, module)?)?;
+    module.add_function(wrap_pyfunction!(sample_ellipse, module)?)?;
+    module.add_function(wrap_pyfunction!(sample_spline, module)?)?;
+    module.add_function(wrap_pyfunction!(text_cells, module)?)?;
     module.add_function(wrap_pyfunction!(parse_jww, module)?)?;
+    module.add_function(wrap_pyfunction!(convert_jw_document, module)?)?;
     module.add_class::<NativeDocument>()?;
     module.add_class::<ParsedJww>()?;
     module.add_class::<ConvertedJww>()?;

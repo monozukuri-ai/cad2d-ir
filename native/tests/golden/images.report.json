@@ -1,0 +1,367 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '図' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_IMAGE_REFERENCED",
+    "severity": "warning",
+    "message": "[IMAGE:B1] the embedded image was written as a reference to 'b.png'; a DXF never embeds the pixels, so the file has to be placed next to the DXF.",
+    "entity_id": "B1",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_IMAGE_REFERENCED",
+    "severity": "warning",
+    "message": "[IMAGE:IM1] the embedded image was written as a reference to 'logo.png'; a DXF never embeds the pixels, so the file has to be placed next to the DXF.",
+    "entity_id": "IM1",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_IMAGE_REFERENCED",
+    "severity": "warning",
+    "message": "[IMAGE:IM2] the embedded image was written as a reference to 'logo.png'; a DXF never embeds the pixels, so the file has to be placed next to the DXF.",
+    "entity_id": "IM2",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_IMAGE_REFERENCED",
+    "severity": "warning",
+    "message": "[IMAGE:IM3] the embedded image was written as a reference to 'LOGO.bmp'; a DXF never embeds the pixels, so the file has to be placed next to the DXF.",
+    "entity_id": "IM3",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_IMAGE_SIZE_ASSUMED",
+    "severity": "warning",
+    "message": "[IMAGE:IM4] the size of the image in pixels is unknown; 12x20 pixels (one pixel per drawing unit) were assumed, which keeps the drawn size.",
+    "entity_id": "IM4",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_IMAGE_REFERENCED",
+    "severity": "warning",
+    "message": "[IMAGE:IM5] the embedded image was written as a reference to 'image_IM5.bmp'; a DXF never embeds the pixels, so the file has to be placed next to the DXF.",
+    "entity_id": "IM5",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_IMAGE_REFERENCED",
+    "severity": "warning",
+    "message": "[IMAGE:IM6] the embedded image was written as a reference to 'a:b?.gif'; a DXF never embeds the pixels, so the file has to be placed next to the DXF.",
+    "entity_id": "IM6",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_IMAGE_REFERENCED",
+    "severity": "warning",
+    "message": "[IMAGE:IM7] the embedded image was written as a reference to 'photo'; a DXF never embeds the pixels, so the file has to be placed next to the DXF.",
+    "entity_id": "IM7",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_IMAGE_SIZE_ASSUMED",
+    "severity": "warning",
+    "message": "[IMAGE:IM8] the size of the image in pixels is unknown; 40x20 pixels (one pixel per drawing unit) were assumed, which keeps the drawn size.",
+    "entity_id": "IM8",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_IMAGE_REFERENCED",
+    "severity": "warning",
+    "message": "[IMAGE:IM8] the embedded image was written as a reference to 'x.dat'; a DXF never embeds the pixels, so the file has to be placed next to the DXF.",
+    "entity_id": "IM8",
+    "action": "approximated"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "B1",
+    "handle": "10A",
+    "dxf_type": "IMAGE",
+    "index": 0,
+    "scope": "block:sheet"
+   },
+   {
+    "ir_id": "IM1",
+    "handle": "10E",
+    "dxf_type": "IMAGE",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "IM2",
+    "handle": "110",
+    "dxf_type": "IMAGE",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "IM3",
+    "handle": "113",
+    "dxf_type": "IMAGE",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "IM4",
+    "handle": "116",
+    "dxf_type": "IMAGE",
+    "index": 4,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "IM5",
+    "handle": "119",
+    "dxf_type": "IMAGE",
+    "index": 5,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "IM6",
+    "handle": "11C",
+    "dxf_type": "IMAGE",
+    "index": 6,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "IM7",
+    "handle": "11F",
+    "dxf_type": "IMAGE",
+    "index": 7,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "IM8",
+    "handle": "122",
+    "dxf_type": "IMAGE",
+    "index": 8,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "IM9",
+    "handle": "125",
+    "dxf_type": "IMAGE",
+    "index": 9,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "L1",
+    "handle": "126",
+    "dxf_type": "LINE",
+    "index": 10,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '図' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_IMAGE_SKIPPED",
+    "severity": "warning",
+    "message": "[IMAGE:B1] raster image placements need DXF R14 or later (IMAGE with IMAGEDEF objects); the placement was skipped for AC1009.",
+    "entity_id": "B1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_IMAGE_SKIPPED",
+    "severity": "warning",
+    "message": "[IMAGE:IM1] raster image placements need DXF R14 or later (IMAGE with IMAGEDEF objects); the placement was skipped for AC1009.",
+    "entity_id": "IM1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_IMAGE_SKIPPED",
+    "severity": "warning",
+    "message": "[IMAGE:IM2] raster image placements need DXF R14 or later (IMAGE with IMAGEDEF objects); the placement was skipped for AC1009.",
+    "entity_id": "IM2",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_IMAGE_SKIPPED",
+    "severity": "warning",
+    "message": "[IMAGE:IM3] raster image placements need DXF R14 or later (IMAGE with IMAGEDEF objects); the placement was skipped for AC1009.",
+    "entity_id": "IM3",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_IMAGE_SKIPPED",
+    "severity": "warning",
+    "message": "[IMAGE:IM4] raster image placements need DXF R14 or later (IMAGE with IMAGEDEF objects); the placement was skipped for AC1009.",
+    "entity_id": "IM4",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_IMAGE_SKIPPED",
+    "severity": "warning",
+    "message": "[IMAGE:IM5] raster image placements need DXF R14 or later (IMAGE with IMAGEDEF objects); the placement was skipped for AC1009.",
+    "entity_id": "IM5",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_IMAGE_SKIPPED",
+    "severity": "warning",
+    "message": "[IMAGE:IM6] raster image placements need DXF R14 or later (IMAGE with IMAGEDEF objects); the placement was skipped for AC1009.",
+    "entity_id": "IM6",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_IMAGE_SKIPPED",
+    "severity": "warning",
+    "message": "[IMAGE:IM7] raster image placements need DXF R14 or later (IMAGE with IMAGEDEF objects); the placement was skipped for AC1009.",
+    "entity_id": "IM7",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_IMAGE_SKIPPED",
+    "severity": "warning",
+    "message": "[IMAGE:IM8] raster image placements need DXF R14 or later (IMAGE with IMAGEDEF objects); the placement was skipped for AC1009.",
+    "entity_id": "IM8",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_IMAGE_SKIPPED",
+    "severity": "warning",
+    "message": "[IMAGE:IM9] raster image placements need DXF R14 or later (IMAGE with IMAGEDEF objects); the placement was skipped for AC1009.",
+    "entity_id": "IM9",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_INSUNITS_OMITTED",
+    "severity": "warning",
+    "message": "DXF R12 has no $INSUNITS header; IR units 'm' were reduced to $MEASUREMENT.",
+    "entity_id": null,
+    "action": "skipped"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "block:sheet",
+    "reason_code": "DXF_IMAGE_SKIPPED"
+   },
+   {
+    "ir_id": "IM1",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_IMAGE_SKIPPED"
+   },
+   {
+    "ir_id": "IM2",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_IMAGE_SKIPPED"
+   },
+   {
+    "ir_id": "IM3",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_IMAGE_SKIPPED"
+   },
+   {
+    "ir_id": "IM4",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_IMAGE_SKIPPED"
+   },
+   {
+    "ir_id": "IM5",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_IMAGE_SKIPPED"
+   },
+   {
+    "ir_id": "IM6",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_IMAGE_SKIPPED"
+   },
+   {
+    "ir_id": "IM7",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_IMAGE_SKIPPED"
+   },
+   {
+    "ir_id": "IM8",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_IMAGE_SKIPPED"
+   },
+   {
+    "ir_id": "IM9",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_IMAGE_SKIPPED"
+   },
+   {
+    "ir_id": "L1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

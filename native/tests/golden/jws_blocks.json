@@ -1,0 +1,448 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.3.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world",
+  "metadata": {
+   "jws": {
+    "version": 700,
+    "origin": [
+     10.0,
+     20.0
+    ],
+    "group_scales": [
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0,
+     1.0
+    ],
+    "bounds_min": [
+     -46.53394032612103,
+     -20.0
+    ],
+    "bounds_max": [
+     50.0,
+     40.0
+    ],
+    "coordinate_space": "paper_millimeters"
+   }
+  }
+ },
+ "source": {
+  "format": "jws",
+  "version": "700",
+  "name": "blocks_v700.jws",
+  "sha256": "abdf1fb42228dd10cab11de54e8bdfc9e594cb33d339ccee9f6899f5d49d7238"
+ },
+ "tables": {
+  "layers": {
+   "0-0": {
+    "color": 1,
+    "linetype": "CONTINUOUS",
+    "metadata": {
+     "jww": {
+      "layer_group": 0,
+      "layer": 0,
+      "group_scale": 1.0
+     }
+    }
+   }
+  },
+  "linetypes": {
+   "CONTINUOUS": {
+    "description": "Continuous line",
+    "pattern_mm": []
+   },
+   "BYLAYER": {
+    "description": "Use the layer linetype",
+    "pattern_mm": []
+   },
+   "JWW_DASHED1": {
+    "description": "Jw_cad dashed line 1",
+    "pattern_mm": [
+     0.625,
+     -0.625
+    ]
+   },
+   "JWW_DASHED2": {
+    "description": "Jw_cad dashed line 2",
+    "pattern_mm": [
+     1.25,
+     -1.25
+    ]
+   },
+   "JWW_DASHED3": {
+    "description": "Jw_cad dashed line 3",
+    "pattern_mm": [
+     1.875,
+     -0.625
+    ]
+   },
+   "JWW_DASHDOT1": {
+    "description": "Jw_cad chain line 1",
+    "pattern_mm": [
+     3.125,
+     -0.625,
+     0.625,
+     -0.625
+    ]
+   },
+   "JWW_DASHDOT2": {
+    "description": "Jw_cad chain line 2",
+    "pattern_mm": [
+     8.125,
+     -0.625,
+     0.625,
+     -0.625
+    ]
+   },
+   "JWW_DIVIDE1": {
+    "description": "Jw_cad double-dot chain line 1",
+    "pattern_mm": [
+     2.5,
+     -0.625,
+     0.3125,
+     -0.625,
+     0.3125,
+     -0.625
+    ]
+   },
+   "JWW_DIVIDE2": {
+    "description": "Jw_cad double-dot chain line 2",
+    "pattern_mm": [
+     7.5,
+     -0.625,
+     0.3125,
+     -0.625,
+     0.3125,
+     -0.625
+    ]
+   },
+   "JWW_CONSTRUCTION": {
+    "description": "Jw_cad construction line (not printed)",
+    "pattern_mm": [
+     0.3125,
+     -0.9375
+    ],
+    "plot": false
+   },
+   "JWW_DASHDOT_X2": {
+    "description": "Jw_cad double-length chain line",
+    "pattern_mm": [
+     16.25,
+     -1.25,
+     1.25,
+     -1.25
+    ]
+   },
+   "JWW_DIVIDE_X2": {
+    "description": "Jw_cad double-length double-dot chain line",
+    "pattern_mm": [
+     15.0,
+     -1.25,
+     0.625,
+     -1.25,
+     0.625,
+     -1.25
+    ]
+   },
+   "JWW_DASHED_X2": {
+    "description": "Jw_cad double-length dashed line",
+    "pattern_mm": [
+     18.75,
+     -1.25
+    ]
+   },
+   "JWW_DASHED_X4": {
+    "description": "Jw_cad quadruple-length dashed line",
+    "pattern_mm": [
+     37.5,
+     -2.5
+    ]
+   }
+  },
+  "text_styles": {
+   "STANDARD": {
+    "font": "STANDARD"
+   }
+  },
+  "blocks": {
+   "部品𠮷@@SfigorgFlag@@4": {
+    "base_point": [
+     0.0,
+     0.0
+    ],
+    "entities": [
+     {
+      "id": "JWS_E00000005",
+      "kind": "LINE",
+      "layer": "0-0",
+      "linetype": "CONTINUOUS",
+      "color": 4,
+      "p1": [
+       0.0,
+       0.0
+      ],
+      "p2": [
+       10.0,
+       0.0
+      ],
+      "source": {
+       "format": "jws",
+       "id": "block_defs[0].entities[0]",
+       "kind": "LINE"
+      },
+      "metadata": {
+       "jww": {
+        "group": 0,
+        "pen_style": 1,
+        "pen_color": 1,
+        "pen_width": 0,
+        "layer": 0,
+        "layer_group": 0,
+        "flag": 0
+       }
+      }
+     },
+     {
+      "id": "JWS_E00000006",
+      "kind": "CIRCLE",
+      "layer": "0-0",
+      "linetype": "CONTINUOUS",
+      "color": 4,
+      "center": [
+       5.0,
+       5.0
+      ],
+      "radius": 3.0,
+      "source": {
+       "format": "jws",
+       "id": "block_defs[0].entities[1]",
+       "kind": "CIRCLE"
+      },
+      "metadata": {
+       "jww": {
+        "group": 0,
+        "pen_style": 1,
+        "pen_color": 1,
+        "pen_width": 0,
+        "layer": 0,
+        "layer_group": 0,
+        "flag": 0
+       }
+      }
+     }
+    ],
+    "metadata": {
+     "jww": {
+      "number": 0,
+      "is_referenced": true,
+      "base": {
+       "group": 0,
+       "pen_style": 1,
+       "pen_color": 1,
+       "pen_width": 0,
+       "layer": 0,
+       "layer_group": 0,
+       "flag": 0
+      }
+     }
+    }
+   },
+   "入れ子@@SfigorgFlag@@4": {
+    "base_point": [
+     0.0,
+     0.0
+    ],
+    "entities": [
+     {
+      "id": "JWS_E00000007",
+      "kind": "INSERT",
+      "layer": "0-0",
+      "linetype": "CONTINUOUS",
+      "color": 4,
+      "block": "部品𠮷@@SfigorgFlag@@4",
+      "insert": [
+       0.0,
+       0.0
+      ],
+      "rotation": 29.999999999999996,
+      "source": {
+       "format": "jws",
+       "id": "block_defs[1].entities[0]",
+       "kind": "BLOCK"
+      },
+      "metadata": {
+       "jww": {
+        "group": 0,
+        "pen_style": 1,
+        "pen_color": 1,
+        "pen_width": 0,
+        "layer": 0,
+        "layer_group": 0,
+        "flag": 0,
+        "def_number": 0
+       }
+      }
+     }
+    ],
+    "metadata": {
+     "jww": {
+      "number": 1,
+      "is_referenced": true,
+      "base": {
+       "group": 0,
+       "pen_style": 1,
+       "pen_color": 1,
+       "pen_width": 0,
+       "layer": 0,
+       "layer_group": 0,
+       "flag": 0
+      }
+     }
+    }
+   }
+  }
+ },
+ "entities": [
+  {
+   "id": "JWS_E00000001",
+   "kind": "LINE",
+   "layer": "0-0",
+   "linetype": "CONTINUOUS",
+   "color": 4,
+   "p1": [
+    10.0,
+    20.0
+   ],
+   "p2": [
+    40.0,
+    20.0
+   ],
+   "source": {
+    "format": "jws",
+    "id": "entities[0]",
+    "kind": "LINE"
+   },
+   "metadata": {
+    "jww": {
+     "group": 0,
+     "pen_style": 1,
+     "pen_color": 1,
+     "pen_width": 0,
+     "layer": 0,
+     "layer_group": 0,
+     "flag": 2
+    }
+   }
+  },
+  {
+   "id": "JWS_E00000002",
+   "kind": "LINE",
+   "layer": "0-0",
+   "linetype": "CONTINUOUS",
+   "color": 4,
+   "p1": [
+    10.0,
+    20.0
+   ],
+   "p2": [
+    10.0,
+    40.0
+   ],
+   "source": {
+    "format": "jws",
+    "id": "entities[1]",
+    "kind": "LINE"
+   },
+   "metadata": {
+    "jww": {
+     "group": 0,
+     "pen_style": 1,
+     "pen_color": 1,
+     "pen_width": 0,
+     "layer": 0,
+     "layer_group": 0,
+     "flag": 2
+    }
+   }
+  },
+  {
+   "id": "JWS_E00000003",
+   "kind": "INSERT",
+   "layer": "0-0",
+   "linetype": "CONTINUOUS",
+   "color": 4,
+   "block": "入れ子@@SfigorgFlag@@4",
+   "insert": [
+    -40.0,
+    -20.0
+   ],
+   "rotation": 45.0,
+   "source": {
+    "format": "jws",
+    "id": "entities[2]",
+    "kind": "BLOCK"
+   },
+   "metadata": {
+    "jww": {
+     "group": 0,
+     "pen_style": 1,
+     "pen_color": 1,
+     "pen_width": 0,
+     "layer": 0,
+     "layer_group": 0,
+     "flag": 2,
+     "def_number": 1
+    }
+   }
+  },
+  {
+   "id": "JWS_E00000004",
+   "kind": "INSERT",
+   "layer": "0-0",
+   "linetype": "CONTINUOUS",
+   "color": 4,
+   "block": "部品𠮷@@SfigorgFlag@@4",
+   "insert": [
+    30.0,
+    -20.0
+   ],
+   "scale": [
+    2.0,
+    0.5
+   ],
+   "source": {
+    "format": "jws",
+    "id": "entities[3]",
+    "kind": "BLOCK"
+   },
+   "metadata": {
+    "jww": {
+     "group": 0,
+     "pen_style": 1,
+     "pen_color": 1,
+     "pen_width": 0,
+     "layer": 0,
+     "layer_group": 0,
+     "flag": 2,
+     "def_number": 0
+    }
+   }
+  }
+ ]
+}

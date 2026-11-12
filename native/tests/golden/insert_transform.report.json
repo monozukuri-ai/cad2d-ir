@@ -1,0 +1,112 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_INSERT_TRANSFORM_OMITTED",
+    "severity": "warning",
+    "message": "[INSERT:sheared] affine transform shears the block, which a DXF INSERT cannot; it was written with its rotation and scale only.",
+    "entity_id": "sheared",
+    "action": "approximated"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "L",
+    "handle": "107",
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:B"
+   },
+   {
+    "ir_id": "turned",
+    "handle": "109",
+    "dxf_type": "INSERT",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "mirrored",
+    "handle": "10A",
+    "dxf_type": "INSERT",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "sheared",
+    "handle": "10B",
+    "dxf_type": "INSERT",
+    "index": 3,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_INSERT_TRANSFORM_OMITTED",
+    "severity": "warning",
+    "message": "[INSERT:sheared] affine transform shears the block, which a DXF INSERT cannot; it was written with its rotation and scale only.",
+    "entity_id": "sheared",
+    "action": "approximated"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "L",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:B"
+   },
+   {
+    "ir_id": "turned",
+    "handle": null,
+    "dxf_type": "INSERT",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "mirrored",
+    "handle": null,
+    "dxf_type": "INSERT",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "sheared",
+    "handle": null,
+    "dxf_type": "INSERT",
+    "index": 3,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

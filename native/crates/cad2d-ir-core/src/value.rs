@@ -11,6 +11,9 @@ pub enum Value {
     Null,
     Bool(bool),
     Int(i64),
+    /// A Python ``int`` outside 64 bits, as its decimal digits (an identifier a
+    /// source format keeps in 64 unsigned bits, for one).
+    BigInt(Box<str>),
     Float(f64),
     Str(String),
     List(Vec<Value>),
@@ -43,6 +46,7 @@ impl Value {
     pub fn as_number(&self) -> Option<f64> {
         match self {
             Value::Int(value) => Some(*value as f64),
+            Value::BigInt(digits) => digits.parse::<f64>().ok(),
             Value::Float(value) => Some(*value),
             _ => None,
         }
@@ -62,6 +66,8 @@ impl Value {
             Value::Null => false,
             Value::Bool(value) => *value,
             Value::Int(value) => *value != 0,
+            // an integer outside 64 bits is not zero
+            Value::BigInt(_) => true,
             Value::Float(value) => *value != 0.0,
             Value::Str(text) => !text.is_empty(),
             Value::List(items) => !items.is_empty(),

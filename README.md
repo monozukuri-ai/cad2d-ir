@@ -31,12 +31,14 @@ pip install "cad2d-ir[sxf]"
 pip install "cad2d-ir[all]"
 ```
 
-Python 3.10 or newer is required. The core wheel is pure Python; native format
-adapters are optional extras.
+Python 3.10 or newer is required. Format adapters are optional extras.
 
-`pip install cad2d-ir-native` adds an experimental Rust implementation of the
-JWW import and the DXF R2010 writer (the same output, several times faster),
-released with `cad2d-ir` under the same version. See [native/](native/README.md).
+The DXF writer and the entity conversion of the JWW importer are written in
+Rust: `cad2d-ir` installs `cad2d-ir-native` of the same version with it. There
+are wheels for Linux (x86_64 and aarch64, glibc), Windows (x86_64) and macOS
+(universal2), one for every Python from 3.10; on another platform `pip` builds
+the source distribution, which needs a Rust toolchain. See
+[native/](native/README.md).
 
 > **IDW license notice:** IDW support uses `inventor-kit`, which is offered under
 > PolyForm Noncommercial 1.0.0 with separate commercial licenses. Before using
@@ -229,9 +231,11 @@ src/cad2d_ir/
   cli.py
   diagnostics.py
   schema.py
-  codecs/dxf.py
+  codecs/dxf.py          the DXF reader; the writer is in native/
   importers/
   data/ir_schema.json
+native/                  cad2d-ir-native (Rust): the DXF writer and the
+                         entity conversion of the JWW importer
 ir_schema.json
 tests/
 examples/
@@ -240,7 +244,7 @@ docs/
 
 ## 日本語
 
-`cad2d-ir` は、2D CAD の図面を 1 つの型付きの中間表現（IR。JSON Schema つき）に読み込み、DXF に書き出す Python のライブラリです。形式ごとの読み取りは、追加のパッケージ（extras）で入れます。
+`cad2d-ir` は、2D CAD の図面を 1 つの型付きの中間表現（IR。JSON Schema つき）に読み込み、DXF に書き出す Python のライブラリです。形式ごとの読み取りは、追加のパッケージ（extras）で入れます。DXF の書き出しと JWW の要素の変換は Rust で書いてあり、`pip install cad2d-ir` で `cad2d-ir-native`（Linux・Windows・macOS の wheel）が一緒に入ります。
 
 - 読める形式: DXF、DWG、DGN、DWF / DWFx、EDRW（eDrawings）、EXB（CAXA）、HP-GL / PLT、ICD（iCAD SX）、IDW（Inventor）、JWW・JWS（Jw_cad）、MI / BI（ME10）、SXF（SFC・P21）、ベクター PDF
 - 書き出し: DXF R12（AC1009）と R2010（AC1024）

@@ -8,6 +8,10 @@ Thank you for contributing to `cad2d-ir`.
 uv sync
 ```
 
+`uv sync` builds the Rust code under `native/` (the package
+`cad2d-ir-native`, which `cad2d-ir` depends on), so a Rust toolchain is needed.
+It is built again when a file under `native/` changes.
+
 ## Local checks
 
 ```bash
@@ -24,18 +28,30 @@ uv run python scripts/sync_packaged_schema.py
 
 ## Native package
 
-The Rust extension under `native/` is the package `cad2d-ir-native`
-([native/README.md](native/README.md)). CI builds it from source on Linux,
-macOS and Windows and compares it with the Python implementation.
+The DXF writer and the entity conversion of the JWW importer are the Rust code
+under `native/` ([native/README.md](native/README.md)). There is no Python
+implementation of either to compare with: a change of the writer is checked
+by the tests and by the DXF files under `native/tests/golden`.
 
 ```bash
 cd native
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test -p cad2d-ir-core -p cad2d-ir-jww --locked
-maturin develop --release        # into the active environment
-python -m pytest tests -q
+cd ..
+uv run pytest -q                 # builds native/ again, then tests/ and native/tests
 ```
+
+When the output of the writer changes on purpose, write the golden files again
+and review the difference:
+
+```bash
+CAD2D_IR_UPDATE_GOLDEN=1 uv run pytest native/tests/test_dxf_golden.py
+git diff native/tests/golden
+```
+
+CI builds the native code from source on Linux, macOS and Windows and runs
+`native/tests` there.
 
 ## Releasing
 
@@ -46,7 +62,8 @@ git tag v<version> && git push origin v<version>
 
 The tag runs `.github/workflows/release.yml`, which builds `cad2d-ir` and the
 wheels of `cad2d-ir-native` for every platform and publishes them together
-through PyPI trusted publishing (see [native/README.md](native/README.md#release)).
+(`cad2d-ir-native` first, since `cad2d-ir` pins it) through PyPI trusted
+publishing (see [native/README.md](native/README.md#release)).
 
 ## Branch and PR guidelines
 
@@ -67,5 +84,6 @@ Use short imperative commit messages. Examples:
 
 - `ir_schema.json` is the canonical schema source in the repository root.
 - `src/cad2d_ir/data/ir_schema.json` is the packaged copy used at runtime after installation.
-- Converter logic lives in `src/cad2d_ir/codecs/dxf.py`.
+- The DXF reader lives in `src/cad2d_ir/codecs/dxf.py`, the DXF writer in
+  `native/crates/cad2d-ir-core/src/dxf/`.
 - Importer contracts and adapters live in `src/cad2d_ir/importers/`.

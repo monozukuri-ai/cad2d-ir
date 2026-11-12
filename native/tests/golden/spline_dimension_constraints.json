@@ -1,0 +1,76 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.1.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "entities": [
+  {
+   "id": "E1",
+   "kind": "SPLINE",
+   "degree": 2,
+   "control_points": [
+    [
+     0,
+     0
+    ],
+    [
+     2,
+     1
+    ],
+    [
+     4,
+     0
+    ]
+   ],
+   "weights": [
+    1,
+    1,
+    1
+   ],
+   "closed": false
+  },
+  {
+   "id": "E2",
+   "kind": "DIMENSION",
+   "dim_kind": "ALIGNED",
+   "style": "Standard",
+   "definition": {
+    "points": {
+     "location": [
+      2,
+      2
+     ],
+     "p1": [
+      0,
+      0
+     ],
+     "p2": [
+      4,
+      0
+     ]
+    },
+    "text": "<>",
+    "measurement": 4.0
+   }
+  }
+ ],
+ "constraints": [
+  {
+   "kind": "COINCIDENT",
+   "refs": [
+    {
+     "entity": "E1",
+     "feature": "v[0]"
+    },
+    {
+     "entity": "E2",
+     "feature": "p1"
+    }
+   ],
+   "tolerance": 0.01
+  }
+ ]
+}

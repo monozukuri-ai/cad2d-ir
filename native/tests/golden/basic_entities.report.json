@@ -1,0 +1,275 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '壁' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TEMPORARY_POINT_SKIPPED",
+    "severity": "info",
+    "message": "[POINT:P1] temporary (construction) point was not written; DXF has no points that are left out of a plot.",
+    "entity_id": "P1",
+    "action": "skipped"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "L1",
+    "handle": "108",
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "C1",
+    "handle": "109",
+    "dxf_type": "CIRCLE",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "A1",
+    "handle": "10A",
+    "dxf_type": "ARC",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "P1",
+    "handle": null,
+    "dxf_type": null,
+    "index": 3,
+    "scope": "modelspace",
+    "reason_code": "DXF_TEMPORARY_POINT_SKIPPED"
+   },
+   {
+    "ir_id": "E1",
+    "handle": "10B",
+    "dxf_type": "ELLIPSE",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "W1",
+    "handle": "10C",
+    "dxf_type": "LWPOLYLINE",
+    "index": 4,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '壁' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[ARC:A1] lineweight was omitted from DXF R12.",
+    "entity_id": "A1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_TEMPORARY_POINT_SKIPPED",
+    "severity": "info",
+    "message": "[POINT:P1] temporary (construction) point was not written; DXF has no points that are left out of a plot.",
+    "entity_id": "P1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_ELLIPSE_APPROXIMATED",
+    "severity": "warning",
+    "message": "[ELLIPSE:E1] approximated as a 52-vertex POLYLINE for DXF R12.",
+    "entity_id": "E1",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_R12_LWPOLYLINE_EXPLODED",
+    "severity": "info",
+    "message": "[LWPOLYLINE:W1] emitted as POLYLINE/VERTEX.",
+    "entity_id": "W1",
+    "action": "exploded"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "L1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "C1",
+    "handle": null,
+    "dxf_type": "CIRCLE",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "A1",
+    "handle": null,
+    "dxf_type": "ARC",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "P1",
+    "handle": null,
+    "dxf_type": null,
+    "index": 3,
+    "scope": "modelspace",
+    "reason_code": "DXF_TEMPORARY_POINT_SKIPPED"
+   },
+   {
+    "ir_id": "E1",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "W1",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 4,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009-16": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '壁' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[ARC:A1] lineweight was omitted from DXF R12.",
+    "entity_id": "A1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_TEMPORARY_POINT_SKIPPED",
+    "severity": "info",
+    "message": "[POINT:P1] temporary (construction) point was not written; DXF has no points that are left out of a plot.",
+    "entity_id": "P1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_ELLIPSE_APPROXIMATED",
+    "severity": "warning",
+    "message": "[ELLIPSE:E1] approximated as a 10-vertex POLYLINE for DXF R12.",
+    "entity_id": "E1",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_R12_LWPOLYLINE_EXPLODED",
+    "severity": "info",
+    "message": "[LWPOLYLINE:W1] emitted as POLYLINE/VERTEX.",
+    "entity_id": "W1",
+    "action": "exploded"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "L1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "C1",
+    "handle": null,
+    "dxf_type": "CIRCLE",
+    "index": 1,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "A1",
+    "handle": null,
+    "dxf_type": "ARC",
+    "index": 2,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "P1",
+    "handle": null,
+    "dxf_type": null,
+    "index": 3,
+    "scope": "modelspace",
+    "reason_code": "DXF_TEMPORARY_POINT_SKIPPED"
+   },
+   {
+    "ir_id": "E1",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "W1",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 4,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

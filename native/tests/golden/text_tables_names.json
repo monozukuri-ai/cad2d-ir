@@ -1,0 +1,78 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.3.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "source": {
+  "format": "unknown"
+ },
+ "tables": {
+  "layers": {
+   "0": {},
+   "HIDDEN": {
+    "color": 5,
+    "visible": false,
+    "lineweight_mm": 0.175,
+    "plot": false
+   },
+   "TRUE": {
+    "color": "#102030",
+    "linetype": "CENTER"
+   }
+  },
+  "text_styles": {
+   "ＭＳ ゴシック": {
+    "font": "ＭＳ ゴシック"
+   },
+   "STANDARD": {
+    "font": "txt"
+   }
+  }
+ },
+ "entities": [
+  {
+   "id": "T1",
+   "kind": "TEXT",
+   "layer": "注記/寸法",
+   "insert": [
+    1,
+    2
+   ],
+   "height": 2.5,
+   "text": "割合 5%% と ^ と %%c10",
+   "rotation": 30.0,
+   "style": "ＭＳ ゴシック",
+   "width_factor": 0.8,
+   "color": "#FF8000"
+  },
+  {
+   "id": "T2",
+   "kind": "TEXT",
+   "layer": "注記_寸法",
+   "insert": [
+    0,
+    0
+   ],
+   "height": 3,
+   "text": "a\nb"
+  },
+  {
+   "id": "L1",
+   "kind": "LINE",
+   "layer": "HIDDEN",
+   "linetype": "",
+   "p1": [
+    0,
+    0
+   ],
+   "p2": [
+    1,
+    1
+   ],
+   "visible": false
+  }
+ ]
+}

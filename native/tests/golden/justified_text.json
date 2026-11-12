@@ -1,0 +1,31 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.3.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "source": {
+  "format": "dxf"
+ },
+ "entities": [
+  {
+   "id": "E1",
+   "source": {
+    "format": "dxf",
+    "kind": "TEXT"
+   },
+   "layer": "0",
+   "kind": "TEXT",
+   "insert": [
+    30.0,
+    25.0
+   ],
+   "height": 2.5,
+   "text": "note",
+   "halign": "right",
+   "valign": "top"
+  }
+ ]
+}

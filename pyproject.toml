@@ -1,6 +1,6 @@
 [project]
 name = "cad2d-ir"
-version = "0.17.22"
+version = "0.18.0"
 description = "Intermediate representation (IR) and importers for 2D CAD formats"
 readme = "README.md"
 license = "MIT"
@@ -20,10 +20,15 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Rust",
     "Topic :: Scientific/Engineering",
     "Topic :: Software Development :: Libraries",
 ]
 dependencies = [
+    # The DXF writer and the entity conversion of the JWW importer are native
+    # code: the Rust extension under native/, released with this package under
+    # the same version (scripts/check_release.py keeps this pin in step).
+    "cad2d-ir-native==0.18.0",
     "jsonschema>=4.23.0",
 ]
 
@@ -43,11 +48,14 @@ icad = ["icadkit>=0.3.12,<0.4"]
 # it is deliberately not part of `all`. Since 0.10 it installs no geometry kernel
 # unless one of its own extras is requested; the IDW path needs none.
 idw = ["inventor-kit>=0.10,<0.11; python_version >= '3.11'"]
-jww = ["ezjww>=0.2.6,<0.8"]
+# The reader the native code is built with (`ezjww-core` in native/Cargo.toml), or
+# a later one: the header of a file is read by this package, its entities by the
+# native code.
+jww = ["ezjww>=0.7.13,<0.8"]
 mi = ["ezmi2d>=0.2,<0.3"]
 pdf = ["pypdfium2>=4.30,<6"]
 sxf = ["ezsxf>=0.2,<0.4"]
-all = ["ezhpgl>=0.1.0a2,<0.2", "ezdwg>=0.11,<1", "ezdgn>=0.3,<0.4", "ezdwf>=0.0.11,<0.1", "ezexb>=0.3.3,<0.4", "ezjww>=0.2.6,<0.8", "ezmi2d>=0.2,<0.3", "pypdfium2>=4.30,<6", "ezsxf>=0.2,<0.4"]
+all = ["ezhpgl>=0.1.0a2,<0.2", "ezdwg>=0.11,<1", "ezdgn>=0.3,<0.4", "ezdwf>=0.0.11,<0.1", "ezexb>=0.3.3,<0.4", "ezjww>=0.7.13,<0.8", "ezmi2d>=0.2,<0.3", "pypdfium2>=4.30,<6", "ezsxf>=0.2,<0.4"]
 
 [project.urls]
 Homepage = "https://github.com/neka-nat/cad2d-ir"
@@ -71,8 +79,15 @@ dev = [
     "tomli>=2.0; python_version < '3.11'",
 ]
 
+[tool.uv.sources]
+# In a checkout the native code is built from native/ (a Rust toolchain is
+# needed); an installation from PyPI takes the wheel of the same version.
+cad2d-ir-native = { path = "native" }
+
 [tool.ruff]
 target-version = "py310"
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+# native/tests: the native code through its own interface, the DXF the writer
+# makes of the documents under native/tests/golden, and the tables it carries.
+testpaths = ["tests", "native/tests"]

@@ -43,7 +43,7 @@ Format-specific helpers are also public:
 - `convert_exb_file_to_ir(path, *, entity_provenance=True, parse_options=None, ...)` (CAXA EXB, `ezexb`)
 - `convert_idw_file_to_ir(path, *, entity_provenance=True, ...)`
 - `convert_jww_file_to_ir(path, ...)`
-- `convert_jws_file_to_ir(path, ...)` (Jw_cad registered symbol, `ezjww` 0.7+)
+- `convert_jws_file_to_ir(path, ...)` (Jw_cad registered symbol)
 - `convert_mi_file_to_ir(path, *, encoding="auto", ...)`
 - `convert_pdf_file_to_ir(path, *, pages=None, scale="auto", embed_images=False, rebuild_dashes=True, infer_layers=True, ...)`
 - `convert_sxf_file_to_ir(path, ...)`
@@ -116,15 +116,25 @@ return the pre-projection 3D geometry of DWG/DXF sources in `.model3d`
 
 ## High-level DXF export API
 
-### `convert_ir_to_dxf_text(document, *, validate=True, target_version="AC1024", curve_segments=96, generic_dimensions="explode")`
+### `convert_ir_to_dxf_text(document, *, validate=True, target_version="AC1024", curve_segments=96, generic_dimensions="explode", consume=False, entity_map=True)`
 
 Returns `IrToDxfResult`:
 
 - `dxf_text`: Unicode DXF text; encode it according to the target version when writing bytes
 - `diagnostics`: structured `ExportDiagnostic` records
 - `warnings`: compatibility list of warning/error messages
-- `entity_map`: IR entity to emitted DXF entity correspondence
+- `entity_map`: IR entity to emitted DXF entity correspondence (empty with `entity_map=False`,
+  for a caller that does not read it)
 - `target_version`: the selected DXF version
+
+`consume=True` uses the document up: its model space entities are taken out of
+`document["entities"]` as they are read, so a large drawing is not held whole
+beside the DXF being built.
+
+The writer is native code (the `cad2d-ir-native` package, installed with
+`cad2d-ir`). With `validate=False` a document it cannot read (a required key
+that is missing, a value of another type) raises `ValueError` naming the
+entity.
 
 Each `entity_map` entry contains:
 
@@ -202,7 +212,7 @@ otherwise). AC1009 output skips images (`DXF_IMAGE_SKIPPED`).
 - `dxf_to_ir(...)`
 - `read_dxf_file(..., encoding="auto", diagnostics=None)`
 - `resolve_dxf_output_encoding(target_version=..., encoding="auto")`
-- `ir_to_dxf(..., target_version="AC1024", curve_segments=96, generic_dimensions="explode", diagnostics=None, entity_map=None)`
+- `ir_to_dxf(..., target_version="AC1024", curve_segments=96, generic_dimensions="explode", diagnostics=None, entity_map=None, consume=False)`
 - `write_dxf_file(..., encoding="auto")`
 
 The low-level `ir_to_dxf()` return type remains `str`. Pass mutable
@@ -213,8 +223,11 @@ The low-level `ir_to_dxf()` return type remains `str`. Pass mutable
 For the same IR document and identical options, `ir_to_dxf()` returns
 byte-identical text and the same entity map within a package minor version.
 Entity and block order are preserved where semantically meaningful; table and
-block names are emitted in a stable case-insensitive sort order. A checked-in
-golden DXF test enforces this contract.
+block names are emitted in a stable case-insensitive sort order (names that
+differ only in case come in a fixed order as well). Checked-in golden
+DXF files enforce this contract (`tests/golden`, `native/tests/golden`). A
+number that comes from the sine or cosine of the platform can differ in its
+last digits between platforms.
 
 ## Diagnostics
 

@@ -1,0 +1,1417 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '寸法' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'DASHED' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record '寸法の書体' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'ＭＳ ゴシック' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:B1] GENERIC dimension was expanded into 6 primitive(s).",
+    "entity_id": "B1",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D1] GENERIC dimension was expanded into 6 primitive(s).",
+    "entity_id": "D1",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D2] GENERIC dimension was expanded into 2 primitive(s).",
+    "entity_id": "D2",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D3] GENERIC dimension was expanded into 6 primitive(s).",
+    "entity_id": "D3",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D4] GENERIC dimension was expanded into 4 primitive(s).",
+    "entity_id": "D4",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D5] GENERIC dimension was expanded into 4 primitive(s).",
+    "entity_id": "D5",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D6] GENERIC dimension was expanded into 4 primitive(s).",
+    "entity_id": "D6",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D7] GENERIC dimension was expanded into 2 primitive(s).",
+    "entity_id": "D7",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D8] GENERIC dimension was expanded into 1 primitive(s).",
+    "entity_id": "D8",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_DEFAULTED",
+    "severity": "warning",
+    "message": "[DIMENSION:D9] GENERIC dimension missing text placement was defaulted to [0, 0].",
+    "entity_id": "D9",
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D9] GENERIC dimension was expanded into 1 primitive(s).",
+    "entity_id": "D9",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_DEFAULTED",
+    "severity": "warning",
+    "message": "[DIMENSION:D10] GENERIC dimension missing text placement was defaulted to [0, 0].",
+    "entity_id": "D10",
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D10] GENERIC dimension was expanded into 1 primitive(s).",
+    "entity_id": "D10",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_GEOMETRY_MISSING",
+    "severity": "warning",
+    "message": "[DIMENSION:D11] GENERIC dimension had no renderable primitive geometry and was omitted.",
+    "entity_id": "D11",
+    "action": "skipped"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "B1",
+    "handle": "10D",
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:detail"
+   },
+   {
+    "ir_id": "B1",
+    "handle": "10E",
+    "dxf_type": "LINE",
+    "index": 1,
+    "scope": "block:detail"
+   },
+   {
+    "ir_id": "B1",
+    "handle": "10F",
+    "dxf_type": "LINE",
+    "index": 2,
+    "scope": "block:detail"
+   },
+   {
+    "ir_id": "B1",
+    "handle": "110",
+    "dxf_type": "TEXT",
+    "index": 3,
+    "scope": "block:detail"
+   },
+   {
+    "ir_id": "B1",
+    "handle": "111",
+    "dxf_type": "POINT",
+    "index": 4,
+    "scope": "block:detail"
+   },
+   {
+    "ir_id": "B1",
+    "handle": "112",
+    "dxf_type": "POINT",
+    "index": 5,
+    "scope": "block:detail"
+   },
+   {
+    "ir_id": "D1",
+    "handle": "114",
+    "dxf_type": "LINE",
+    "index": 6,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D1",
+    "handle": "115",
+    "dxf_type": "LINE",
+    "index": 7,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D1",
+    "handle": "116",
+    "dxf_type": "LINE",
+    "index": 8,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D1",
+    "handle": "117",
+    "dxf_type": "TEXT",
+    "index": 9,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D1",
+    "handle": "118",
+    "dxf_type": "POINT",
+    "index": 10,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D1",
+    "handle": "119",
+    "dxf_type": "POINT",
+    "index": 11,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D2",
+    "handle": "11A",
+    "dxf_type": "LINE",
+    "index": 12,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D2",
+    "handle": "11B",
+    "dxf_type": "TEXT",
+    "index": 13,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D3",
+    "handle": "11C",
+    "dxf_type": "LINE",
+    "index": 14,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D3",
+    "handle": "11D",
+    "dxf_type": "LINE",
+    "index": 15,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D3",
+    "handle": "11E",
+    "dxf_type": "LINE",
+    "index": 16,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D3",
+    "handle": "11F",
+    "dxf_type": "TEXT",
+    "index": 17,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D3",
+    "handle": "120",
+    "dxf_type": "POINT",
+    "index": 18,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D3",
+    "handle": "121",
+    "dxf_type": "POINT",
+    "index": 19,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D4",
+    "handle": "122",
+    "dxf_type": "LINE",
+    "index": 20,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D4",
+    "handle": "123",
+    "dxf_type": "LINE",
+    "index": 21,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D4",
+    "handle": "124",
+    "dxf_type": "LINE",
+    "index": 22,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D4",
+    "handle": "125",
+    "dxf_type": "TEXT",
+    "index": 23,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D5",
+    "handle": "126",
+    "dxf_type": "LINE",
+    "index": 24,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D5",
+    "handle": "127",
+    "dxf_type": "POINT",
+    "index": 25,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D5",
+    "handle": "128",
+    "dxf_type": "POINT",
+    "index": 26,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D5",
+    "handle": "129",
+    "dxf_type": "TEXT",
+    "index": 27,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D6",
+    "handle": "12A",
+    "dxf_type": "LWPOLYLINE",
+    "index": 28,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D6",
+    "handle": "12B",
+    "dxf_type": "LINE",
+    "index": 29,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D6",
+    "handle": "12C",
+    "dxf_type": "TEXT",
+    "index": 30,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D6",
+    "handle": "12D",
+    "dxf_type": "TEXT",
+    "index": 31,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D7",
+    "handle": "12E",
+    "dxf_type": "LINE",
+    "index": 32,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D7",
+    "handle": "12F",
+    "dxf_type": "TEXT",
+    "index": 33,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D8",
+    "handle": "130",
+    "dxf_type": "TEXT",
+    "index": 34,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D9",
+    "handle": "131",
+    "dxf_type": "TEXT",
+    "index": 35,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D10",
+    "handle": "132",
+    "dxf_type": "TEXT",
+    "index": 36,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D11",
+    "handle": null,
+    "dxf_type": null,
+    "index": 37,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_GEOMETRY_MISSING"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '寸法' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'DASHED' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record '寸法の書体' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'ＭＳ ゴシック' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:B1] GENERIC dimension was expanded into 6 primitive(s).",
+    "entity_id": "B1",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D1] GENERIC dimension was expanded into 6 primitive(s).",
+    "entity_id": "D1",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_R12_TRUE_COLOR_APPROXIMATED",
+    "severity": "warning",
+    "message": "[LINE:D1] true color #3366cc was approximated as ACI 5 for DXF R12.",
+    "entity_id": "D1",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:D1] lineweight was omitted from DXF R12.",
+    "entity_id": "D1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINETYPE_SCALE_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:D1] linetype scale 2 was omitted from DXF R12.",
+    "entity_id": "D1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_TRUE_COLOR_APPROXIMATED",
+    "severity": "warning",
+    "message": "[LINE:D1] true color #3366cc was approximated as ACI 5 for DXF R12.",
+    "entity_id": "D1",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:D1] lineweight was omitted from DXF R12.",
+    "entity_id": "D1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINETYPE_SCALE_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:D1] linetype scale 2 was omitted from DXF R12.",
+    "entity_id": "D1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_TRUE_COLOR_APPROXIMATED",
+    "severity": "warning",
+    "message": "[LINE:D1] true color #3366cc was approximated as ACI 5 for DXF R12.",
+    "entity_id": "D1",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:D1] lineweight was omitted from DXF R12.",
+    "entity_id": "D1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINETYPE_SCALE_OMITTED",
+    "severity": "warning",
+    "message": "[LINE:D1] linetype scale 2 was omitted from DXF R12.",
+    "entity_id": "D1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_TRUE_COLOR_APPROXIMATED",
+    "severity": "warning",
+    "message": "[TEXT:D1] true color #3366cc was approximated as ACI 5 for DXF R12.",
+    "entity_id": "D1",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[TEXT:D1] lineweight was omitted from DXF R12.",
+    "entity_id": "D1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINETYPE_SCALE_OMITTED",
+    "severity": "warning",
+    "message": "[TEXT:D1] linetype scale 2 was omitted from DXF R12.",
+    "entity_id": "D1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_TRUE_COLOR_APPROXIMATED",
+    "severity": "warning",
+    "message": "[POINT:D1] true color #3366cc was approximated as ACI 5 for DXF R12.",
+    "entity_id": "D1",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[POINT:D1] lineweight was omitted from DXF R12.",
+    "entity_id": "D1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINETYPE_SCALE_OMITTED",
+    "severity": "warning",
+    "message": "[POINT:D1] linetype scale 2 was omitted from DXF R12.",
+    "entity_id": "D1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_TRUE_COLOR_APPROXIMATED",
+    "severity": "warning",
+    "message": "[POINT:D1] true color #3366cc was approximated as ACI 5 for DXF R12.",
+    "entity_id": "D1",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "[POINT:D1] lineweight was omitted from DXF R12.",
+    "entity_id": "D1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_LINETYPE_SCALE_OMITTED",
+    "severity": "warning",
+    "message": "[POINT:D1] linetype scale 2 was omitted from DXF R12.",
+    "entity_id": "D1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D2] GENERIC dimension was expanded into 2 primitive(s).",
+    "entity_id": "D2",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D3] GENERIC dimension was expanded into 6 primitive(s).",
+    "entity_id": "D3",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D4] GENERIC dimension was expanded into 4 primitive(s).",
+    "entity_id": "D4",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D5] GENERIC dimension was expanded into 4 primitive(s).",
+    "entity_id": "D5",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D6] GENERIC dimension was expanded into 4 primitive(s).",
+    "entity_id": "D6",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_R12_LWPOLYLINE_EXPLODED",
+    "severity": "info",
+    "message": "[LWPOLYLINE:D6] emitted as POLYLINE/VERTEX.",
+    "entity_id": "D6",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D7] GENERIC dimension was expanded into 2 primitive(s).",
+    "entity_id": "D7",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D8] GENERIC dimension was expanded into 1 primitive(s).",
+    "entity_id": "D8",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_DEFAULTED",
+    "severity": "warning",
+    "message": "[DIMENSION:D9] GENERIC dimension missing text placement was defaulted to [0, 0].",
+    "entity_id": "D9",
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D9] GENERIC dimension was expanded into 1 primitive(s).",
+    "entity_id": "D9",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_DEFAULTED",
+    "severity": "warning",
+    "message": "[DIMENSION:D10] GENERIC dimension missing text placement was defaulted to [0, 0].",
+    "entity_id": "D10",
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_EXPLODED",
+    "severity": "info",
+    "message": "[DIMENSION:D10] GENERIC dimension was expanded into 1 primitive(s).",
+    "entity_id": "D10",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_GEOMETRY_MISSING",
+    "severity": "warning",
+    "message": "[DIMENSION:D11] GENERIC dimension had no renderable primitive geometry and was omitted.",
+    "entity_id": "D11",
+    "action": "skipped"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:detail"
+   },
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 1,
+    "scope": "block:detail"
+   },
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 2,
+    "scope": "block:detail"
+   },
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 3,
+    "scope": "block:detail"
+   },
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": "POINT",
+    "index": 4,
+    "scope": "block:detail"
+   },
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": "POINT",
+    "index": 5,
+    "scope": "block:detail"
+   },
+   {
+    "ir_id": "D1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 6,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 7,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 8,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D1",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 9,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D1",
+    "handle": null,
+    "dxf_type": "POINT",
+    "index": 10,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D1",
+    "handle": null,
+    "dxf_type": "POINT",
+    "index": 11,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D2",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 12,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D2",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 13,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D3",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 14,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D3",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 15,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D3",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 16,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D3",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 17,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D3",
+    "handle": null,
+    "dxf_type": "POINT",
+    "index": 18,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D3",
+    "handle": null,
+    "dxf_type": "POINT",
+    "index": 19,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D4",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 20,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D4",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 21,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D4",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 22,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D4",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 23,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D5",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 24,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D5",
+    "handle": null,
+    "dxf_type": "POINT",
+    "index": 25,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D5",
+    "handle": null,
+    "dxf_type": "POINT",
+    "index": 26,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D5",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 27,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D6",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 28,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D6",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 29,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D6",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 30,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D6",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 31,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D7",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 32,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D7",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 33,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D8",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 34,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D9",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 35,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D10",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 36,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "D11",
+    "handle": null,
+    "dxf_type": null,
+    "index": 37,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_GEOMETRY_MISSING"
+   }
+  ]
+ },
+ "ac1009-16-skip": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '寸法' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'DASHED' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record '寸法の書体' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'ＭＳ ゴシック' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:B1] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "B1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D1] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D2] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D2",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D3] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D3",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D4] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D4",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D5] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D5",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D6] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D6",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D7] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D7",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D8] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D8",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D9] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D9",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D10] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D10",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D11] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D11",
+    "action": "skipped"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "block:detail",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D1",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D2",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D3",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D4",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D5",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D6",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D7",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D8",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D9",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D10",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D11",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   }
+  ]
+ },
+ "ac1024-skip": {
+  "diagnostics": [
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '寸法' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'DASHED' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record '寸法の書体' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'ＭＳ ゴシック' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:B1] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "B1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D1] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D1",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D2] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D2",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D3] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D3",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D4] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D4",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D5] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D5",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D6] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D6",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D7] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D7",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D8] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D8",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D9] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D9",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D10] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D10",
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_GENERIC_DIMENSION_SKIPPED",
+    "severity": "warning",
+    "message": "[DIMENSION:D11] GENERIC dimension was omitted by generic_dimensions='skip'.",
+    "entity_id": "D11",
+    "action": "skipped"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "block:detail",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D1",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D2",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D3",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D4",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D5",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D6",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D7",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D8",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D9",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D10",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   },
+   {
+    "ir_id": "D11",
+    "handle": null,
+    "dxf_type": null,
+    "index": 0,
+    "scope": "modelspace",
+    "reason_code": "DXF_GENERIC_DIMENSION_SKIPPED"
+   }
+  ]
+ }
+}

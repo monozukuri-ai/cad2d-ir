@@ -690,22 +690,27 @@ def convert_ir_to_dxf_text(
     curve_segments: int = 96,
     generic_dimensions: GenericDimensionMode = "explode",
     consume: bool = False,
+    entity_map: bool = True,
 ) -> IrToDxfResult:
     """Write an IR document as DXF text.
 
     ``consume=True`` uses the document up (see ``ir_to_dxf``): for a caller that
     does not need the IR again, a large drawing is then not held whole beside
     the DXF being built.
+
+    ``entity_map=False`` leaves ``IrToDxfResult.entity_map`` empty: the map has
+    an entry for every record written, which a caller that does not read it
+    need not pay for on a large drawing.
     """
     warnings: list[str] = []
     diagnostics: list[ExportDiagnostic] = []
-    entity_map: list[EntityMapEntry] = []
+    written_map: list[EntityMapEntry] = []
     dxf_text = ir_to_dxf(
         document,
         validate=validate,
         warnings=warnings,
         diagnostics=diagnostics,
-        entity_map=entity_map,
+        entity_map=written_map if entity_map else None,
         target_version=target_version,
         curve_segments=curve_segments,
         generic_dimensions=generic_dimensions,
@@ -715,7 +720,7 @@ def convert_ir_to_dxf_text(
         dxf_text=dxf_text,
         warnings=warnings,
         diagnostics=diagnostics,
-        entity_map=entity_map,
+        entity_map=written_map,
         target_version=target_version,
         encoding=dxf_text_encoding(dxf_text),
     )

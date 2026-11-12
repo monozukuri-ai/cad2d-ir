@@ -1,0 +1,74 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.3.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "entities": [
+  {
+   "id": "R",
+   "kind": "INSERT",
+   "block": "B",
+   "insert": [
+    5.0,
+    5.0
+   ]
+  }
+ ],
+ "tables": {
+  "blocks": {
+   "B": {
+    "base_point": [
+     0.0,
+     0.0
+    ],
+    "entities": [
+     {
+      "id": "BI",
+      "kind": "IMAGE",
+      "insert": [
+       1.0,
+       2.0
+      ],
+      "width": 10.0,
+      "height": 5.0,
+      "name": "part.png",
+      "mime_type": "image/png",
+      "data": "iVBORw0KGgoAAAANSUhEUgAAAAoAAAAFCAIAAADzBuo/AAAAEklEQVR4nGP4z8CAB+GTo7U0AEcnMc9o0FB3AAAAAElFTkSuQmCC"
+     }
+    ]
+   }
+  }
+ },
+ "layouts": [
+  {
+   "name": "Sheet",
+   "entities": [
+    {
+     "id": "LI",
+     "kind": "IMAGE",
+     "insert": [
+      0.0,
+      0.0
+     ],
+     "width": 210.0,
+     "height": 297.0,
+     "name": "title.png",
+     "href": "title.png",
+     "metadata": {
+      "dxf": {
+       "image": {
+        "size": [
+         2100,
+         2970
+        ]
+       }
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,545 @@
+{
+ "ac1024": {
+  "diagnostics": [
+   {
+    "code": "DXF_DIMENSION_BLOCK_GENERATED",
+    "severity": "info",
+    "message": "[DIMENSION:E12] geometry block '*D0' was generated for DXF export.",
+    "entity_id": "E12",
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "E12",
+    "handle": "10C",
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "E12",
+    "handle": "10D",
+    "dxf_type": "TEXT",
+    "index": 1,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "B1",
+    "handle": "110",
+    "dxf_type": "LINE",
+    "index": 2,
+    "scope": "block:SYMBOL"
+   },
+   {
+    "ir_id": "E1",
+    "handle": "112",
+    "dxf_type": "LINE",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2",
+    "handle": "113",
+    "dxf_type": "CIRCLE",
+    "index": 4,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E3",
+    "handle": "114",
+    "dxf_type": "ARC",
+    "index": 5,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E4",
+    "handle": "115",
+    "dxf_type": "POINT",
+    "index": 6,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E5",
+    "handle": "116",
+    "dxf_type": "ELLIPSE",
+    "index": 7,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E6",
+    "handle": "117",
+    "dxf_type": "LWPOLYLINE",
+    "index": 8,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E7",
+    "handle": "118",
+    "dxf_type": "TEXT",
+    "index": 9,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E8",
+    "handle": "119",
+    "dxf_type": "MTEXT",
+    "index": 10,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E9",
+    "handle": "11A",
+    "dxf_type": "INSERT",
+    "index": 11,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E10",
+    "handle": "11D",
+    "dxf_type": "HATCH",
+    "index": 12,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E11",
+    "handle": "11E",
+    "dxf_type": "SPLINE",
+    "index": 13,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E12",
+    "handle": "11F",
+    "dxf_type": "DIMENSION",
+    "index": 14,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009": {
+  "diagnostics": [
+   {
+    "code": "DXF_DIMENSION_BLOCK_GENERATED",
+    "severity": "info",
+    "message": "[DIMENSION:E12] geometry block '*D0' was generated for DXF export.",
+    "entity_id": "E12",
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_R12_TRUE_COLOR_APPROXIMATED",
+    "severity": "warning",
+    "message": "Layer 'Geometry' true color #FF0000 was approximated as ACI 1 for DXF R12.",
+    "entity_id": null,
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "Layer 'Geometry' lineweight was omitted from DXF R12.",
+    "entity_id": null,
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_ELLIPSE_APPROXIMATED",
+    "severity": "warning",
+    "message": "[ELLIPSE:E5] approximated as a 96-vertex POLYLINE for DXF R12.",
+    "entity_id": "E5",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_R12_LWPOLYLINE_EXPLODED",
+    "severity": "info",
+    "message": "[LWPOLYLINE:E6] emitted as POLYLINE/VERTEX.",
+    "entity_id": "E6",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_R12_MTEXT_EXPLODED",
+    "severity": "warning",
+    "message": "[MTEXT:E8] expanded into 2 TEXT entity/entities for DXF R12.",
+    "entity_id": "E8",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_R12_MTEXT_FORMATTING_NORMALIZED",
+    "severity": "warning",
+    "message": "[MTEXT:E8] formatting codes were removed for DXF R12.",
+    "entity_id": "E8",
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_R12_HATCH_EXPLODED",
+    "severity": "warning",
+    "message": "[HATCH:E10] fill was replaced by 1 boundary POLYLINE(s) for DXF R12.",
+    "entity_id": "E10",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_R12_SPLINE_APPROXIMATED",
+    "severity": "warning",
+    "message": "[SPLINE:E11] approximated as a 97-vertex POLYLINE for DXF R12.",
+    "entity_id": "E11",
+    "action": "approximated"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "E12",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "E12",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 1,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 2,
+    "scope": "block:SYMBOL"
+   },
+   {
+    "ir_id": "E1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2",
+    "handle": null,
+    "dxf_type": "CIRCLE",
+    "index": 4,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E3",
+    "handle": null,
+    "dxf_type": "ARC",
+    "index": 5,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E4",
+    "handle": null,
+    "dxf_type": "POINT",
+    "index": 6,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E5",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 7,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E6",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 8,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E7",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 9,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E8",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 10,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E8",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 11,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E9",
+    "handle": null,
+    "dxf_type": "INSERT",
+    "index": 12,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E10",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 13,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E11",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 14,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E12",
+    "handle": null,
+    "dxf_type": "DIMENSION",
+    "index": 15,
+    "scope": "modelspace"
+   }
+  ]
+ },
+ "ac1009-16": {
+  "diagnostics": [
+   {
+    "code": "DXF_DIMENSION_BLOCK_GENERATED",
+    "severity": "info",
+    "message": "[DIMENSION:E12] geometry block '*D0' was generated for DXF export.",
+    "entity_id": "E12",
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LAYER record '0' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF LTYPE record 'CONTINUOUS' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_TABLE_DEFAULTED",
+    "severity": "info",
+    "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
+    "entity_id": null,
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_R12_TRUE_COLOR_APPROXIMATED",
+    "severity": "warning",
+    "message": "Layer 'Geometry' true color #FF0000 was approximated as ACI 1 for DXF R12.",
+    "entity_id": null,
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_R12_LINEWEIGHT_OMITTED",
+    "severity": "warning",
+    "message": "Layer 'Geometry' lineweight was omitted from DXF R12.",
+    "entity_id": null,
+    "action": "skipped"
+   },
+   {
+    "code": "DXF_R12_ELLIPSE_APPROXIMATED",
+    "severity": "warning",
+    "message": "[ELLIPSE:E5] approximated as a 16-vertex POLYLINE for DXF R12.",
+    "entity_id": "E5",
+    "action": "approximated"
+   },
+   {
+    "code": "DXF_R12_LWPOLYLINE_EXPLODED",
+    "severity": "info",
+    "message": "[LWPOLYLINE:E6] emitted as POLYLINE/VERTEX.",
+    "entity_id": "E6",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_R12_MTEXT_EXPLODED",
+    "severity": "warning",
+    "message": "[MTEXT:E8] expanded into 2 TEXT entity/entities for DXF R12.",
+    "entity_id": "E8",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_R12_MTEXT_FORMATTING_NORMALIZED",
+    "severity": "warning",
+    "message": "[MTEXT:E8] formatting codes were removed for DXF R12.",
+    "entity_id": "E8",
+    "action": "normalized"
+   },
+   {
+    "code": "DXF_R12_HATCH_EXPLODED",
+    "severity": "warning",
+    "message": "[HATCH:E10] fill was replaced by 1 boundary POLYLINE(s) for DXF R12.",
+    "entity_id": "E10",
+    "action": "exploded"
+   },
+   {
+    "code": "DXF_R12_SPLINE_APPROXIMATED",
+    "severity": "warning",
+    "message": "[SPLINE:E11] approximated as a 17-vertex POLYLINE for DXF R12.",
+    "entity_id": "E11",
+    "action": "approximated"
+   }
+  ],
+  "entity_map": [
+   {
+    "ir_id": "E12",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 0,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "E12",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 1,
+    "scope": "block:*D0"
+   },
+   {
+    "ir_id": "B1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 2,
+    "scope": "block:SYMBOL"
+   },
+   {
+    "ir_id": "E1",
+    "handle": null,
+    "dxf_type": "LINE",
+    "index": 3,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E2",
+    "handle": null,
+    "dxf_type": "CIRCLE",
+    "index": 4,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E3",
+    "handle": null,
+    "dxf_type": "ARC",
+    "index": 5,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E4",
+    "handle": null,
+    "dxf_type": "POINT",
+    "index": 6,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E5",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 7,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E6",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 8,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E7",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 9,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E8",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 10,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E8",
+    "handle": null,
+    "dxf_type": "TEXT",
+    "index": 11,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E9",
+    "handle": null,
+    "dxf_type": "INSERT",
+    "index": 12,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E10",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 13,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E11",
+    "handle": null,
+    "dxf_type": "POLYLINE",
+    "index": 14,
+    "scope": "modelspace"
+   },
+   {
+    "ir_id": "E12",
+    "handle": null,
+    "dxf_type": "DIMENSION",
+    "index": 15,
+    "scope": "modelspace"
+   }
+  ]
+ }
+}

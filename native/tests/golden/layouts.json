@@ -1,0 +1,116 @@
+{
+ "format": "cad2d-ir",
+ "version": "0.2.0",
+ "header": {
+  "units": "mm",
+  "angle_unit": "deg",
+  "coord_space": "world"
+ },
+ "tables": {
+  "layers": {
+   "0": {},
+   "VP": {
+    "plot": false
+   },
+   "HIDDEN_IN_VIEW": {}
+  }
+ },
+ "entities": [
+  {
+   "id": "M1",
+   "kind": "LINE",
+   "layer": "0",
+   "p1": [
+    0.0,
+    0.0
+   ],
+   "p2": [
+    5000.0,
+    0.0
+   ]
+  }
+ ],
+ "layouts": [
+  {
+   "name": "Sheet A",
+   "tab_order": 1,
+   "entities": [
+    {
+     "id": "F1",
+     "kind": "LWPOLYLINE",
+     "layer": "0",
+     "vertices": [
+      [
+       0.0,
+       0.0
+      ],
+      [
+       420.0,
+       0.0
+      ],
+      [
+       420.0,
+       297.0
+      ],
+      [
+       0.0,
+       297.0
+      ]
+     ],
+     "closed": true
+    },
+    {
+     "id": "T1",
+     "kind": "TEXT",
+     "layer": "0",
+     "insert": [
+      300.0,
+      20.0
+     ],
+     "height": 5.0,
+     "text": "A-001"
+    }
+   ],
+   "viewports": [
+    {
+     "center": [
+      200.0,
+      150.0
+     ],
+     "width": 300.0,
+     "height": 200.0,
+     "view_center": [
+      2500.0,
+      0.0
+     ],
+     "view_height": 4000.0,
+     "rotation": 90.0,
+     "layer": "VP",
+     "frozen_layers": [
+      "HIDDEN_IN_VIEW"
+     ]
+    }
+   ]
+  },
+  {
+   "name": "Sheet B",
+   "tab_order": 2,
+   "active": true,
+   "entities": [
+    {
+     "id": "G1",
+     "kind": "LINE",
+     "layer": "0",
+     "p1": [
+      0.0,
+      0.0
+     ],
+     "p2": [
+      1.0,
+      1.0
+     ]
+    }
+   ]
+  }
+ ]
+}
