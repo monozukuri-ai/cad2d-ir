@@ -580,6 +580,97 @@ def test_unsupported_profile_raises_with_segment_major() -> None:
         idw_document_to_ir(document)
 
 
+def test_drawing_that_ran_out_of_a_reader_limit_is_not_called_unsupported() -> None:
+    # the save generation is read, but the drawing exhausted a work limit of the
+    # reader: the error names the limit instead of the profile
+    document = _document(
+        [_sheet([], size=None, status="unavailable")],
+        majors=(14,),
+        status="unavailable",
+        diagnostics=(
+            {
+                "code": "drawing.fields_unavailable",
+                "severity": "warning",
+                "message": "RSe aggregate work limit exceeded",
+                "source": None,
+            },
+            {
+                "code": "drawing.unverified",
+                "severity": "warning",
+                "message": "physical_units_and_active_state_unverified",
+                "source": None,
+            },
+        ),
+    )
+    with pytest.raises(ImporterError) as info:
+        idw_document_to_ir(document)
+    message = str(info.value)
+    assert message.startswith("IDW drawing exceeds the reader limits: segment major 14")
+    assert "RSe aggregate work limit exceeded" in message
+    assert "unsupported IDW profile" not in message
+    # a profile the reader does not have stays "unsupported" even when it also
+    # reports a limit, and a drawing with neither reason keeps the old wording
+    both = _document(
+        [_sheet([], size=None, status="unavailable")],
+        majors=(9,),
+        status="unavailable",
+        diagnostics=(
+            {
+                "code": "drawing.unsupported_profile",
+                "severity": "warning",
+                "message": "no framing profile for DlSheetDlSegmentType / major 9",
+                "source": None,
+            },
+            {
+                "code": "drawing.fields_unavailable",
+                "severity": "warning",
+                "message": "RSe aggregate work limit exceeded",
+                "source": None,
+            },
+        ),
+    )
+    with pytest.raises(
+        ImporterError, match=r"unsupported IDW profile: segment major 9"
+    ):
+        idw_document_to_ir(both)
+    # a segment kind without a profile beside the drawing's own (drawings of
+    # every generation carry some) does not hide the limit
+    aside = _document(
+        [_sheet([], size=None, status="unavailable")],
+        majors=(29,),
+        status="unavailable",
+        diagnostics=(
+            {
+                "code": "drawing.bulk_framing_unavailable",
+                "severity": "warning",
+                "message": "decompression byte limit exceeded",
+                "source": None,
+            },
+            {
+                "code": "drawing.unsupported_profile",
+                "severity": "warning",
+                "message": "no framing profile for FBAttributeSegment / major 29",
+                "source": None,
+            },
+        ),
+    )
+    with pytest.raises(
+        ImporterError,
+        match=r"IDW drawing exceeds the reader limits: segment major 29; .*"
+        r"decompression byte limit exceeded",
+    ):
+        idw_document_to_ir(aside)
+    plain = _document(
+        [_sheet([], size=None, status="unavailable")],
+        majors=(31,),
+        status="unavailable",
+    )
+    with pytest.raises(
+        ImporterError, match=r"unsupported IDW profile: segment major 31"
+    ):
+        idw_document_to_ir(plain)
+
+
 def test_unavailable_sheet_is_reported_while_others_convert() -> None:
     available = _sheet(
         [_item(0, "polyline", {"points": [[1, 1, 0], [2, 1, 0]]})], index=0

@@ -544,7 +544,25 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "warning",
         "skipped",
         "EXB import",
-        "Records of a type `ezexb` cannot decode (CAXA annotations such as roughness, geometric tolerance, chamfer and table objects) were skipped; `details.type_id` is the record GUID.",
+        "Records of a type `ezexb` cannot decode and that carry no cached display records (viewports, images and embedded objects, for example) were skipped; `details.type_id` is the record GUID. Also reported per entity for a decoded kind without an IR mapping (a 2D view).",
+    ),
+    "EXB_CACHED_DISPLAY_EXPLODED": DiagnosticCode(
+        "info",
+        "exploded",
+        "EXB import",
+        "Engineering symbols (surface roughness, geometric tolerance, datum, section marker), part numbers, tables, views, arrays and other records whose own fields are not decoded were drawn from the display records CAXA cached with them, as lines, arcs, texts, fills and block references in the entity list; their values and associations are not decoded. `details.types` counts them per `ezexb` kind and record GUID, `details.unsupported_records` the cached records without an IR form.",
+    ),
+    "EXB_CONSTRUCTION_LINE_CLIPPED": DiagnosticCode(
+        "warning",
+        "approximated",
+        "EXB import",
+        "A construction line (unbounded in both directions) was drawn as a LINE across the extent of the other entities of its space or block; one in a scope without any other entity was skipped (`details.skipped`).",
+    ),
+    "EXB_CURVE_BASIS_NORMALIZED": DiagnosticCode(
+        "info",
+        "normalized",
+        "EXB import",
+        "Arcs or circles stored basis vectors that are scaled or not perpendicular, or polylines a zero normal; they were read as CAXA draws them: the stored radius, starting along the stored X vector and turning toward the stored Y vector, and polyline vertices in the XY plane.",
     ),
     "EXB_ENTITY_CONVERSION_FAILED": DiagnosticCode(
         "error",
@@ -1431,6 +1449,12 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "skipped",
         "EDRW import",
         "Elements of the projected 3D models (`3dmodel` subtrees of the views) are not part of the 2D sheet and were not drawn; `details.count` counts them.",
+    ),
+    "EDRW_VIEW_NOT_PROJECTED": DiagnosticCode(
+        "warning",
+        "skipped",
+        "EDRW import",
+        "Views that store only the 3D model they show (eDrawings projects it when it opens the file) and no 2D line work have no outlines in the drawing; `details.views` counts them out of `details.total_views`.",
     ),
     "EDRW_HIDDEN_SKIPPED": DiagnosticCode(
         "info",

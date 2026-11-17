@@ -10,12 +10,14 @@ NURBS, attributes) is covered by the opt-in real-file gate at the end.
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import math
 import os
 import struct
 from collections import Counter
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -33,7 +35,10 @@ from cad2d_ir.importers.exb import (
     TEXT_ALIGNMENTS,
     VERIFIED_TEXT_ALIGNMENTS,
     _arc_angles,
+    _clip_line,
     _colorref_hex,
+    _ConversionContext,
+    _record_common,
     _sample_circular,
     _sample_ellipse,
     attribute_text,
@@ -50,7 +55,21 @@ FIXTURE_SHA256 = {
     "document-partial.exb": (
         "a79110f971950a047863e90a4923a812b019a752318b6c695888875cda8d2338"
     ),
+    "remaining-10.exb": (
+        "781a62e9b7330da3d002956a9a8af34ad02feb4aecc3d473720697d524873696"
+    ),
+    "remaining-18.exb": (
+        "dcb133beb5d55b060428a8bde99e1be35350b051a051146a72a9f888c20dc6d8"
+    ),
+    "display-16.exb": "758f9628e93a397183f296d27ea3339dbc0b80ae59c95cc4e35b697a8fe7b33d",
+    "display-18.exb": "a74dbc769e0ae7179ab1964421cf83c96e44d820fc49ddccf9fba4b47da09a8b",
 }
+# Records only a later ezexb than 0.3.3 returns: cached display records of
+# undecoded classes, block arrowheads, irregular stored bases, construction lines.
+needs_cached_display = pytest.mark.skipif(
+    not hasattr(importlib.import_module("ezexb.complex"), "CachedDisplay"),
+    reason="needs an ezexb that returns cached display records (after 0.3.3)",
+)
 CFB_MAGIC = bytes.fromhex("d0cf11e0a1b11ae1")
 
 
@@ -733,3 +752,292 @@ def test_boundary_arcs_with_non_finite_or_oversized_sweeps_do_not_overflow() -> 
         )
         == 33
     )
+
+
+def _by_source(document: dict) -> dict[str, list[dict]]:
+    grouped: dict[str, list[dict]] = {}
+    for entity in document["entities"]:
+        grouped.setdefault(entity["source"]["id"], []).append(entity)
+    return grouped
+
+
+def test_tables_are_drawn_from_their_cached_display_records() -> None:
+    # A BOM table: a header and a row, each with a cached LINE and TEXT. The
+    # importer used to skip it as a kind without an IR mapping.
+    result = convert_exb_file_to_ir(FIXTURES / "remaining-10.exb")
+    document = result.document
+    validate_ir(document)
+    table = _by_source(document)["160"]
+    assert [entity["kind"] for entity in table] == ["LINE", "TEXT", "LINE", "TEXT"]
+    for entity in table:
+        assert entity["source"]["kind"] == "BomTable"
+        assert entity["layer"] == "Test layer"
+        assert "visible" not in entity
+    assert table[0]["p1"] == [2.0, 3.0] and table[0]["p2"] == [5.0, 7.0]
+    assert table[1]["text"] == "Part Ω"
+    assert len({entity["id"] for entity in document["entities"]}) == len(
+        document["entities"]
+    )
+    exploded = next(
+        d for d in result.diagnostics if d.code == "EXB_CACHED_DISPLAY_EXPLODED"
+    )
+    assert exploded.severity == "info" and exploded.action == "exploded"
+    assert exploded.details["count"] == 1 and exploded.details["entities"] == 4
+    assert exploded.details["unsupported_records"] == 0
+    assert list(exploded.details["types"]) == [
+        "BomTable:b995fced-a25a-4940-8d79-d92a345f37ce"
+    ]
+    assert result.statistics["converted_entity_counts"]["TEXT"] == 3
+    # The 2D view and the zero-radius arc still have no IR form.
+    assert result.statistics["skipped_entity_counts"] == {
+        "DegenerateArc": 1,
+        "View2D": 1,
+    }
+    assert "Part Ω" in convert_ir_to_dxf_text(document, target_version="AC1024").dxf_text
+
+    tables = convert_exb_file_to_ir(FIXTURES / "remaining-18.exb")
+    validate_ir(tables.document)
+    by_source = _by_source(tables.document)
+    for source_id in ("170", "171"):
+        (line,) = by_source[source_id]
+        assert line["kind"] == "LINE" and line["source"]["kind"] == "Table"
+    assert _codes(tables)["EXB_CACHED_DISPLAY_EXPLODED"] == 1
+
+
+def test_cached_record_styles_follow_their_stored_flags() -> None:
+    context = _ConversionContext(options=ImportOptions(), document=None)
+    context.layer_names = {-24: "Outline", -25: "Notes"}
+    context.linetype_names = {-19: "Continuous", -18: "Dashed"}
+    context.layers = {"Outline": {"color": "#112233"}, "Notes": {"color": "#445566"}}
+
+    def attributes(**changes):
+        values = {
+            "layer_id_raw": -24,
+            "linetype_id_raw": -18,
+            "color_raw": 0x0000FF,
+            "line_width_raw": 0.6,
+            "linetype_flag_raw": 0,
+            "line_width_flag_raw": 0,
+            "color_flag_raw": 0,
+            "hide_flag_raw": 0,
+            "linetype_scale": 1.0,
+        }
+        return SimpleNamespace(**{**values, **changes})
+
+    owner = {
+        "id": "EXB_E1",
+        "layer": "Outline",
+        "color": "#ABCDEF",
+        "lineweight_mm": 0.5,
+        "linetype": "Continuous",
+        "source": {"format": "exb", "id": "7", "kind": "Symbol"},
+        "metadata": {"exb": {"color_raw": 1}},
+    }
+    by_layer = _record_common(attributes(), owner, context)
+    assert by_layer["layer"] == "Outline" and by_layer["id"] != owner["id"]
+    assert not {"color", "lineweight_mm", "linetype", "visible"} & set(by_layer)
+    assert by_layer["source"] == owner["source"]
+    assert by_layer["source"] is not owner["source"]
+    assert by_layer["metadata"]["exb"] is not owner["metadata"]["exb"]
+    explicit = _record_common(
+        attributes(
+            color_flag_raw=2,
+            line_width_flag_raw=2,
+            linetype_flag_raw=2,
+            linetype_scale=2.5,
+            hide_flag_raw=0xFFFF,
+        ),
+        owner,
+        context,
+    )
+    assert explicit["color"] == "#FF0000"  # COLORREF 0x0000FF is red
+    assert explicit["lineweight_mm"] == 0.6 and explicit["linetype"] == "Dashed"
+    assert explicit["linetype_scale"] == 2.5 and explicit["visible"] is False
+    by_block = _record_common(
+        attributes(color_flag_raw=1, line_width_flag_raw=1, linetype_flag_raw=1),
+        owner,
+        context,
+    )
+    assert (by_block["color"], by_block["lineweight_mm"], by_block["linetype"]) == (
+        "#ABCDEF",
+        0.5,
+        "Continuous",
+    )
+    assert _record_common(attributes(line_width_flag_raw=4), owner, context)[
+        "lineweight_mm"
+    ] == 0.5  # the symbolic "wide" width
+    # ByBlock under a ByLayer owner: nothing to write on the owner's layer, the
+    # owner's layer colour on another layer.
+    plain_owner = {"id": "EXB_E2", "layer": "Outline"}
+    same_layer = _record_common(attributes(color_flag_raw=1), plain_owner, context)
+    assert "color" not in same_layer
+    other_layer = _record_common(
+        attributes(color_flag_raw=1, layer_id_raw=-25), plain_owner, context
+    )
+    assert other_layer["layer"] == "Notes" and other_layer["color"] == "#112233"
+    # A layer id outside the table keeps the owner's layer; hidden owners hide.
+    unknown_layer = _record_common(attributes(layer_id_raw=99), plain_owner, context)
+    assert unknown_layer["layer"] == "Outline"
+    hidden = _record_common(attributes(), {**plain_owner, "visible": False}, context)
+    assert hidden["visible"] is False
+    assert _record_common(None, owner, context)["color"] == "#ABCDEF"
+
+
+def test_construction_lines_are_clipped_to_an_extent() -> None:
+    extent = (0.0, 0.0, 100.0, 50.0)
+    assert _clip_line([10.0, 20.0], [1.0, 0.0], extent) == ([0.0, 20.0], [100.0, 20.0])
+    assert _clip_line([10.0, 20.0], [0.0, -1.0], extent) == ([10.0, 50.0], [10.0, 0.0])
+    start, end = _clip_line([0.0, 0.0], [1.0, 1.0], extent)
+    assert start == [0.0, 0.0] and end == [50.0, 50.0]
+    # A line that passes outside the extent keeps the extent's length along it.
+    assert _clip_line([10.0, 80.0], [1.0, 0.0], extent) == ([0.0, 80.0], [100.0, 80.0])
+    assert _clip_line([10.0, 20.0], [0.0, 0.0], extent) is None
+    assert _clip_line([10.0, 20.0], [1.0, 0.0], (5.0, 5.0, 5.0, 5.0)) is None
+
+
+@needs_cached_display
+@pytest.mark.parametrize("name", ["display-16.exb", "display-18.exb"])
+def test_cached_display_of_undecoded_records_is_exploded(name: str) -> None:
+    result = convert_exb_file_to_ir(FIXTURES / name)
+    document = result.document
+    validate_ir(document)
+    by_source = _by_source(document)
+
+    # An entity of a class ezexb does not know: its cached line and text, and the
+    # line and text of a hidden item below it.
+    unknown = by_source["304"]
+    assert [(e["kind"], e.get("visible", True)) for e in unknown] == [
+        ("LINE", True),
+        ("TEXT", True),
+        ("LINE", False),
+        ("TEXT", False),
+    ]
+    assert unknown[0]["p1"] == [80.0, 0.0] and unknown[0]["p2"] == [90.0, 0.0]
+    assert unknown[1]["text"] == "Original Ω" and unknown[1]["insert"] == [80.0, 1.0]
+    assert unknown[1]["style"] == "Original style"
+    assert unknown[3]["text"] == "Hidden item"
+    for entity in unknown:
+        assert entity["source"]["kind"] == "CachedDisplay"
+        assert entity["source"]["metadata"]["type_id"].startswith("5a17c0de-")
+        assert entity["layer"] == "Test layer"
+    # A surface-roughness symbol of a save version whose fields are not decoded.
+    roughness = by_source["310"]
+    assert [e["kind"] for e in roughness] == ["LINE", "LINE", "LINE", "TEXT"]
+    assert roughness[3]["text"] == "Ra 3.2"
+    assert roughness[2]["p2"] == [104.0, 4.0]
+    # A record shown by a cached block reference (a view, an array).
+    (array,) = by_source["305"]
+    assert array["kind"] == "INSERT" and array["block"] == "Reusable part"
+    assert array["insert"] == [40.0, 50.0] and "scale" not in array
+    assert array["metadata"]["exb"]["insert"]["block_id"] == -60
+
+    # Block arrowheads of a dimension are block references in its block.
+    (linear,) = by_source["306"]
+    assert linear["kind"] == "DIMENSION" and linear["dim_kind"] == "LINEAR"
+    block = document["tables"]["blocks"][linear["definition"]["block"]]
+    assert [e["kind"] for e in block["entities"]] == ["LINE", "INSERT", "INSERT"]
+    assert [e["insert"] for e in block["entities"][1:]] == [[60.0, 10.0], [70.0, 10.0]]
+    assert all(e["block"] == "Reusable part" for e in block["entities"][1:])
+    (angle,) = by_source["307"]
+    assert angle["dim_kind"] == "ANGULAR"
+    assert angle["definition"]["measurement"] == math.pi / 4
+    assert angle["definition"]["text"] == "45°"
+    angle_block = document["tables"]["blocks"][angle["definition"]["block"]]
+    assert [e["kind"] for e in angle_block["entities"]] == ["ARC", "LINE"]
+
+    codes = _codes(result)
+    exploded = next(
+        d for d in result.diagnostics if d.code == "EXB_CACHED_DISPLAY_EXPLODED"
+    )
+    assert exploded.details["count"] == 3 and exploded.details["entities"] == 9
+    assert exploded.details["unsupported_records"] == 0
+    assert sorted(key.split(":")[0] for key in exploded.details["types"]) == [
+        "CachedDisplay",
+        "CachedDisplay",
+        "CachedDisplay",
+    ]
+    cache = next(d for d in result.diagnostics if d.code == "EXB_DIMENSION_FROM_CACHE")
+    assert cache.details["unsupported_presentation_records"] == 0
+    # The one record without any display records is still reported and skipped.
+    assert codes["EXB_UNSUPPORTED_ENTITY"] == 1 and codes["EXB_PARTIAL_READ"] == 1
+    assert result.statistics["skipped_entity_counts"] == {
+        "unsupported:5a17c0de-0000-4000-8000-0000000ba4e0": 1
+    }
+    assert result.statistics["source_unsupported_entities"] == 1
+    assert len({e["id"] for e in document["entities"]}) == len(document["entities"])
+
+    exported = convert_ir_to_dxf_text(document, target_version="AC1024")
+    assert "Ra 3.2" in exported.dxf_text and "Original Ω" in exported.dxf_text
+    plain = convert_exb_file_to_ir(FIXTURES / name, entity_provenance=False)
+    validate_ir(plain.document)
+    assert [_geometry(e) for e in plain.document["entities"]] == [
+        _geometry(e) for e in document["entities"]
+    ]
+    assert all("source" not in e for e in plain.document["entities"])
+
+
+@needs_cached_display
+@pytest.mark.parametrize("name", ["display-16.exb", "display-18.exb"])
+def test_irregular_stored_bases_and_construction_lines(name: str) -> None:
+    result = convert_exb_file_to_ir(FIXTURES / name)
+    by_source = _by_source(result.document)
+    # Stored vectors of length two: the radius is the stored one.
+    (arc,) = by_source["300"]
+    assert arc["kind"] == "ARC" and arc["center"] == [30.0, 40.0]
+    assert arc["radius"] == 5.0
+    assert (arc["start_angle"], arc["ccw"]) == (0.0, True)
+    assert arc["end_angle"] == pytest.approx(90.0)
+    (circle,) = by_source["301"]
+    assert circle["kind"] == "CIRCLE" and circle["radius"] == 4.0
+    (polyline,) = by_source["309"]
+    assert polyline["vertices"] == [[0.0, 50.0], [10.0, 50.0], [10.0, 60.0]]
+    (spline,) = by_source["311"]
+    assert spline["kind"] == "SPLINE" and len(spline["control_points"]) == 4
+    (residue,) = by_source["303"]
+    assert residue["p2"] == [35.0, 30.0]
+    # The construction line spans the extent of the other entities of the space.
+    (construction,) = by_source["302"]
+    assert construction["kind"] == "LINE" and construction["source"]["kind"] == "Xline"
+    assert construction["p1"] == [-3.0, 25.0] and construction["p2"] == [104.0, 25.0]
+    assert "_exb_xline_direction" not in construction
+
+    normalized = next(
+        d for d in result.diagnostics if d.code == "EXB_CURVE_BASIS_NORMALIZED"
+    )
+    assert normalized.severity == "info"
+    assert normalized.details == {"circular": 2, "polyline_normals": 1}
+    clipped = next(
+        d for d in result.diagnostics if d.code == "EXB_CONSTRUCTION_LINE_CLIPPED"
+    )
+    assert clipped.severity == "warning" and clipped.action == "approximated"
+    assert clipped.details == {"count": 1, "skipped": 0}
+
+
+@needs_cached_display
+def test_handled_read_diagnostics_do_not_make_a_read_partial(monkeypatch) -> None:
+    """A drawing whose remaining read diagnostics all describe entities that were
+    drawn is not a partial read; a skipped record still is."""
+    import dataclasses
+
+    real_read = ezexb.read
+
+    def read_without_the_bare_record(path, *args, **kwargs):
+        document = real_read(path, *args, **kwargs)
+        note = dataclasses.replace(
+            document.report.diagnostics[0],
+            code="unverified_product_build",
+            message="Product build 16.4.0.12833 was not verified against a native sample.",
+        )
+        kept = [d for d in document.report.diagnostics if d.code != "unsupported_entity"]
+        report = dataclasses.replace(
+            document.report, unsupported_entity_count=0, diagnostics=[*kept, note]
+        )
+        return dataclasses.replace(document, report=report)
+
+    monkeypatch.setattr(ezexb, "read", read_without_the_bare_record)
+    result = convert_exb_file_to_ir(FIXTURES / "display-16.exb")
+    codes = _codes(result)
+    assert "EXB_PARTIAL_READ" not in codes and "EXB_UNSUPPORTED_ENTITY" not in codes
+    assert codes["EXB_CACHED_DISPLAY_EXPLODED"] == 1
+    assert codes["EXB_CURVE_BASIS_NORMALIZED"] == 1
+    assert codes["EXB_PRODUCT_BUILD_UNVERIFIED"] == 1

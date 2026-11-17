@@ -22,6 +22,16 @@ adapter maps them to IR without going through DXF:
   ``definition.block``; the stored value, text and locations are kept but the
   dimension semantics (construction, associativity, tolerances) are not
   decoded (``EXB_DIMENSION_FROM_CACHE``);
+* engineering symbols (surface roughness, geometric tolerance, datum, section
+  marker), part numbers, tables and every other record ``ezexb`` returns with
+  the display records CAXA cached (``Symbol``, ``PartNumber``, ``BomTable``,
+  ``Table``, ``CachedDisplay``) are drawn from those records as lines, arcs,
+  texts, fills and block references in the entity list
+  (``EXB_CACHED_DISPLAY_EXPLODED``); their values and associations are not
+  decoded;
+* a construction line (unbounded in both directions) has no IR kind; it is
+  drawn as a ``LINE`` across the extent of the other entities of its space or
+  block (``EXB_CONSTRUCTION_LINE_CLIPPED``);
 * explicit colours are the low 24 bits of the stored value read as a
   COLORREF (``0x00BBGGRR``); symbolic line widths map to CAXA's default
   millimetre widths (``EXB_LINE_WIDTH_PRESET``);
@@ -77,6 +87,7 @@ DIMENSION_KINDS: dict[str, str] = {
     "aba4bd1e-d922-4b4d-931e-7f4c9d6919e7": "RADIAL",
     "cc8682e6-a8cf-4a4f-aa36-c600b07aa69c": "GENERIC",  # leader with a note
     "5f9490d4-b797-4119-90b1-93668e2db71a": "ANGULAR",
+    "d0e58c76-f166-4241-9943-62e6113a9da4": "ANGULAR",  # three-point angle
 }
 
 # Text alignment code: a 3×3 grid, rows top/middle/bottom, columns left/centre/right.
@@ -103,6 +114,36 @@ PRESET_WIDTH_MM: dict[str, float] = {
     "double_wide": 0.7,
 }
 _LAYER_WIDTH_FLAGS = {3: "thin", 4: "wide", 5: "mid", 6: "double_wide"}
+# ezexb geometry kinds that are drawn from the display records CAXA cached with
+# the entity, and the read diagnostics that describe geometry this importer
+# converts in full (they do not make a read partial).
+# Marks the LINE that stands for a construction line until it is clipped to the
+# extent of its scope (the key never reaches the document).
+_XLINE_DIRECTION = "_exb_xline_direction"
+_CACHED_DISPLAY_KINDS = frozenset(
+    {"Symbol", "PartNumber", "BomTable", "Table", "CachedDisplay"}
+)
+_HANDLED_READ_CODES = frozenset(
+    {
+        "unverified_product_build",
+        "unsupported_dimension_semantics",
+        "unsupported_dimension_presentation",
+        # drawn from the cached display records (EXB_CACHED_DISPLAY_EXPLODED)
+        "unsupported_entity_semantics",
+        "unsupported_entity_presentation",
+        "unsupported_symbol_semantics",
+        "unsupported_symbol_presentation",
+        "unsupported_part_number_semantics",
+        "unsupported_part_number_presentation",
+        "unsupported_bom_table_semantics",
+        "unsupported_bom_table_presentation",
+        "unsupported_table_semantics",
+        "unsupported_table_presentation",
+        # read as CAXA draws them (EXB_CURVE_BASIS_NORMALIZED)
+        "nonorthonormal_circular_basis",
+        "degenerate_polyline_normal",
+    }
+)
 # Style sources whose value belongs on the entity itself.
 _OWN_VALUE_SOURCES = frozenset({"explicit", "by_block"})
 
@@ -165,6 +206,7 @@ class _ConversionContext:
     skipped_counts: Counter[str] = field(default_factory=Counter)
     counts: Counter[str] = field(default_factory=Counter)
     alignment_codes: Counter[int] = field(default_factory=Counter)
+    cached_display_types: Counter[str] = field(default_factory=Counter)
     unresolved_layers: set[int] = field(default_factory=set)
     unresolved_styles: set[int] = field(default_factory=set)
     hatch_vertices: int = 0
@@ -290,6 +332,7 @@ def exb_document_to_ir(
         _convert_block(block, context)
 
     main_space, promoted = _main_space(document)
+    paper = _detect_paper(document, main_space, context) if main_space else None
     entities: list[dict[str, Any]] = []
     layouts: list[dict[str, Any]] = []
     layout_names: set[str] = set()
@@ -297,6 +340,8 @@ def exb_document_to_ir(
         scope: list[dict[str, Any]] = []
         for index in _members(document, space):
             scope.extend(_convert_entity_safe(document.entities[index], context))
+        frame = paper["extent"] if paper is not None and space is main_space else None
+        scope = _clip_construction_lines(scope, context, frame)
         if space is main_space:
             entities = scope
             continue
@@ -326,7 +371,6 @@ def exb_document_to_ir(
             )
         )
 
-    paper = _detect_paper(document, main_space, context) if main_space else None
     header_metadata: dict[str, Any] = {
         "product_build": document.file_info.product_build.value,
         "profile": document.profile,
@@ -556,6 +600,7 @@ def _convert_block(block: Any, context: _ConversionContext) -> None:
                 }
             entities.append(context.add_converted(solid))
             context.counts["block_solid"] += 1
+    entities = _clip_construction_lines(entities, context, None)
     context.blocks[name] = {
         "base_point": [0.0, 0.0],
         "entities": entities,
@@ -715,6 +760,18 @@ def _convert_entity(entity: Any, context: _ConversionContext) -> list[dict[str, 
                 }
             )
         ]
+    if kind == "Xline":
+        # Unbounded: the end points come from the extent of the scope, later.
+        point = _xy(geometry.point)
+        return [
+            {
+                **common,
+                "kind": "LINE",
+                "p1": point,
+                "p2": point,
+                _XLINE_DIRECTION: _xy(geometry.direction),
+            }
+        ]
     if kind == "Circle":
         return [
             context.add_converted(
@@ -786,6 +843,8 @@ def _convert_entity(entity: Any, context: _ConversionContext) -> list[dict[str, 
         return [context.add_converted({**common, **_ellipse_fields(geometry)})]
     if kind == "Dimension":
         return [context.add_converted(_dimension_fields(entity, common, context))]
+    if kind in _CACHED_DISPLAY_KINDS:
+        return _cached_display_entities(entity, common, context)
     context.skipped_counts[kind] += 1
     context.diagnostics.append(
         ImportDiagnostic(
@@ -1190,42 +1249,13 @@ def _dimension_fields(
         if record.geometry is None:
             context.counts["dimension_presentation_unsupported"] += 1
             continue
-        shape = record.geometry.geometry
         base: dict[str, Any] = {"id": context.allocate_id(), "layer": common["layer"]}
-        shape_kind = type(shape).__name__
-        if shape_kind == "Line":
-            block_entities.append(
-                {**base, "kind": "LINE", "p1": _xy(shape.start), "p2": _xy(shape.end)}
-            )
-        elif shape_kind == "Arc":
-            block_entities.append({**base, **_arc_fields(shape)})
-        elif shape_kind == "Circle":
-            block_entities.append(
-                {
-                    **base,
-                    "kind": "CIRCLE",
-                    "center": _xy(shape.center),
-                    "radius": _positive(shape.radius, "circle radius"),
-                }
-            )
-        elif shape_kind == "Polyline":
-            try:
-                block_entities.append({**base, **_polyline_fields(shape, context)})
-            except ValueError:
-                context.counts["dimension_presentation_unsupported"] += 1
-        elif shape_kind == "Text":
-            fields = _text_fields(shape, context)
-            if fields is not None:
-                fields.pop("metadata", None)
-                block_entities.append({**base, **fields})
-        elif shape_kind == "StoredSolid":
-            loops = _boundary_loops(shape.boundary, context, count=False)
-            if loops:
-                block_entities.append(
-                    {**base, "kind": "HATCH", "solid": True, "loops": loops}
-                )
-        else:
+        converted = _presentation_shape(record.geometry, base, context, count=False)
+        if converted is None:
             context.counts["dimension_presentation_unsupported"] += 1
+        elif converted:
+            converted.pop("metadata", None)
+            block_entities.append(converted)
     texts = [field.value for field in geometry.text_fields_stored if field.value]
     definition: dict[str, Any] = {
         "points": {
@@ -1260,6 +1290,360 @@ def _dimension_fields(
         "dim_kind": DIMENSION_KINDS.get(geometry.dimension_type_id, "GENERIC"),
         "definition": definition,
     }
+
+
+def _presentation_shape(
+    presentation: Any, base: dict[str, Any], context: _ConversionContext, *, count: bool
+) -> dict[str, Any] | None:
+    """One cached display record as an IR entity on ``base``.
+
+    ``None`` means the record has no IR form; an empty dict a record that draws
+    nothing (an empty text). ``count`` adds the entity to the conversion counts
+    (the records of a dimension block are not counted).
+    """
+    shape = presentation.geometry
+    category = str(presentation.category)
+    shape_kind = type(shape).__name__
+    entity: dict[str, Any]
+    if shape_kind == "Line":
+        entity = {**base, "kind": "LINE", "p1": _xy(shape.start), "p2": _xy(shape.end)}
+    elif shape_kind == "Arc":
+        entity = {**base, **_arc_fields(shape)}
+    elif shape_kind == "Circle":
+        entity = {
+            **base,
+            "kind": "CIRCLE",
+            "center": _xy(shape.center),
+            "radius": _positive(shape.radius, "circle radius"),
+        }
+    elif shape_kind == "Point" and count:
+        # Not inside a dimension block: a dimension's cached points lie on the
+        # measured geometry and the CAXA viewer shows no marker for them.
+        entity = {**base, "kind": "POINT", "position": _xy(shape.point)}
+    elif shape_kind == "Polyline":
+        try:
+            entity = {**base, **_polyline_fields(shape, context)}
+        except ValueError:
+            return None
+    elif shape_kind == "Text":
+        fields = _text_fields(shape, context)
+        if fields is None:
+            return {}
+        metadata = fields.pop("metadata", None)
+        entity = {**base, **fields}
+        if metadata is not None and "metadata" in base:
+            entity["metadata"] = {"exb": {**base["metadata"]["exb"], **metadata["exb"]}}
+    elif shape_kind == "StoredSolid":
+        loops = _boundary_loops(shape.boundary, context, count=False)
+        if not loops:
+            return {}
+        entity = {**base, "kind": "HATCH", "solid": True, "loops": loops}
+    elif category == "Insert":
+        try:
+            entity = _insert_fields(shape, base, context)
+        except KeyError:
+            return None
+    else:
+        return None
+    return context.add_converted(entity) if count else entity
+
+
+def _cached_display_entities(
+    entity: Any, common: dict[str, Any], context: _ConversionContext
+) -> list[dict[str, Any]]:
+    """Draw an entity from the display records CAXA cached with it.
+
+    ``ezexb`` returns engineering symbols, part numbers and tables with their
+    stored fields where it knows the layout, and any other record that carries
+    cached display records as ``CachedDisplay``. Either way the entity's values
+    and associations are not converted; what CAXA drew for it is, record by
+    record, with each record's own layer, colour, width and linetype (a ByBlock
+    value is the entity's).
+    """
+    geometry = entity.geometry
+    kind = str(entity.kind)
+    converted: list[dict[str, Any]] = []
+    if kind == "BomTable":
+        for item in geometry.items:
+            item_common = _record_common(item.attributes, common, context)
+            _explode_presentation(
+                item.presentation_records, item_common, context, converted, depth=1
+            )
+    else:
+        _explode_presentation(geometry.presentation_records, common, context, converted)
+    context.counts["cached_display_exploded"] += 1
+    context.counts["cached_display_entities"] += len(converted)
+    context.cached_display_types[f"{kind}:{entity.type_id}"] += 1
+    if not converted:
+        context.counts["cached_display_empty"] += 1
+    return converted
+
+
+def _explode_presentation(
+    records: Any,
+    parent: dict[str, Any],
+    context: _ConversionContext,
+    converted: list[dict[str, Any]],
+    *,
+    depth: int = 0,
+) -> None:
+    for record in records:
+        if record.geometry is None:
+            context.counts["cached_display_unsupported_records"] += 1
+            continue
+        base = _record_common(record.attributes, parent, context)
+        category = str(record.geometry.category)
+        if category in ("PartItem", "CachedDisplay"):
+            # An item of a table or a part number: its own cached records, below it.
+            if depth < 16:
+                _explode_presentation(
+                    record.geometry.geometry.presentation_records,
+                    base,
+                    context,
+                    converted,
+                    depth=depth + 1,
+                )
+            continue
+        try:
+            shape = _presentation_shape(record.geometry, base, context, count=True)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            shape = None
+        if shape is None:
+            context.counts["cached_display_unsupported_records"] += 1
+        elif shape:
+            converted.append(shape)
+
+
+def _record_common(
+    attributes: Any, parent: dict[str, Any], context: _ConversionContext
+) -> dict[str, Any]:
+    """Common fields of a cached display record below ``parent``.
+
+    The record's stored attribute flags select each value: explicit (the stored
+    colour, width or linetype), a symbolic width, ByBlock (the owner's value) or
+    ByLayer (nothing written). A record on another layer than its owner gets the
+    owner's layer colour when its colour is ByBlock and the owner's is ByLayer.
+    """
+    result: dict[str, Any] = {"id": context.allocate_id(), "layer": parent["layer"]}
+    if "source" in parent:
+        result["source"] = dict(parent["source"])
+    if "metadata" in parent:
+        result["metadata"] = {"exb": dict(parent["metadata"].get("exb", {}))}
+    if parent.get("visible") is False:
+        result["visible"] = False
+    if attributes is None:
+        for key in ("color", "lineweight_mm", "linetype"):
+            if key in parent:
+                result[key] = parent[key]
+        return result
+    layer_name = context.layer_names.get(int(attributes.layer_id_raw))
+    if layer_name is not None:
+        result["layer"] = layer_name
+    color_flag = int(attributes.color_flag_raw)
+    if color_flag == 2:
+        result["color"] = _colorref_hex(int(attributes.color_raw))
+    elif color_flag == 1:
+        if "color" in parent:
+            result["color"] = parent["color"]
+        elif result["layer"] != parent["layer"]:
+            layer_color = context.layers.get(parent["layer"], {}).get("color")
+            if layer_color is not None:
+                result["color"] = layer_color
+    width_flag = int(attributes.line_width_flag_raw)
+    if width_flag == 2:
+        width = float(attributes.line_width_raw)
+        if math.isfinite(width) and width > 0:
+            result["lineweight_mm"] = round(width, 4)
+    elif width_flag in _LAYER_WIDTH_FLAGS:
+        result["lineweight_mm"] = PRESET_WIDTH_MM[_LAYER_WIDTH_FLAGS[width_flag]]
+        context.counts["width_preset"] += 1
+    elif width_flag == 1 and "lineweight_mm" in parent:
+        result["lineweight_mm"] = parent["lineweight_mm"]
+    linetype_flag = int(attributes.linetype_flag_raw)
+    if linetype_flag == 2:
+        linetype_name = context.linetype_names.get(int(attributes.linetype_id_raw))
+        if linetype_name is not None:
+            result["linetype"] = linetype_name
+    elif linetype_flag == 1 and "linetype" in parent:
+        result["linetype"] = parent["linetype"]
+    scale = float(attributes.linetype_scale)
+    if math.isfinite(scale) and scale > 0 and abs(scale - 1.0) > _EPSILON:
+        result["linetype_scale"] = scale
+    if int(attributes.hide_flag_raw) != 0:
+        result["visible"] = False
+    return result
+
+
+def _clip_construction_lines(
+    entities: list[dict[str, Any]],
+    context: _ConversionContext,
+    frame: list[float] | None,
+) -> list[dict[str, Any]]:
+    """Give the construction lines of a scope their end points.
+
+    A construction line is unbounded; the IR has no such kind. Each becomes a
+    ``LINE`` across the extent of the other entities of the scope (and the
+    sheet frame, when there is one). A line that passes outside that extent
+    keeps a segment as long as the extent is wide along its direction. Without
+    any other entity there is nothing to measure against and the line is
+    skipped.
+    """
+    if not any(_XLINE_DIRECTION in entity for entity in entities):
+        return entities
+    extent = _entities_extent(
+        [entity for entity in entities if _XLINE_DIRECTION not in entity],
+        context.blocks,
+        {},
+        0,
+    )
+    if frame is not None:
+        extent = _merge_extent(extent, (frame[0], frame[1], frame[2], frame[3]))
+    result: list[dict[str, Any]] = []
+    for entity in entities:
+        direction = entity.pop(_XLINE_DIRECTION, None)
+        if direction is None:
+            result.append(entity)
+            continue
+        segment = (
+            None if extent is None else _clip_line(entity["p1"], direction, extent)
+        )
+        if segment is None:
+            context.skipped_counts["Xline"] += 1
+            context.counts["construction_lines_skipped"] += 1
+            continue
+        entity["p1"], entity["p2"] = segment
+        context.counts["construction_lines"] += 1
+        result.append(context.add_converted(entity))
+    return result
+
+
+def _clip_line(
+    point: list[float],
+    direction: list[float],
+    extent: tuple[float, float, float, float],
+) -> tuple[list[float], list[float]] | None:
+    """The part of the unbounded line through ``point`` inside ``extent``."""
+    x_min, y_min, x_max, y_max = extent
+    dx, dy = direction
+    if abs(dx) <= _EPSILON and abs(dy) <= _EPSILON:
+        return None
+    low, high = -math.inf, math.inf
+    inside = True
+    for origin, delta, minimum, maximum in (
+        (point[0], dx, x_min, x_max),
+        (point[1], dy, y_min, y_max),
+    ):
+        if abs(delta) <= _EPSILON:
+            inside = inside and minimum <= origin <= maximum
+            continue
+        first, second = (minimum - origin) / delta, (maximum - origin) / delta
+        low, high = max(low, min(first, second)), min(high, max(first, second))
+    if not inside or low >= high:
+        # The line misses the extent: as long as the extent along its direction.
+        corners = [(x_min, y_min), (x_min, y_max), (x_max, y_min), (x_max, y_max)]
+        norm = dx * dx + dy * dy
+        along = [((x - point[0]) * dx + (y - point[1]) * dy) / norm for x, y in corners]
+        low, high = min(along), max(along)
+    if not (math.isfinite(low) and math.isfinite(high)) or low >= high:
+        return None
+    return (
+        [point[0] + low * dx, point[1] + low * dy],
+        [point[0] + high * dx, point[1] + high * dy],
+    )
+
+
+def _merge_extent(
+    first: tuple[float, float, float, float] | None,
+    second: tuple[float, float, float, float] | None,
+) -> tuple[float, float, float, float] | None:
+    if first is None:
+        return second
+    if second is None:
+        return first
+    return (
+        min(first[0], second[0]),
+        min(first[1], second[1]),
+        max(first[2], second[2]),
+        max(first[3], second[3]),
+    )
+
+
+def _entities_extent(
+    entities: list[dict[str, Any]],
+    blocks: dict[str, dict[str, Any]],
+    cache: dict[str, tuple[float, float, float, float] | None],
+    depth: int,
+) -> tuple[float, float, float, float] | None:
+    """Bounding box of IR entities (texts by their insertion point)."""
+    extent: tuple[float, float, float, float] | None = None
+    for entity in entities:
+        if entity.get("visible") is False:
+            continue
+        points: list[list[float]] = []
+        kind = entity.get("kind")
+        if kind == "LINE":
+            points = [entity["p1"], entity["p2"]]
+        elif kind in ("ARC", "CIRCLE"):
+            (x, y), radius = entity["center"], entity["radius"]
+            points = [[x - radius, y - radius], [x + radius, y + radius]]
+        elif kind == "ELLIPSE":
+            (x, y), axis = entity["center"], entity["major_axis"]
+            radius = math.hypot(axis[0], axis[1])
+            points = [[x - radius, y - radius], [x + radius, y + radius]]
+        elif kind == "LWPOLYLINE":
+            points = [vertex[:2] for vertex in entity["vertices"]]
+        elif kind == "SPLINE":
+            points = entity["control_points"]
+        elif kind == "HATCH":
+            points = [vertex for loop in entity["loops"] for vertex in loop["vertices"]]
+        elif kind in ("TEXT", "MTEXT"):
+            points = [entity["insert"]]
+        elif kind == "POINT":
+            points = [entity["position"]]
+        elif kind in ("INSERT", "DIMENSION") and depth < 8:
+            name = (
+                entity.get("block")
+                if kind == "INSERT"
+                else entity.get("definition", {}).get("block")
+            )
+            if name in blocks:
+                if name not in cache:
+                    cache[name] = None  # a cyclic reference measures nothing
+                    cache[name] = _entities_extent(
+                        blocks[name]["entities"], blocks, cache, depth + 1
+                    )
+                inner = cache[name]
+                if inner is not None:
+                    if kind == "DIMENSION":
+                        points = [[inner[0], inner[1]], [inner[2], inner[3]]]
+                    else:
+                        scale = entity.get("scale", 1.0)
+                        scale_x, scale_y = (
+                            scale if isinstance(scale, list) else (scale, scale)
+                        )
+                        angle = math.radians(float(entity.get("rotation", 0.0)))
+                        cos_a, sin_a = math.cos(angle), math.sin(angle)
+                        origin = entity["insert"]
+                        for x, y in (
+                            (inner[0], inner[1]),
+                            (inner[0], inner[3]),
+                            (inner[2], inner[1]),
+                            (inner[2], inner[3]),
+                        ):
+                            x, y = x * scale_x, y * scale_y
+                            points.append(
+                                [
+                                    origin[0] + x * cos_a - y * sin_a,
+                                    origin[1] + x * sin_a + y * cos_a,
+                                ]
+                            )
+            elif kind == "INSERT":
+                points = [entity["insert"]]
+        for point in points:
+            x, y = float(point[0]), float(point[1])
+            if math.isfinite(x) and math.isfinite(y):
+                extent = _merge_extent(extent, (x, y, x, y))
+    return extent
 
 
 # ---------------------------------------------------------------------------
@@ -1562,15 +1946,7 @@ def _append_summary_diagnostics(
     only_unverified_build = (
         unverified_build is not None
         and int(report.unsupported_entity_count) == 0
-        and all(
-            d.code
-            in (
-                "unverified_product_build",
-                "unsupported_dimension_semantics",
-                "unsupported_dimension_presentation",
-            )
-            for d in report.diagnostics
-        )
+        and all(d.code in _HANDLED_READ_CODES for d in report.diagnostics)
     )
     if not report.complete and not only_unverified_build and not legacy:
         diagnostics.append(
@@ -1603,9 +1979,9 @@ def _append_summary_diagnostics(
                 code="EXB_UNSUPPORTED_ENTITY",
                 severity="warning",
                 message=(
-                    f"Skipped {count} EXB records of type {type_id} that ezexb cannot "
-                    "decode yet (CAXA annotations such as roughness, geometric "
-                    "tolerance, chamfer and table objects are not supported)."
+                    f"Skipped {count} EXB records of type {type_id}: ezexb does not "
+                    "decode this record type and it carries no cached display "
+                    "records (viewports, images and embedded objects, for example)."
                 ),
                 source_kind=type_id,
                 action="skipped",
@@ -1631,6 +2007,78 @@ def _append_summary_diagnostics(
                     "unsupported_presentation_records": counts[
                         "dimension_presentation_unsupported"
                     ],
+                },
+            )
+        )
+    if counts["cached_display_exploded"]:
+        diagnostics.append(
+            ImportDiagnostic(
+                code="EXB_CACHED_DISPLAY_EXPLODED",
+                severity="info",
+                message=(
+                    f"{counts['cached_display_exploded']} annotation, table, view or "
+                    "array entities (surface roughness, geometric tolerance, datum, "
+                    "section marker, part number, table and other records whose own "
+                    "fields are not decoded) were drawn from the display records CAXA "
+                    f"cached with them, as {counts['cached_display_entities']} lines, "
+                    "arcs, texts, fills and block references; their values and "
+                    "associations are not decoded."
+                ),
+                action="exploded",
+                details={
+                    "count": counts["cached_display_exploded"],
+                    "entities": counts["cached_display_entities"],
+                    "without_display": counts["cached_display_empty"],
+                    "unsupported_records": counts["cached_display_unsupported_records"],
+                    "types": dict(sorted(context.cached_display_types.items())),
+                },
+            )
+        )
+    if counts["construction_lines"] or counts["construction_lines_skipped"]:
+        diagnostics.append(
+            ImportDiagnostic(
+                code="EXB_CONSTRUCTION_LINE_CLIPPED",
+                severity="warning",
+                message=(
+                    f"{counts['construction_lines']} construction lines, which are "
+                    "unbounded in both directions, were drawn as LINE entities across "
+                    "the extent of the other entities of their space or block"
+                    + (
+                        f"; {counts['construction_lines_skipped']} in a scope without "
+                        "any other entity were skipped."
+                        if counts["construction_lines_skipped"]
+                        else "."
+                    )
+                ),
+                source_kind="Xline",
+                action="approximated",
+                details={
+                    "count": counts["construction_lines"],
+                    "skipped": counts["construction_lines_skipped"],
+                },
+            )
+        )
+    read_codes = Counter(str(diagnostic.code) for diagnostic in report.diagnostics)
+    if (
+        read_codes["nonorthonormal_circular_basis"]
+        or read_codes["degenerate_polyline_normal"]
+    ):
+        diagnostics.append(
+            ImportDiagnostic(
+                code="EXB_CURVE_BASIS_NORMALIZED",
+                severity="info",
+                message=(
+                    f"{read_codes['nonorthonormal_circular_basis']} arcs or circles "
+                    "stored basis vectors that are scaled or not perpendicular and "
+                    f"{read_codes['degenerate_polyline_normal']} polylines a zero "
+                    "normal; they were read as CAXA draws them: the stored radius, "
+                    "starting along the stored X vector and turning toward the stored "
+                    "Y vector, and polyline vertices in the XY plane."
+                ),
+                action="normalized",
+                details={
+                    "circular": read_codes["nonorthonormal_circular_basis"],
+                    "polyline_normals": read_codes["degenerate_polyline_normal"],
                 },
             )
         )

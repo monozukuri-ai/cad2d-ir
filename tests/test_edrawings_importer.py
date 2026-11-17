@@ -36,6 +36,7 @@ from cad2d_ir.importers.edrawings import (
     PAPER_SIZES,
     _arc_angles,
     _bounds,
+    _ellipse,
     _fit_paper,
     edrawings_document_to_ir,
     is_edrw_signature,
@@ -97,6 +98,29 @@ def circle(*xy: tuple[float, float]) -> bytes:
 
 def arc(*xy: tuple[float, float]) -> bytes:
     return b"c" + points(*xy) + b"\0"
+
+
+def ellipse(
+    center: tuple[float, float], first: tuple[float, float], second: tuple[float, float]
+) -> bytes:
+    """``E``: the centre and one point on each axis."""
+    return b"E" + points(center, first, second)
+
+
+def elliptical_arc(
+    center: tuple[float, float],
+    first: tuple[float, float],
+    second: tuple[float, float],
+    start: float,
+    end: float,
+) -> bytes:
+    """``e``: an ellipse with its start and end as fractions of a turn."""
+    return b"e" + points(center, first, second) + struct.pack("<2f", start, end)
+
+
+def mirror_matrix(tx: float, ty: float) -> bytes:
+    """A modelling matrix that flips x (a mirrored view) and then translates."""
+    return b"%" + struct.pack("<12f", -1, 0, 0, 0, 1, 0, 0, 0, 1, tx, ty, 0)
 
 
 def marker(x: float, y: float) -> bytes:
@@ -643,6 +667,426 @@ def test_mixed_view_scales_are_reported(tmp_path: Path) -> None:
     assert meta["view_scale"] == pytest.approx(0.5)  # the view with most entities
     mixed = next(d for d in result.diagnostics if d.code == "EDRW_MIXED_SCALES")
     assert mixed.details["scales"] == [pytest.approx(1.0)]
+
+
+def _scaled_view(name: str, scale: float, tx: float, ty: float, *body: bytes) -> bytes:
+    return seg(
+        name,
+        option(f"name=`{name}`"),
+        seg("2dmodel", matrix(scale, tx, ty), seg("layer-1", seg("sub0", *body))),
+    )
+
+
+def _a3_frame() -> bytes:
+    return polyline(
+        (0.01, 0.01), (0.41, 0.01), (0.41, 0.287), (0.01, 0.287), (0.01, 0.01)
+    )
+
+
+def test_further_sheets_are_layouts_in_paper_millimetres(tmp_path: Path) -> None:
+    """The model space takes its real size from the first sheet's own views; the
+    other sheets keep the millimetres of their paper, whatever their views' scales."""
+    size = option("fit width=0.42,fit height=0.297")
+    first = seg(
+        "sheet0",
+        size,
+        _scaled_view("view0", 0.5, 0.05, 0.05, line(0, 0, 0.1, 0)),
+        seg(
+            "borderview0",
+            seg("2dmodel", seg("layer-1", seg("sub0", _a3_frame()))),
+        ),
+    )
+    # more line work at 1:10 than the first sheet has at 1:2
+    second = seg(
+        "sheet1",
+        size,
+        _scaled_view(
+            "view0",
+            0.1,
+            0.1,
+            0.2,
+            line(0, 0, 1.0, 0),
+            line(0, 0.1, 1.0, 0.1),
+            line(0, 0.2, 1.0, 0.2),
+            seg("text0", font("Arial", 0.0035), text(0.5, 0.3, "NOTE")),
+        ),
+        seg(
+            "borderview0",
+            seg("2dmodel", seg("layer-1", seg("sub0", _a3_frame()))),
+        ),
+    )
+    result = convert_edrw_file_to_ir(
+        _write(tmp_path, "sheets.edrw", stream(first, second))
+    )
+    document = result.document
+    validate_ir(document)
+    meta = document["header"]["metadata"]["edrw"]
+    assert meta["view_scale"] == pytest.approx(0.5)
+    assert meta["paper_scale"] == pytest.approx(2.0)
+    assert "EDRW_MIXED_SCALES" not in _codes(result)
+    # model space: the 100 mm line of the 1:2 view at real size
+    (model_line,) = _by_kind(document, "LINE")
+    assert model_line["p1"] == pytest.approx([100.0, 100.0], abs=1e-3)
+    assert model_line["p2"] == pytest.approx([200.0, 100.0], abs=1e-3)
+    assert meta["sheet"]["extent"] == pytest.approx([0.0, 0.0, 840.0, 594.0], abs=1e-3)
+    # layout: paper millimetres on its own A3 sheet
+    (layout,) = document["layouts"]
+    assert layout["paper"]["name"] == "A3"
+    assert layout["paper"]["size_mm"] == pytest.approx([420.0, 297.0])
+    assert layout["metadata"]["edrw"]["coordinates"] == "paper"
+    lines = sorted(
+        (e for e in layout["entities"] if e["kind"] == "LINE"),
+        key=lambda e: e["p1"][1],
+    )
+    assert len(lines) == 3
+    # a 1 m model line at 1:10 from the view origin (100, 200) mm
+    assert lines[0]["p1"] == pytest.approx([100.0, 200.0], abs=1e-3)
+    assert lines[0]["p2"] == pytest.approx([200.0, 200.0], abs=1e-3)
+    assert lines[2]["p1"] == pytest.approx([100.0, 220.0], abs=1e-3)
+    (frame,) = [e for e in layout["entities"] if e["kind"] == "LWPOLYLINE"]
+    assert frame["vertices"][0] == pytest.approx([10.0, 10.0], abs=1e-3)
+    assert frame["vertices"][2] == pytest.approx([410.0, 287.0], abs=1e-3)
+    (note,) = [e for e in layout["entities"] if e["kind"] == "TEXT"]
+    assert note["insert"] == pytest.approx([150.0, 230.0], abs=1e-3)
+    assert note["height"] == pytest.approx(3.5, abs=1e-4)
+    min_x, min_y, max_x, max_y = _bounds(layout["entities"])
+    assert min_x >= 0.0 and min_y >= 0.0 and max_x <= 420.0 and max_y <= 297.0
+
+
+def test_view_scale_from_a_single_precision_matrix_is_a_whole_denominator(
+    tmp_path: Path,
+) -> None:
+    # 1:96 is stored as the float 0.010416667, whose reciprocal is 95.999997
+    data = stream(
+        seg(
+            "sheet0",
+            option("fit width=0.2794,fit height=0.2159"),
+            _scaled_view("view0", 1.0 / 96.0, 0.05, 0.05, line(0, 0, 9.6, 0)),
+        )
+    )
+    result = convert_edrw_file_to_ir(_write(tmp_path, "scale.edrw", data))
+    meta = result.document["header"]["metadata"]["edrw"]
+    assert meta["paper_scale"] == 96.0
+    assert meta["view_scale"] == 1.0 / 96.0
+    (entity,) = _by_kind(result.document, "LINE")
+    assert math.dist(entity["p1"], entity["p2"]) == pytest.approx(9600.0, abs=1e-2)
+
+
+def test_overhanging_view_does_not_turn_the_paper(tmp_path: Path) -> None:
+    """A view that reaches past the sheet (a detail view keeps the whole edges
+    it cuts) fits the paper neither way round; the sheet format decides."""
+    frame = polyline(
+        (0.0095, 0.0064),
+        (0.2699, 0.0064),
+        (0.2699, 0.2095),
+        (0.0095, 0.2095),
+        (0.0095, 0.0064),
+    )
+    data = stream(
+        seg(
+            "sheet0",
+            # portrait and landscape sheets store the same two numbers
+            option("fit width=0.2159,fit height=0.2794"),
+            _scaled_view("view0", 1.0, 0.13, 0.06, line(0, 0, 0.27, 0.12)),
+            seg("borderview0", seg("2dmodel", seg("layer-1", seg("sub0", frame)))),
+        )
+    )
+    result = convert_edrw_file_to_ir(_write(tmp_path, "overhang.edrw", data))
+    sheet = result.document["header"]["metadata"]["edrw"]["sheet"]
+    assert sheet["paper"] == "ANSI_A" and sheet["orientation"] == "landscape"
+    assert (sheet["width_mm"], sheet["height_mm"]) == pytest.approx((279.4, 215.9))
+    assert sheet["extent"] == pytest.approx([0.0, 0.0, 279.4, 215.9], abs=1e-3)
+    (entity,) = _by_kind(result.document, "LINE")
+    assert entity["p2"] == pytest.approx([400.0, 180.0], abs=1e-3)
+
+
+def test_text_width_tags_are_removed_and_object_unit_sizes_are_kept(
+    tmp_path: Path,
+) -> None:
+    """Early SOLIDWORKS writers put the width of a text and a three-digit code
+    in front of it, and store font sizes in object units."""
+    data = stream(
+        seg(
+            "sheet0",
+            option("fit width=0.2794,fit height=0.2159"),
+            seg(
+                "view0",
+                seg(
+                    "2dmodel",
+                    matrix(0.5, 0.05, 0.05),
+                    seg(
+                        "text0",
+                        font("Arial", 0.00254, units=0),
+                        text(0.02, 0.03, "<SWTS=0.040000>5271"),
+                        text(0.02, 0.05, "<SWTS=.5>999A<B>"),
+                    ),
+                ),
+            ),
+            seg(
+                "borderview0",
+                seg(
+                    "2dmodel",
+                    seg(
+                        "text1",
+                        font("Arial", 0.00508, units=0),
+                        text(0.2, 0.02, "<SWTS=0.050000>582LABEL"),
+                        # not the tag: no code, text before it, another name
+                        text(0.2, 0.03, "<SWTS=0.5>12"),
+                        text(0.2, 0.04, "A<SWTS=0.5>123"),
+                        text(0.2, 0.05, "<SWTX=0.5>123"),
+                        # nothing is left of a tag without text
+                        text(0.2, 0.06, "<SWTS=0.003000>077"),
+                    ),
+                ),
+            ),
+        )
+    )
+    result = convert_edrw_file_to_ir(_write(tmp_path, "tags.edrw", data))
+    validate_ir(result.document)
+    texts = {e["text"]: e for e in _by_kind(result.document, "TEXT")}
+    assert set(texts) == {
+        "1",
+        "A<B>",
+        "LABEL",
+        "<SWTS=0.5>12",
+        "A<SWTS=0.5>123",
+        "<SWTX=0.5>123",
+    }
+    # the sheet is divided by the 1:2 view scale; sizes are heights on the sheet
+    assert texts["1"]["height"] == pytest.approx(5.08, abs=1e-4)
+    assert texts["LABEL"]["height"] == pytest.approx(10.16, abs=1e-4)
+    assert texts["1"]["insert"] == pytest.approx([120.0, 130.0], abs=1e-3)
+    # the stored width is in the units of the text's segment
+    assert texts["1"]["metadata"]["edrw"]["stored_width"] == pytest.approx(
+        0.04 * 0.5 * 2000.0, abs=1e-4
+    )
+    assert texts["LABEL"]["metadata"]["edrw"]["stored_width"] == pytest.approx(
+        0.05 * 2000.0, abs=1e-4
+    )
+    assert "stored_width" not in texts["<SWTS=0.5>12"]["metadata"]["edrw"]
+    assert "EDRW_TEXT_HEIGHT_ASSUMED" not in _codes(result)
+
+
+def _ellipse_point(entity: dict, parameter: float) -> tuple[float, float]:
+    """A point of an IR ELLIPSE: the parameter runs counter-clockwise from the major axis."""
+    cx, cy = entity["center"]
+    mx, my = entity["major_axis"]
+    ratio = entity["ratio"]
+    return (
+        cx + math.cos(parameter) * mx - math.sin(parameter) * ratio * my,
+        cy + math.cos(parameter) * my + math.sin(parameter) * ratio * mx,
+    )
+
+
+def _on_arc(entity: dict, fraction: float) -> tuple[float, float]:
+    """The point a fraction of the way along an IR elliptical arc, from its start."""
+    sweep = (entity["end_param"] - entity["start_param"]) % (2.0 * math.pi)
+    return _ellipse_point(entity, entity["start_param"] + fraction * sweep)
+
+
+# edrawings-kit reads the ellipse records (`E`, `e`) from 0.2.5; an older kit
+# stops at them, so there is nothing for the importer to draw
+needs_ellipse_records = pytest.mark.skipif(
+    "ellipse_primitives"
+    not in getattr(edrawings_kit.build_info(), "hsf_scene_features", ()),
+    reason="edrawings-kit reads ellipse records from 0.2.5",
+)
+
+
+@needs_ellipse_records
+def test_ellipses_and_elliptical_arcs_are_drawn(tmp_path: Path) -> None:
+    view = seg(
+        "view0",
+        option("name=`Drawing View 1`"),
+        seg(
+            "2dmodel",
+            matrix(1.0, 0.0, 0.0),
+            seg(
+                "layer-1",
+                seg("sub0", ellipse((0.1, 0.1), (0.14, 0.1), (0.1, 0.12))),
+                # a quarter from the first axis to the second
+                seg(
+                    "sub1",
+                    elliptical_arc((0.2, 0.1), (0.24, 0.1), (0.2, 0.12), 0.0, 0.25),
+                ),
+                # the first stored axis is the shorter one
+                seg(
+                    "sub2",
+                    elliptical_arc((0.1, 0.2), (0.11, 0.2), (0.1, 0.23), 0.0, 0.25),
+                ),
+                # the end is not after the start: the arc wraps through the first axis
+                seg(
+                    "sub3",
+                    elliptical_arc((0.3, 0.1), (0.34, 0.1), (0.3, 0.12), 0.75, 0.25),
+                ),
+                # equal axes are a circle and an arc
+                seg("sub4", ellipse((0.3, 0.2), (0.32, 0.2), (0.3, 0.22))),
+                seg(
+                    "sub5",
+                    elliptical_arc((0.35, 0.2), (0.37, 0.2), (0.35, 0.22), 0.25, 0.5),
+                ),
+                # a whole turn is the full curve, equal limits are nothing
+                seg(
+                    "sub6",
+                    elliptical_arc((0.2, 0.2), (0.24, 0.2), (0.2, 0.22), 0.0, 1.0),
+                ),
+                seg(
+                    "sub7",
+                    elliptical_arc((0.2, 0.2), (0.24, 0.2), (0.2, 0.22), 0.4, 0.4),
+                ),
+            ),
+        ),
+    )
+    data = stream(seg("sheet0", option("fit width=0.42,fit height=0.297"), view))
+    result = convert_edrw_file_to_ir(_write(tmp_path, "ellipses.edrw", data))
+    validate_ir(result.document)
+    assert "EDRW_ELEMENT_UNSUPPORTED" not in _codes(result)
+    assert result.statistics["skipped_entities"] == 0
+    assert result.statistics["degenerate"] == 1  # the arc with equal limits
+    full, quarter, swapped, wrapped, whole = _by_kind(result.document, "ELLIPSE")
+
+    assert full["center"] == pytest.approx([100.0, 100.0], abs=1e-3)
+    assert full["major_axis"] == pytest.approx([40.0, 0.0], abs=1e-3)
+    assert full["ratio"] == pytest.approx(0.5, abs=1e-5)
+    assert (full["start_param"], full["end_param"]) == pytest.approx(
+        (0.0, 2.0 * math.pi)
+    )
+    assert (whole["start_param"], whole["end_param"]) == pytest.approx(
+        (0.0, 2.0 * math.pi)
+    )
+
+    # from the point on the first axis, through the middle, to the point on the second
+    assert _on_arc(quarter, 0.0) == pytest.approx((240.0, 100.0), abs=1e-3)
+    assert _on_arc(quarter, 0.5) == pytest.approx(
+        (200.0 + 40.0 * math.sqrt(0.5), 100.0 + 20.0 * math.sqrt(0.5)), abs=1e-3
+    )
+    assert _on_arc(quarter, 1.0) == pytest.approx((200.0, 120.0), abs=1e-3)
+
+    # the longer stored axis is the major axis; the arc still starts on the first one
+    assert swapped["ratio"] == pytest.approx(1.0 / 3.0, abs=1e-5)
+    assert math.hypot(*swapped["major_axis"]) == pytest.approx(30.0, abs=1e-3)
+    assert _on_arc(swapped, 0.0) == pytest.approx((110.0, 200.0), abs=1e-3)
+    assert _on_arc(swapped, 1.0) == pytest.approx((100.0, 230.0), abs=1e-3)
+
+    # 0.75 → 0.25 is the half that passes the point on the first axis
+    assert _on_arc(wrapped, 0.0) == pytest.approx((300.0, 80.0), abs=1e-3)
+    assert _on_arc(wrapped, 0.5) == pytest.approx((340.0, 100.0), abs=1e-3)
+    assert _on_arc(wrapped, 1.0) == pytest.approx((300.0, 120.0), abs=1e-3)
+
+    (round_full,) = _by_kind(result.document, "CIRCLE")
+    assert round_full["center"] == pytest.approx([300.0, 200.0], abs=1e-3)
+    assert round_full["radius"] == pytest.approx(20.0, abs=1e-3)
+    (round_arc,) = _by_kind(result.document, "ARC")
+    assert round_arc["radius"] == pytest.approx(20.0, abs=1e-3)
+    assert (round_arc["start_angle"], round_arc["end_angle"]) == pytest.approx(
+        (90.0, 180.0), abs=1e-3
+    )
+    assert result.statistics["converted_entity_counts"] == {
+        "ARC": 1,
+        "CIRCLE": 1,
+        "ELLIPSE": 5,
+    }
+    assert "\nELLIPSE\n" in convert_ir_to_dxf_text(result.document).dxf_text
+
+
+@needs_ellipse_records
+def test_ellipse_in_a_mirrored_view_keeps_its_side(tmp_path: Path) -> None:
+    # stored: a quarter from (+40, 0) to (0, +20) about the origin. The view flips x,
+    # so on the sheet it runs clockwise from the left end up to the top.
+    view = seg(
+        "view0",
+        option("name=`Mirrored`"),
+        seg(
+            "2dmodel",
+            mirror_matrix(0.2, 0.1),
+            seg(
+                "layer-1",
+                seg("sub0", elliptical_arc((0, 0), (0.04, 0), (0, 0.02), 0.0, 0.25)),
+            ),
+        ),
+    )
+    data = stream(seg("sheet0", option("fit width=0.42,fit height=0.297"), view))
+    result = convert_edrw_file_to_ir(_write(tmp_path, "mirrored.edrw", data))
+    validate_ir(result.document)
+    (arc_entity,) = _by_kind(result.document, "ELLIPSE")
+    ends = {tuple(round(c, 3) for c in _on_arc(arc_entity, f)) for f in (0.0, 1.0)}
+    assert ends == {(160.0, 100.0), (200.0, 120.0)}
+    # the middle of the arc is in the upper left of the centre, not the lower right
+    mx, my = _on_arc(arc_entity, 0.5)
+    assert mx == pytest.approx(200.0 - 40.0 * math.sqrt(0.5), abs=1e-3)
+    assert my == pytest.approx(100.0 + 20.0 * math.sqrt(0.5), abs=1e-3)
+
+
+def test_sheared_ellipse_uses_its_principal_axes() -> None:
+    # conjugate half-diameters that are not perpendicular (a sheared view)
+    u, v = (4.0, 0.0), (2.0, 2.0)
+    entity = _ellipse((0.0, 0.0), u, v, (0.0, 0.25))
+    assert entity is not None and entity["kind"] == "ELLIPSE"
+    major = entity["major_axis"]
+    assert math.hypot(*major) > 4.0 and 0.0 < entity["ratio"] < 1.0
+    for fraction in (0.0, 0.3, 0.5, 1.0):
+        t = fraction * 0.25 * 2.0 * math.pi
+        expected = (
+            math.cos(t) * u[0] + math.sin(t) * v[0],
+            math.cos(t) * u[1] + math.sin(t) * v[1],
+        )
+        assert _on_arc(entity, fraction) == pytest.approx(expected, abs=1e-9)
+    assert _ellipse((0.0, 0.0), (4.0, 0.0), (0.0, 0.0), None) is None  # no second axis
+
+
+def test_view_without_line_work_beside_its_model_is_reported(tmp_path: Path) -> None:
+    def view(name: str, body: bytes, *, model: bool = True) -> bytes:
+        children = (
+            [seg("3dmodel", matrix(1.0, 0.0, 0.0), seg("part0"))] if model else []
+        )
+        children.append(seg("2dmodel", matrix(1.0, 0.05, 0.05), seg("layer-1", body)))
+        return seg(name, option(f"name=`{name}`"), *children)
+
+    hidden = seg(
+        "sub0", visibility(FACES | EDGES | LINES | MARKERS, 0), line(0, 0, 0.1, 0)
+    )
+    data = stream(
+        seg(
+            "sheet0",
+            option("fit width=0.42,fit height=0.297"),
+            view("view0", seg("sub0", line(0, 0, 0.1, 0), line(0, 0.01, 0.1, 0.01))),
+            # only the model: eDrawings would project it, the file has no outline
+            view("view1", seg("sub0")),
+            view("view2", b""),
+            # everything the view stores is switched off: hidden, not missing
+            view("view3", hidden),
+            # no model and no line work: an empty view, nothing was lost
+            view("view4", seg("sub0"), model=False),
+            # a name and the hole markers every view keeps switched off are not
+            # the view's outline
+            view(
+                "view5",
+                seg("text0", text(0.0, 0.0, "VIEW NAME"))
+                + seg(
+                    "hole markers",
+                    visibility(FACES | EDGES | LINES | MARKERS, 0),
+                    marker(0.01, 0.01),
+                    line(0, 0, 0.01, 0.01),
+                ),
+            ),
+            seg(
+                "borderview0",
+                seg("2dmodel", seg("layer-1", seg("text0", text(0.3, 0.02, "SIZE")))),
+            ),
+        )
+    )
+    result = convert_edrw_file_to_ir(_write(tmp_path, "model-views.edrw", data))
+    validate_ir(result.document)
+    warning = next(d for d in result.diagnostics if d.code == "EDRW_VIEW_NOT_PROJECTED")
+    assert warning.severity == "warning" and warning.action == "skipped"
+    assert warning.details == {"count": 3, "views": 3, "total_views": 6}
+    assert "3 of 6 view(s)" in warning.message
+    assert result.statistics["views_not_projected"] == 3
+    assert result.statistics["hidden"] == 3
+    # a drawing whose views all carry their line work says nothing
+    plain = convert_edrw_file_to_ir(_write(tmp_path, "sw.edrw", solidworks_like()))
+    assert "EDRW_VIEW_NOT_PROJECTED" not in _codes(plain)
+    assert plain.statistics["views_not_projected"] == 0
 
 
 # --- the fixtures exported by eDrawings 2026 -----------------------------------------

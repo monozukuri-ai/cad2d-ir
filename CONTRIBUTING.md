@@ -65,6 +65,22 @@ wheels of `cad2d-ir-native` for every platform and publishes them together
 (`cad2d-ir-native` first, since `cad2d-ir` pins it) through PyPI trusted
 publishing (see [native/README.md](native/README.md#release)).
 
+## IR version
+
+`CURRENT_IR_VERSION` (`src/cad2d_ir/constants.py`) is the version of the IR
+document format and moves separately from the package version. Bump its minor
+part, and say so in the changelog, when a change alters what the writers (DXF,
+and the writers of other programs that take the IR) read from a document:
+
+- a field, or a key under `metadata` such as `metadata.jww.pen_color`, that a
+  writer reads is added, removed or renamed;
+- the meaning or the unit of such a value changes.
+
+Optional fields that writers ignore do not need a bump (the changelog says
+"IR version unchanged"). A program that accepts IR documents from outside may
+accept only the current and the previous version, so after a bump documents
+two versions old have to be converted again from their source file.
+
 ## Branch and PR guidelines
 
 - Keep each PR focused on one logical change.

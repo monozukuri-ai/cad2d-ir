@@ -44,6 +44,12 @@ _AIGDT_SYMBOLS = {"n": "⌀", "x": "↧"}
 _LINE_BREAK_RE = re.compile(r"\r\n|\n|\r")
 _STYLE_NAME_RE = re.compile(r"[^\w.\-]+", flags=re.UNICODE)
 _MAJOR_RE = re.compile(r"major\s*(\d+)")
+# inventor-kit's wording when a work or size budget of the reader ran out
+_LIMIT_RE = re.compile(
+    r"\blimit (exceeded|exhausted)\b|\bbudget exceeded\b", re.IGNORECASE
+)
+# the segments of the drawing itself in an inventor-kit "no framing profile" reason
+_DRAWING_SEGMENT_RE = re.compile(r"\bno framing profile for Dl\w+")
 _VECTOR_KINDS = frozenset({"polyline", "curve", "triangles", "text"})
 _OUT_OF_SHEET_MARGIN_RATIO = 0.05
 _PAPER_TOLERANCE = 0.01
@@ -1034,14 +1040,32 @@ def _segment_majors(document: Any) -> list[int]:
 
 
 def _unsupported_message(document: Any, majors: list[int]) -> str:
+    """Why no sheet of the drawing has a stored display that can be shown.
+
+    Either the save generation is one inventor-kit does not read (it says so
+    with ``drawing.unsupported_profile`` for the drawing's own ``Dl…``
+    segments), or the generation is read but the drawing ran out of one of the
+    reader's work limits, which is a different thing to tell the user (the
+    drawing is too large, not too old). A segment kind without a profile beside
+    the drawing's own (drawings of every generation carry some) does not make
+    the generation unsupported.
+    """
     reasons: list[str] = []
+    limits: list[str] = []
     for diagnostic in getattr(document, "diagnostics", None) or ():
         mapping = _mapping(diagnostic)
+        message = str(mapping.get("message", ""))
         if str(mapping.get("code", "")) == "drawing.unsupported_profile":
-            message = str(mapping.get("message", ""))
             if message and message not in reasons:
                 reasons.append(message)
+        elif _LIMIT_RE.search(message) and message not in limits:
+            limits.append(message)
     label = ", ".join(str(m) for m in majors) if majors else "unknown"
+    if limits and not any(_DRAWING_SEGMENT_RE.search(r) for r in reasons):
+        return (
+            f"IDW drawing exceeds the reader limits: segment major {label}; "
+            f"no sheet has a decodable stored display ({'; '.join(limits[:3])})"
+        )
     detail = f" ({'; '.join(reasons[:3])})" if reasons else ""
     return (
         f"unsupported IDW profile: segment major {label}; "

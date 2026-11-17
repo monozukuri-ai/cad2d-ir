@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.18.2
+
+- eDrawings drawings (`.edrw`): ellipses and elliptical arcs are drawn (with
+  `edrawings-kit` 0.2.5 or later, which reads their records). They were
+  skipped with `EDRW_ELEMENT_UNSUPPORTED`. An ellipse becomes an
+  `ELLIPSE` (a `CIRCLE` or an `ARC` when both axes are equal); the two stored
+  half-axes are read as conjugate half-diameters, so a curve that a view matrix
+  mirrors or shears keeps its shape and its direction.
+- eDrawings drawings with several sheets: the further sheets (`layouts`) are in
+  the millimetres of their own paper. When the model space was divided by a
+  view scale, the layouts were divided by it too while their paper kept its
+  size, so a viewer showed one corner of each. The model space now takes its
+  scale from the views of its own sheet (it used the views of every sheet), and
+  a scale within single precision of 1:n is 1:n (`paper_scale` 96, not
+  95.999997). A layout says `metadata.edrw.coordinates: "paper"`.
+- eDrawings drawings: font sizes stored in object units are used as heights on
+  the sheet, like world-space sizes. Their texts were all drawn 2.5 mm high
+  (`EDRW_TEXT_HEIGHT_ASSUMED`).
+- eDrawings drawings of early SOLIDWORKS writers: the width tag in front of a
+  text (`<SWTS=0.050000>582TEXT`) is removed; the stored width is kept in
+  `metadata.edrw.stored_width` (IR units). When a view reaches past the paper,
+  the orientation of the paper comes from the sheet format alone.
+- Inventor drawings (`.idw`): when no sheet can be shown because the drawing ran
+  out of one of inventor-kit's work limits, the `ImporterError` says so (`IDW
+  drawing exceeds the reader limits: segment major …`, with the limit the
+  reader named). It used to read `unsupported IDW profile: segment major …`,
+  which told the user of a large drawing that its Inventor version was not
+  supported. A segment kind without a framing profile beside the drawing's
+  own `Dl…` segments (drawings of every generation carry some) no longer hides
+  the limit.
+- eDrawings drawings: a view that stores only the 3D model it shows and no 2D
+  line work is reported with the new warning `EDRW_VIEW_NOT_PROJECTED`
+  (`details.views` out of `details.total_views`; `views_not_projected` in the
+  statistics). eDrawings projects the model of such a view when it opens the
+  file, so the drawing has the annotations of the view but not its outlines.
+  It used to be converted without a word about the missing outlines. A view's
+  name text and the hole markers it keeps switched off are not line work.
+- EXB: engineering symbols (surface roughness, geometric tolerance, datum,
+  section marker), part numbers, tables and BOM tables are drawn. `ezexb`
+  returned them with the display records CAXA cached, and the importer skipped
+  them as kinds without an IR mapping. Those records are now exploded into the
+  entity list as `LINE`, `ARC`, `CIRCLE`, `LWPOLYLINE`, `TEXT` / `MTEXT`, solid
+  `HATCH` and `INSERT` (`EXB_CACHED_DISPLAY_EXPLODED`, info). Each record keeps
+  its own layer, explicit colour, width and linetype; a ByBlock value is the
+  entity's, and a hidden record or entity is `visible: false`. The values,
+  table cells and associations of these entities are still not decoded.
+- EXB, with an `ezexb` later than 0.3.3: the `CachedDisplay` kind (a symbol,
+  part number or table of a save version whose fields `ezexb` does not decode, a
+  3D view, an array, an unknown record class) is drawn the same way; block
+  arrowheads of a dimension are `INSERT` entities in its `*EXB_D<id>` block;
+  the three-point angle dimension is an `ANGULAR` dimension; arcs and circles
+  with scaled or non-perpendicular stored vectors and polylines with a zero
+  normal are converted (`EXB_CURVE_BASIS_NORMALIZED`, info); a construction line
+  becomes a `LINE` across the extent of its space or block
+  (`EXB_CONSTRUCTION_LINE_CLIPPED`, warning). With `ezexb` 0.3.3 nothing changes
+  for these: it does not return them.
+- EXB: `EXB_PARTIAL_READ` is no longer reported for a drawing of a build that is
+  not verified whose only remaining read diagnostics describe entities that
+  were drawn from their cached display records or read as CAXA draws them. The
+  message of `EXB_UNSUPPORTED_ENTITY` names what is still skipped (records
+  without cached display records: viewports, images, embedded objects).
+- IR version unchanged: the new entities use existing kinds and fields.
+
 ## 0.18.0
 
 - The DXF writer and the entity conversion of the JWW / JWS importer exist

@@ -104,7 +104,9 @@ accepts an `inventor_kit.DrawingDocument` that the caller already read, plus
 `unit_scale` and `sheet_gap_ratio` overrides; `convert_idw_file_to_ir` also
 forwards `limits` / `drawing_limits` to `inventor_kit.read_drawing_file`. A file
 whose segment major is not supported by `inventor-kit` raises `ImporterError`
-with a message starting `unsupported IDW profile`.
+with a message starting `unsupported IDW profile`; a drawing of a supported
+segment major that ran out of one of the reader's work limits raises one
+starting `IDW drawing exceeds the reader limits`.
 
 ### 3D side channel
 

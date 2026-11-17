@@ -490,16 +490,18 @@ container version …").
 | first space (`model` / `Paper1`, id -7) | `entities` | the fullest space is promoted when the first is empty (`EXB_LAYOUT_PROMOTED`); further spaces become `layouts` (`EXB_LAYOUTS_PRESERVED`) |
 | stored coordinates | millimetres at real size | `EXB_UNITS_ASSUMED_MM`; `header.metadata.exb.paper_scale` is the drawing scale (1:3 is `3.0`, 2:1 is `0.5`) and `header.metadata.exb.paper` the sheet measured from the `*FRAME…` block (`EXB_PAPER_DETECTED`) |
 | POINT | `POINT` | |
-| LINE / CIRCLE / ARC | `LINE` / `CIRCLE` / `ARC` | arc direction from the basis handedness and the sweep sign |
-| POLYLINE | `LWPOLYLINE` with bulges | segment widths dropped (`EXB_POLYLINE_WIDTH_DROPPED`) |
+| LINE / CIRCLE / ARC | `LINE` / `CIRCLE` / `ARC` | arc direction from the basis handedness and the sweep sign; an arc or circle whose stored basis vectors are scaled or not perpendicular is read as CAXA draws it (the stored radius, starting along the stored X vector; `EXB_CURVE_BASIS_NORMALIZED`, needs `ezexb` after 0.3.3) |
+| construction line | `LINE` | unbounded in the drawing: drawn across the extent of the other entities of its space or block and the sheet frame (`EXB_CONSTRUCTION_LINE_CLIPPED`) |
+| POLYLINE | `LWPOLYLINE` with bulges | segment widths dropped (`EXB_POLYLINE_WIDTH_DROPPED`); a zero stored normal is the XY plane (`EXB_CURVE_BASIS_NORMALIZED`) |
 | TEXT | `TEXT`, or `MTEXT` when it has `\P` or formatting | height = stored height × drawing scale; alignment code on a 3×3 grid (0 top-left … 8 bottom-right, verified against the CAXA viewer except 2; `EXB_TEXT_ALIGNMENT_ASSUMED` for 2 and unknown codes); `%c %d %p %x`, tolerance escapes and the height code inside a stack (`\S\H0.7x;2^;`) normalised, and the width factors and fonts CAXA gives Latin and CJK characters (`\W0.8^0.7;`, `\W^0.8;`, `\fArial^SimSun||;`) written as DXF codes, `\A3;` removed (`EXB_TEXT_ESCAPE_NORMALIZED`; `cad2d_ir.mtext.mtext_dxf_codes`), roughness symbols dropped (`EXB_TEXT_SYMBOL_DROPPED`); attribute texts are plain text with the width code as `width_factor`; fit-to-box texts get a `width_factor` (`EXB_TEXT_FIT_WIDTH_FACTOR`) |
 | INSERT with attached attributes | `INSERT` with `attribute_texts` | attribute texts are in the INSERT's coordinate system; `AttributeDefinition` records are skipped (`EXB_ATTRIBUTE_DEFINITIONS_SKIPPED`) |
 | HATCH / SOLID | `HATCH` (`solid` for SOLID) | boundary curves sampled (`EXB_HATCH_BOUNDARY_SAMPLED`); pattern name, angle, scale and line definitions kept in `metadata.exb.hatch` (`EXB_HATCH_PATTERN_PRESERVED`); a block's attached SOLID becomes a solid HATCH in the block (`EXB_BLOCK_SOLID_ATTACHED`) |
 | NURBS | `SPLINE` | weights only when they differ from 1 |
 | ELLIPSE | `ELLIPSE` | major axis = x axis rotated by the stored rotation (`EXB_ELLIPSE_AXES_ASSUMED`) |
-| Dimension (linear, diameter, radius, leader, angular) | `DIMENSION` with `definition.block` | the cached presentation (lines, arcs, arrow solids, text) goes into a `*EXB_D<id>` block; `definition.measurement`, `text`, `points.location` / `text_midpoint` and the stored fields in `source_geometry`; semantics not decoded (`EXB_DIMENSION_FROM_CACHE`). The leader type is `GENERIC` |
+| Dimension (linear, diameter, radius, leader, angular, three-point angle) | `DIMENSION` with `definition.block` | the cached presentation (lines, arcs, arrow solids, block arrowheads as `INSERT`, text) goes into a `*EXB_D<id>` block; `definition.measurement`, `text`, `points.location` / `text_midpoint` and the stored fields in `source_geometry`; semantics not decoded (`EXB_DIMENSION_FROM_CACHE`). The leader type is `GENERIC` |
+| Symbol (roughness, geometric tolerance, datum, section marker), part number, table, BOM table, and any record `ezexb` returns as `CachedDisplay` (a symbol or table of another save version, a 3D view, an array, an unknown class) | `LINE`, `ARC`, `CIRCLE`, `LWPOLYLINE`, `TEXT` / `MTEXT`, solid `HATCH`, `INSERT` | the display records CAXA cached with the entity, exploded into the entity list (`EXB_CACHED_DISPLAY_EXPLODED`): each record keeps its own layer, explicit colour, width and linetype, a ByBlock value is the entity's, a hidden record or entity is `visible: false`; `source` names the entity. Values, table cells and associations are not decoded |
 | Layer / Linetype / TextStyle | tables | layer colour from the stored COLORREF, width flag 2 = stored millimetres, 3–6 = preset (`EXB_LINE_WIDTH_PRESET`); `pattern_mm` = dashes × scale; `font` = the CJK font name |
-| records `ezexb` cannot decode | skipped | `EXB_UNSUPPORTED_ENTITY` per record type GUID, `EXB_PARTIAL_READ` once per document |
+| records `ezexb` cannot decode and that carry no cached display records (viewports, images, embedded objects) | skipped | `EXB_UNSUPPORTED_ENTITY` per record type GUID, `EXB_PARTIAL_READ` once per document |
 
 Explicit entity colours are the low 24 bits of the stored value read as a
 COLORREF (`0x00BBGGRR`); ByLayer and ByBlock colours, widths and line types are
@@ -694,20 +696,23 @@ ZIP whose first entry is `eModel`, or the prefixed ZIP of older writers
 assemblies of the same family (`.eprt`, `.easm`) are read by
 `cad3d-ir-edrawings`, not here. Only the 2D sheet is drawn: the `3dmodel`
 subtrees that hold the models the views project are skipped
-(`EDRW_VIEW_3D_SKIPPED`).
+(`EDRW_VIEW_3D_SKIPPED`). A view that stores no 2D line work beside its
+`3dmodel` subtree — eDrawings projects the model when it opens such a file — has
+no outline in the drawing and is reported (`EDRW_VIEW_NOT_PROJECTED`).
 
 | eDrawings | IR | Notes |
 | --- | --- | --- |
-| `sheetN` segments under the root | model space + `layouts` | the first sheet with 2D geometry is the model space, further sheets are `layouts` with their own paper (`EDRW_SHEETS_AS_LAYOUTS`); the `Model` sheet the DXF/DWG Reader keeps beside the layouts is skipped when layouts exist (`EDRW_MODEL_SHEET_SKIPPED`). Sheet names come from the `name` option |
+| `sheetN` segments under the root | model space + `layouts` | the first sheet with 2D geometry is the model space, further sheets are `layouts` in the millimetres of their own paper (`EDRW_SHEETS_AS_LAYOUTS`, `metadata.edrw.coordinates` is `paper`); the `Model` sheet the DXF/DWG Reader keeps beside the layouts is skipped when layouts exist (`EDRW_MODEL_SHEET_SKIPPED`). Sheet names come from the `name` option |
 | `viewN` / `borderviewN` → `2dmodel` | sheet composition | points go through the chain of modelling matrices (row vectors, `p · M_node · … · M_root`); the `2dmodel` matrix of a SOLIDWORKS view carries its scale and offset (`EDRW_VIEW_PLACED`), the DXF/DWG Reader stores sheet coordinates directly |
 | stored unit | millimetres | the drawing-plane profile of edrawings-kit (`EDRW_UNITS_FROM_PROFILE`), else the writer's `fit width` / `fit height` (metres, `EDRW_UNITS_FROM_SHEET`), else the unit whose extent best fills a standard paper (`EDRW_UNITS_ASSUMED`); `header.metadata.edrw.units` |
-| the sheet | real-size millimetres | the sheet is divided by the dominant view scale (most entities), `header.metadata.edrw.paper_scale` (`EDRW_SCALE_APPLIED`, `EDRW_MIXED_SCALES` for other scales); the paper is the writer's sheet size with the orientation and origin of the drawn frame, or the smallest standard paper (ISO/JIS for millimetre drawings, ANSI/Arch for inch drawings) around the geometry, `header.metadata.edrw.sheet` (`EDRW_SHEET_DETECTED`) |
+| the sheet | real-size millimetres | the model-space sheet is divided by the dominant scale of its own views (most entities; a scale within single precision of 1:n is taken as 1:n), `header.metadata.edrw.paper_scale` (`EDRW_SCALE_APPLIED`, `EDRW_MIXED_SCALES` for other scales on that sheet); the paper is the writer's sheet size with the orientation and origin of the drawn sheet (of the sheet format alone when a view reaches past the paper), or the smallest standard paper (ISO/JIS for millimetre drawings, ANSI/Arch for inch drawings) around the geometry, `header.metadata.edrw.sheet` (`EDRW_SHEET_DETECTED`) |
 | visibility | shown / hidden | evaluated inside the sheet: writers save sheets other than the shown one (the DXF/DWG Reader: all of them) with everything off and eDrawings turns the shown sheet on; segments switched off inside the sheet (hole markers, view names, reference paths) are not drawn (`EDRW_HIDDEN_SKIPPED`) |
 | line, polyline, poly_polyline | `LINE`, `LWPOLYLINE` | one `LWPOLYLINE` per part of a poly_polyline; the writer's 1 µm gap marks (lines shorter than 0.005 mm) are dropped |
 | polygon | solid `HATCH` / closed `LWPOLYLINE` | filled when a segment inside the sheet turns faces on (`filled`: arrowheads, filled glyphs), otherwise an outline (`EDRW_POLYGON_AS_HATCH`) |
 | circle, circular_arc (three points) | `CIRCLE`, `ARC` | the circle through the three points; arcs run counter-clockwise from the first to the third point |
+| ellipse, elliptical_arc (centre and a point on each axis; arcs with a start and an end as fractions of a turn; read by edrawings-kit 0.2.5 and later) | `ELLIPSE` (`CIRCLE` / `ARC` when both axes are equal) | the two stored half-axes are taken as conjugate half-diameters, so an ellipse a view matrix mirrors or shears keeps its shape; an arc runs from its start to its end in the direction from the first axis to the second and wraps when the end is not after the start |
 | marker | `POINT` | |
-| text | `TEXT` | height from the `text_font` record in force (world-space sizes × the view scale; points × 25.4/72), else 2.5 mm (`EDRW_TEXT_HEIGHT_ASSUMED`); the anchor is read with the convention eDrawings' writers use (`center_right` = the text lies to the right of the point, on its baseline; checked against the source DXF of the DXF/DWG Reader) and kept in `metadata.edrw.anchor` (`EDRW_TEXT_ANCHOR_ASSUMED`); style `EDRW`, font name in `metadata.edrw.font` |
+| text | `TEXT` | height from the `text_font` record in force (world-space and object-unit sizes are heights on the sheet, which eDrawings' writers store in both; points × 25.4/72), else 2.5 mm (`EDRW_TEXT_HEIGHT_ASSUMED`); the width tag early SOLIDWORKS writers put in front of a text (`<SWTS=0.050000>582TEXT`: the width the text takes and a three-digit code) is removed, the width kept in `metadata.edrw.stored_width`; the anchor is read with the convention eDrawings' writers use (`center_right` = the text lies to the right of the point, on its baseline; checked against the source DXF of the DXF/DWG Reader) and kept in `metadata.edrw.anchor` (`EDRW_TEXT_ANCHOR_ASSUMED`); style `EDRW`, font name in `metadata.edrw.font` |
 | `textasgeom` segments | `LWPOLYLINE`s | text the writer stroked into line work (the DXF/DWG Reader's default) stays geometry (`EDRW_TEXT_AS_GEOMETRY`) |
 | dimensions | lines, arrowheads, text | eDrawings saves annotations as drawn; there are no editable `DIMENSION`s (`EDRW_DIMENSION_AS_LINES`) |
 | colour / weight / layer | `color`, `lineweight_mm`, `layer` | from the segment name (`c<COLORREF>t<thickness>` of the DXF/DWG Reader, `color<aci>thickness<n>` of old writers) or the colour record of the geometry kind; white and black are colour 7; relative line weights above 1 map to millimetres (`EDRW_LINE_WIDTH_ASSUMED`); layers from the `layername` option (`layer-1` is layer `0`) |
@@ -717,8 +722,9 @@ Entity ids are `EDRW_E…`; `source` keeps the kit's primitive and record ids an
 the sheet when `entity_provenance` is on. `source.version` names the HSF version
 and the writer (`eDrawings (HSF 19.10, DXF/DWG Reader AddIn (34.4.1.0003))`);
 `header.metadata.edrw` has the units, the paper, every sheet with its role and
-views, and the view scales. Streams edrawings-kit does not decode (eDrawings
-2008-era HSF 10.x) yield an empty document with `EDRW_NO_GEOMETRY`.
+views, and the view scales. Streams edrawings-kit does not decode (an HSF
+version without a syntax profile, such as 10.x) yield an empty document with
+`EDRW_NO_GEOMETRY`.
 
 The fixtures in `tests/data/edrw` are edrawings-kit's self-authored drawings
 (project-authored DXFs exported by eDrawings 2026 SP4.1); eDrawings-authored

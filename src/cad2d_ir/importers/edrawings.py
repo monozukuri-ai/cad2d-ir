@@ -4,8 +4,9 @@ An eDrawings drawing is a HOOPS Stream File (alone, inside a ZIP container or
 behind a short preamble) whose segment tree holds one ``sheetN`` segment per
 drawing sheet; each sheet has ``viewN`` / ``borderviewN`` children whose
 ``2dmodel`` subtrees carry the sheet-space line work (lines, polylines,
-polygons, circles, arcs, markers and text) and whose ``3dmodel`` subtrees carry
-the model the view projects (not drawn here). Coordinates are stored in metres
+polygons, circles, arcs, ellipses, markers and text) and whose ``3dmodel``
+subtrees carry the model the view projects (not drawn here; a view that stores
+no line work beside it is reported). Coordinates are stored in metres
 by the SOLIDWORKS writers; the kit's drawing-plane profile, the ``fit width`` /
 ``fit height`` options or a paper-size fit decide the unit.
 
@@ -90,13 +91,21 @@ _DISPLAY_LENGTH_UNITS = {"3": "mm", "4": "cm", "5": "m", "8": "inch"}
 # HOOPS geometry slots of the colour / visibility arrays (TKO_Geo_* bit order)
 _SLOT_FACES, _SLOT_EDGES, _SLOT_LINES, _SLOT_MARKERS, _SLOT_TEXT = 0, 1, 2, 3, 4
 _FONT_SIZE_WSU = 6  # TKO_Font_Size_WSU: the size is in world (sheet) units
+# TKO_Font_Size_Object: eDrawings' writers store the height on the sheet here
+# too (a view's matrix does not scale it), so it is read as a sheet size
+_FONT_SIZE_OBJECT = 0
 _FONT_SIZE_POINTS = 3
 _POINT_MM = 25.4 / 72.0
 _SEGMENT_ACI_RE = re.compile(r"^color(\d+)thickness(\d+)$")
 _SEGMENT_RGB_RE = re.compile(r"^c(\d+)t(\d+)$")
 _TEXT_AS_GEOMETRY = "textasgeom"
+# Early SOLIDWORKS writers put the width the text takes (in the units of its
+# segment) and a three-digit code in front of it: ``<SWTS=0.050000>582TEXT``
+_TEXT_WIDTH_TAG_RE = re.compile(r"^<SWTS=([0-9]+(?:\.[0-9]*)?|\.[0-9]+)>[0-9]{3}")
 _FILLED = "filled"
 _SKIPPED_SUBTREES = frozenset({"3dmodel"})
+# hidden helper marks SOLIDWORKS writers keep in every view, drawn or not
+_VIEW_HELPER_SEGMENTS = frozenset({"hole markers"})
 _MODEL_SHEET_NAMES = frozenset({"model", "モデル"})
 _HSF_SIGNATURE = b";; HSF V"
 _ZIP_SIGNATURE = b"PK\x03\x04"
@@ -136,6 +145,7 @@ _IDENTITY: Matrix = (
     1.0,
 )
 _EPSILON = 1e-9
+_TAU = 2.0 * math.pi
 _YEAR_RE = re.compile(r"(?<!\d)(19\d\d|20\d\d)(?!\d)")
 
 
@@ -491,6 +501,11 @@ class _Sheet:
     views: list[dict[str, Any]] = field(default_factory=list)
     skipped_3d: int = 0
     hidden: int = 0
+    # view segments that hold a ``3dmodel`` subtree, and the 2D line work each
+    # view stores (shown or hidden; texts and the hole markers every view keeps
+    # switched off are not line work)
+    views_with_model: set[str] = field(default_factory=set)
+    stored_in_view: Counter[str] = field(default_factory=Counter)
 
     @property
     def is_model(self) -> bool:
@@ -630,7 +645,11 @@ def edrawings_document_to_ir(
     skipped_3d = sum(s.skipped_3d for s in sheets)
     hidden = sum(s.hidden for s in sheets)
     views = [v for s in drawn for v in s.views]
-    divisor, dominant, other_scales = _document_scale(views)
+    # The model space is the first drawn sheet, so its views decide the real
+    # size; further sheets are layouts in the millimetres of their own paper
+    divisor, dominant, other_scales = _document_scale(
+        main.views if main is not None else []
+    )
     context.divisor = divisor
 
     sheet_info: dict[str, Any] | None = None
@@ -640,14 +659,22 @@ def edrawings_document_to_ir(
         context.entities.extend(entities)
         sheet_info, sheet_source = _sheet_paper(main, scene, entities, context)
         for other in drawn[1:]:
-            layout_entities = _convert_sheet(other, scene, context)
-            paper, _ = _sheet_paper(other, scene, layout_entities, context)
+            context.divisor = 1.0
+            try:
+                layout_entities = _convert_sheet(other, scene, context)
+                paper, _ = _sheet_paper(other, scene, layout_entities, context)
+            finally:
+                context.divisor = divisor
             layout: dict[str, Any] = {
                 "name": other.name,
                 "entities": layout_entities,
                 "viewports": [],
                 "metadata": {
-                    "edrw": {"segment": other.node.name, "index": other.index}
+                    "edrw": {
+                        "segment": other.node.name,
+                        "index": other.index,
+                        "coordinates": "paper",
+                    }
                 },
             }
             if paper is not None:
@@ -730,6 +757,23 @@ def edrawings_document_to_ir(
             "are not part of the 2D sheet and were not drawn.",
             action="skipped",
             count=skipped_3d,
+        )
+    model_views = [(s, v) for s in drawn for v in s.views if v["kind"] == "view"]
+    not_projected = [
+        v
+        for s, v in model_views
+        if v["segment"] in s.views_with_model and not s.stored_in_view[v["segment"]]
+    ]
+    if not_projected:
+        context.note(
+            "EDRW_VIEW_NOT_PROJECTED",
+            "warning",
+            f"{len(not_projected)} of {len(model_views)} view(s) store only the 3D "
+            "model they show (eDrawings projects it when it opens the file) and no "
+            "2D line work, so their outlines are not drawn.",
+            action="skipped",
+            details={"views": len(not_projected), "total_views": len(model_views)},
+            count=len(not_projected),
         )
     if hidden:
         context.note(
@@ -845,6 +889,7 @@ def edrawings_document_to_ir(
         "converted_entity_counts": dict(sorted(context.converted.items())),
         "skipped_entities": context.counts["invalid"] + context.counts["unsupported"],
         "skipped_3d": skipped_3d,
+        "views_not_projected": len(not_projected),
         "hidden": hidden,
         "texts": context.counts["text"],
         "text_geometry": context.counts["text_geometry"],
@@ -937,6 +982,8 @@ def _sheets(scene: _Scene) -> list[_Sheet]:
                     matrix = tuple(child.local_transform.value)
                     scale = round(_matrix_scale(matrix), 9)
                     origin = [matrix[12], matrix[13]]
+                elif child.name in _SKIPPED_SUBTREES:
+                    sheet.views_with_model.add(view_name)
             sheet.views.append(
                 {
                     "sheet": sheet.name,
@@ -960,6 +1007,23 @@ def _sheets(scene: _Scene) -> list[_Sheet]:
         if scene.skipped(owner):
             sheet.skipped_3d += 1
             continue
+        view_name = next(
+            (
+                n.name
+                for n in scene.chain(owner)
+                if n.parent_id == sheet_id
+                and (n.name or "").startswith(("view", "borderview"))
+            ),
+            None,
+        )
+        if (
+            view_name is not None
+            and primitive.text is None
+            and not any(
+                (n.name or "") in _VIEW_HELPER_SEGMENTS for n in scene.chain(owner)
+            )
+        ):
+            sheet.stored_in_view[view_name] += 1
         if primitive.kind == "polygon":
             shown = scene.visible(
                 owner, _SLOT_FACES, below=sheet_id, default=False
@@ -970,15 +1034,6 @@ def _sheets(scene: _Scene) -> list[_Sheet]:
             sheet.hidden += 1
             continue
         sheet.primitives.append(primitive)
-        view_name = next(
-            (
-                n.name
-                for n in scene.chain(owner)
-                if n.parent_id == sheet_id
-                and (n.name or "").startswith(("view", "borderview"))
-            ),
-            None,
-        )
         for view in sheet.views:
             if view["segment"] == view_name:
                 view["entities"] += 1
@@ -1085,6 +1140,10 @@ def _document_scale(views: list[dict[str, Any]]) -> tuple[float, float, set[floa
     others = {s for s in votes if not math.isclose(s, dominant, rel_tol=1e-6)}
     if math.isclose(dominant, 1.0, rel_tol=1e-6):
         return 1.0, 1.0, others
+    # Scales come from single-precision matrices: 1:96 is stored as 0.010416667
+    denominator = round(1.0 / dominant)
+    if denominator >= 2 and math.isclose(dominant * denominator, 1.0, rel_tol=1e-6):
+        dominant = 1.0 / denominator
     return dominant, dominant, others
 
 
@@ -1097,13 +1156,24 @@ def _sheet_paper(
     divisor = context.divisor
     if fit is not None:
         pw, ph = fit[0] * context.unit_scale, fit[1] * context.unit_scale
+        tolerance = _PAPER_TOLERANCE_MM
+        if bounds is not None:
+            min_x, min_y, max_x, max_y = (v * divisor for v in bounds)
+            width_mm, height_mm = max_x - min_x, max_y - min_y
+            if (
+                max(width_mm, height_mm) > max(pw, ph) + tolerance
+                or min(width_mm, height_mm) > min(pw, ph) + tolerance
+            ):
+                # A view reaches past the paper either way round (a detail view
+                # keeps the whole edges it cuts): the sheet format decides
+                frame = _frame_bounds(sheet, scene, context)
+                bounds = frame if frame is not None else bounds
         if bounds is not None:
             # `fit width` / `fit height` give the size; the orientation and the
             # origin come from the drawn sheet (SOLIDWORKS frames sit inside the
             # paper from (0, 0), and portrait sheets store the same two numbers)
             min_x, min_y, max_x, max_y = (v * divisor for v in bounds)
             width_mm, height_mm = max_x - min_x, max_y - min_y
-            tolerance = _PAPER_TOLERANCE_MM
             landscape = width_mm <= pw + tolerance and height_mm <= ph + tolerance
             portrait = width_mm <= ph + tolerance and height_mm <= pw + tolerance
             if portrait and (not landscape or height_mm > width_mm):
@@ -1155,6 +1225,34 @@ def _sheet_paper(
         },
         "the smallest standard sheet that holds the geometry",
     )
+
+
+def _frame_bounds(
+    sheet: _Sheet, scene: _Scene, context: _Context
+) -> tuple[float, float, float, float] | None:
+    """Extent of the sheet format's line work (the ``borderview`` segments), in IR units."""
+    factor = context.unit_scale / context.divisor
+    xs: list[float] = []
+    ys: list[float] = []
+    for primitive in sheet.primitives:
+        if primitive.text is not None:
+            continue
+        if not any(
+            node.parent_id == sheet.node.id
+            and (node.name or "").startswith("borderview")
+            for node in scene.chain(primitive.owner_node_id)
+        ):
+            continue
+        try:
+            points = _world_points(scene, primitive)
+        except (ValueError, struct.error):
+            continue
+        for x, y in points:
+            xs.append(x * factor)
+            ys.append(y * factor)
+    if not xs:
+        return None
+    return (min(xs), min(ys), max(xs), max(ys))
 
 
 def _fit_paper(
@@ -1324,13 +1422,20 @@ def _convert_primitive(
 
     if primitive.text is not None:
         value = primitive.text.value
+        stored_width: float | None = None
+        width_tag = _TEXT_WIDTH_TAG_RE.match(value) if value else None
+        if width_tag is not None:
+            value = value[width_tag.end() :]
+            stored_width = (
+                float(width_tag.group(1)) * _matrix_scale(scene.world(owner)) * factor
+            )
         if not value or not points:
             context.counts["unsupported"] += 1
             return out
         font = scene.font(owner)
         height = DEFAULT_TEXT_HEIGHT_MM / context.divisor
         if font is not None and font.size is not None and font.size > 0:
-            if font.units == _FONT_SIZE_WSU:
+            if font.units in (_FONT_SIZE_WSU, _FONT_SIZE_OBJECT):
                 height = font.size * factor
             elif font.units == _FONT_SIZE_POINTS:
                 height = font.size * _POINT_MM / context.divisor
@@ -1378,6 +1483,8 @@ def _convert_primitive(
                 details["anchor"] = anchor
             if font is not None and font.name:
                 details["font"] = font.name
+            if stored_width is not None and math.isfinite(stored_width):
+                details["stored_width"] = round(stored_width, 6)
         out.append(entity)
         context.converted["TEXT"] += 1
         context.counts["text"] += 1
@@ -1506,6 +1613,22 @@ def _convert_primitive(
             }
         )
         context.converted["ARC"] += 1
+    elif kind in ("ellipse", "elliptical_arc"):
+        if len(points) < 3:
+            raise ValueError("an ellipse needs its centre and a point on each axis")
+        limits: tuple[float, float] | None = None
+        if kind == "elliptical_arc":
+            stored = getattr(primitive, "limits", None)
+            values = tuple(stored.value) if stored is not None else ()
+            if len(values) < 2 or not all(math.isfinite(v) for v in values[:2]):
+                raise ValueError("an elliptical arc needs its start and end")
+            limits = (float(values[0]), float(values[1]))
+        curve = _ellipse(points[0], points[1], points[2], limits)
+        if curve is None:
+            context.counts["degenerate"] += 1
+            return out
+        out.append({**common(_SLOT_LINES), **curve})
+        context.converted[curve["kind"]] += 1
     elif kind == "marker":
         if not points:
             raise ValueError("a marker needs a point")
@@ -1588,6 +1711,87 @@ def _angle(center: Point, point: Point) -> float:
         math.degrees(math.atan2(point[1] - center[1], point[0] - center[0])), 9
     )
     return angle % 360.0
+
+
+def _ellipse(
+    center: Point,
+    on_first_axis: Point,
+    on_second_axis: Point,
+    limits: tuple[float, float] | None,
+) -> dict[str, Any] | None:
+    """An HSF ellipse or elliptical arc as an IR ELLIPSE (CIRCLE / ARC when round).
+
+    The record stores the centre and one point on each axis; the curve is
+    ``centre + cos(t)·u + sin(t)·v`` for those two half-axes, and an arc runs
+    from ``limits[0]`` to ``limits[1]`` (fractions of a turn, wrapping when the
+    end is not after the start). The points arrive through the sheet's
+    modelling matrices, which may mirror or shear the pair, so the principal
+    axes are recovered from ``u`` and ``v`` as conjugate half-diameters instead
+    of trusting that the first one is the longer. Returns None when an axis has
+    no length.
+    """
+    ux, uy = on_first_axis[0] - center[0], on_first_axis[1] - center[1]
+    vx, vy = on_second_axis[0] - center[0], on_second_axis[1] - center[1]
+    # |centre→P(t)|² peaks where 2t = atan2(2u·v, |u|² − |v|²): the major axis
+    turn = 0.5 * math.atan2(
+        2.0 * (ux * vx + uy * vy), ux * ux + uy * uy - vx * vx - vy * vy
+    )
+    cos_t, sin_t = math.cos(turn), math.sin(turn)
+    major = (cos_t * ux + sin_t * vx, cos_t * uy + sin_t * vy)
+    minor = (-sin_t * ux + cos_t * vx, -sin_t * uy + cos_t * vy)
+    major_length = math.hypot(*major)
+    minor_length = math.hypot(*minor)
+    if major_length < MIN_LENGTH_MM or minor_length < MIN_LENGTH_MM:
+        return None
+    # the stored direction (u towards v) is clockwise on the sheet after a mirror
+    ccw = major[0] * minor[1] - major[1] * minor[0] > 0.0
+    sweep = _TAU
+    start = 0.0
+    if limits is not None:
+        sweep = ((limits[1] - limits[0]) % 1.0) * _TAU
+        if sweep < 1e-9:
+            # a whole number of turns is the full curve, equal limits are no arc
+            if abs(limits[1] - limits[0]) < 0.5:
+                return None
+            sweep = _TAU
+        start = limits[0] * _TAU - turn
+    full = sweep >= _TAU - 1e-9
+    round_curve = major_length - minor_length <= 1e-6 * major_length
+    if round_curve:
+        radius = (major_length + minor_length) / 2.0
+        if full:
+            return {"kind": "CIRCLE", "center": list(center), "radius": radius}
+
+        def polar(parameter: float) -> float:
+            x = math.cos(parameter) * major[0] + math.sin(parameter) * minor[0]
+            y = math.cos(parameter) * major[1] + math.sin(parameter) * minor[1]
+            return round(math.degrees(math.atan2(y, x)), 9) % 360.0
+
+        first, last = polar(start), polar(start + sweep)
+        return {
+            "kind": "ARC",
+            "center": list(center),
+            "radius": radius,
+            "start_angle": first if ccw else last,
+            "end_angle": last if ccw else first,
+        }
+    entity: dict[str, Any] = {
+        "kind": "ELLIPSE",
+        "center": list(center),
+        "major_axis": [major[0], major[1]],
+        "ratio": min(1.0, minor_length / major_length),
+    }
+    if full:
+        entity["start_param"], entity["end_param"] = 0.0, _TAU
+    elif ccw:
+        entity["start_param"] = start % _TAU
+        entity["end_param"] = (start + sweep) % _TAU
+    else:
+        # the IR parameter runs counter-clockwise from the major axis; a mirrored
+        # arc covers the same points from its stored end back to its start
+        entity["start_param"] = (-(start + sweep)) % _TAU
+        entity["end_param"] = (-start) % _TAU
+    return entity
 
 
 __all__ = [
