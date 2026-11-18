@@ -29,6 +29,7 @@ from cad2d_ir.api import (
 from cad2d_ir.codecs.dxf import (
     SUPPORTED_DXF_TARGET_VERSIONS,
     dxf_text_encoding,
+    dxf_text_to_bytes,
     dxf_to_ir,
     ir_to_dxf,
     read_dxf_file,
@@ -96,6 +97,7 @@ __all__ = [
     "detect_source_format",
     "diagnostic_code_details",
     "dxf_text_encoding",
+    "dxf_text_to_bytes",
     "ir_to_dxf",
     "load_ir_json",
     "load_schema",

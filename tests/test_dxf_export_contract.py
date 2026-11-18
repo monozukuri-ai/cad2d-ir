@@ -17,7 +17,7 @@ def _document() -> dict:
         "tables": {
             "layers": {
                 "Geometry": {
-                    "color": "#FF0000",
+                    "color": "#FF8000",
                     "linetype": "DASHED",
                     "lineweight_mm": 0.25,
                     "plot": True,
@@ -335,7 +335,7 @@ def test_tables_roundtrip_layer_linetype_and_text_style() -> None:
 
     assert "SECTION\n2\nTABLES" in result.dxf_text
     assert tables["layers"]["Geometry"] == {
-        "color": "#FF0000",
+        "color": "#FF8000",
         "linetype": "DASHED",
         "lineweight_mm": 0.25,
         "plot": True,

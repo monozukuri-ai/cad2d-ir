@@ -204,7 +204,9 @@ def test_ir2dxf_cli_accepts_target_version_and_dimension_mode(
         == 0
     )
     raw = output.read_bytes()
-    dxf_text = raw.decode("cp932")
+    # the file has CR and LF, as the files of AutoCAD have
+    assert raw.count(b"\n") == raw.count(b"\r\n") > 0
+    dxf_text = raw.decode("cp932").replace("\r\n", "\n")
     assert "日本語レイヤ".encode("utf-8") not in raw
     assert "$ACADVER\n1\nAC1009" in dxf_text
     assert "日本語レイヤ" in dxf_text

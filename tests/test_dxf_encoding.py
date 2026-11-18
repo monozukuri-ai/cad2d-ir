@@ -379,7 +379,7 @@ def _text_values(dxf_text: str) -> list[str]:
 def test_r12_code_page_follows_the_characters_of_the_drawing(
     texts: list[str], codepage: str, encoding: str, written: list[str], tmp_path: Path
 ) -> None:
-    from cad2d_ir import convert_ir_to_dxf_text, dxf_text_encoding
+    from cad2d_ir import convert_ir_to_dxf_text, dxf_text_encoding, dxf_text_to_bytes
 
     result = convert_ir_to_dxf_text(_texts_document(*texts), target_version="AC1009")
 
@@ -393,7 +393,8 @@ def test_r12_code_page_follows_the_characters_of_the_drawing(
     # The file writer stores the text in that code page, and it reads back.
     output = tmp_path / "r12.dxf"
     write_dxf_file(_texts_document(*texts), output, target_version="AC1009")
-    assert output.read_bytes() == result.dxf_text.encode(encoding)
+    assert output.read_bytes() == dxf_text_to_bytes(result.dxf_text)
+    assert output.read_bytes().count(b"\n") == output.read_bytes().count(b"\r\n")
     imported = convert_dxf_file_to_ir(output)
     assert [entity["text"] for entity in imported.document["entities"]] == written
     # An explicit encoding has to be the one the file declares.

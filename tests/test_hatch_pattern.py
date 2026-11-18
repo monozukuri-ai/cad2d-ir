@@ -133,7 +133,7 @@ def test_dxf_import_ignores_pattern_data_it_cannot_use() -> None:
     # A solid fill has no pattern, whatever follows it.
     stray = [*("78", "1"), *_line("45", ("0", "0"), ("-1", "1"))]
     solid = dxf_to_ir(_dxf(*_hatch(*stray, solid="1", name="SOLID")))["entities"][0]
-    assert "pattern_lines" not in solid and "solid" not in solid
+    assert "pattern_lines" not in solid and solid["solid"] is True
 
 
 def test_hatch_pattern_roundtrips_through_dxf() -> None:

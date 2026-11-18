@@ -16,6 +16,7 @@ from cad2d_ir.api import (
 )
 from cad2d_ir.codecs.dxf import (
     SUPPORTED_DXF_TARGET_VERSIONS,
+    dxf_text_to_bytes,
     resolve_dxf_output_encoding,
 )
 from cad2d_ir.constants import CURRENT_IR_VERSION
@@ -247,7 +248,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 dxf_text=result.exported.dxf_text,
             )
             # Complete conversion and encoding before opening any output.
-            encoded = result.exported.dxf_text.encode(encoding)
+            encoded = dxf_text_to_bytes(result.exported.dxf_text, encoding)
             ir_json = json.dumps(result.imported.document, ensure_ascii=False)
             report_json = json.dumps(report, ensure_ascii=False, indent=2)
             args.output.write_bytes(encoded)
@@ -346,7 +347,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 encoding=args.encoding,
                 dxf_text=result.dxf_text,
             )
-            _write_text(args.output, result.dxf_text, encoding=output_encoding)
+            if args.output is None:
+                _write_text(None, result.dxf_text, encoding=output_encoding)
+            else:
+                args.output.write_bytes(
+                    dxf_text_to_bytes(result.dxf_text, output_encoding)
+                )
             for diagnostic in result.diagnostics:
                 print(
                     f"{diagnostic.severity.title()} "

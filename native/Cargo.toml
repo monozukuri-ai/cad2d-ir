@@ -4,7 +4,7 @@ resolver = "2"
 
 [workspace.package]
 # Generated from ../pyproject.toml by scripts/set_version.py; do not edit here.
-version = "0.18.2"
+version = "0.18.3"
 edition = "2021"
 license = "MIT"
 repository = "https://github.com/monozukuri-ai/cad2d-ir"

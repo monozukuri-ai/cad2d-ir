@@ -171,7 +171,9 @@ objects unless `to_dict()` is asked for: the entities of a large drawing take
 a fraction of the memory of their `dict`s. `NativeDocument.from_dict` holds any
 IR `dict` that way, and `to_dxf(target_version=..., curve_segments=...,
 generic_dimensions=..., entity_map=...)` writes it with all the options of
-`ir_to_dxf`.
+`ir_to_dxf`. `to_dxf_bytes()` gives the bytes of the DXF R2010 file (UTF-8,
+lines ending with CR and LF), the same as `dxf_text_to_bytes()` makes of the
+text.
 
 The few entities a caller has to look at in Python can be read and changed
 without the whole document becoming a `dict`:

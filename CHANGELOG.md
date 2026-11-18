@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.18.3
+
+- DXF writer: the header states the extents of model space (`$EXTMIN`,
+  `$EXTMAX`), for both targets. A program that opens the file takes its first
+  view from them, and Jw_cad chooses the scale of the drawing from them: without
+  them it kept the scale it had, so a drawing in real size opened far outside
+  the paper. The extents are those of the geometry the entities state, the
+  blocks of block references and dimensions included; a text counts with the
+  box its height and the number of its characters give. A model space without
+  geometry states none.
+- DXF writer: an entity whose linetype is `BYLAYER` is written without a
+  linetype, which means the same and is what AutoCAD writes. Jw_cad draws an
+  entity that states `BYLAYER` with a solid line instead of the linetype of its
+  layer, so the centre lines of a DWG became solid (the DWG importer states
+  `BYLAYER` on every entity). No `BYLAYER` linetype is added to the table for
+  such an entity, so `DXF_TABLE_DEFAULTED` is no longer reported for it.
+- DXF writer: a true colour that is one of the six pure colours of the colour
+  index (`#FF0000` red, `#FFFF00` yellow, `#00FF00` green, `#00FFFF` cyan,
+  `#0000FF` blue, `#FF00FF` magenta) is written as its colour number (group 62,
+  1 to 6) and no longer as a true colour (group 420), for entities, layers and
+  attributes. The number is exactly that colour and every reader knows it;
+  Jw_cad showed a pure red of group 420 as blue and a pure blue as red. Read
+  back, such a colour is the number (`1`, not `"#FF0000"`). For DXF R12 it was
+  the nearest number already; it is no longer reported as approximated
+  (`DXF_R12_TRUE_COLOR_APPROXIMATED`), because it is exact.
+- DXF files end their lines with CR and LF, as the files of AutoCAD do:
+  `write_dxf_file()`, the `ir2dxf` and `hpgl2dxf` commands and
+  `NativeDocument.to_dxf_bytes()`. Jw_cad read no entity of a UTF-8 DXF with
+  Japanese layer names whose lines ended with a line feed alone. The text
+  `ir_to_dxf()` returns keeps the line feed of a Python text; the new
+  `dxf_text_to_bytes(dxf_text, encoding=None, *, errors="strict")` gives the
+  bytes of its file, in `dxf_text_encoding(dxf_text)` unless an encoding is
+  given. A caller that encoded the text itself gets the same file from it.
+- DXF reader: a solid fill states `solid: true` (a `HATCH` with a solid fill,
+  and the `HATCH` made of a `SOLID` or a `TRACE`), as every other importer
+  states it. The key was left out, which the schema reads as `true`; a consumer
+  that only fills `solid is True` drew the fills of a DXF as outlines.
+
 ## 0.18.2
 
 - eDrawings drawings (`.edrw`): ellipses and elliptical arcs are drawn (with

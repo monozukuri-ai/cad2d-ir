@@ -269,23 +269,25 @@ fn push_single_line(out: &mut String, value: &str) {
     }
 }
 
-/// ``_format_pairs``: a line for each code and each value.
-pub(crate) fn format_pairs(sections: &[Vec<Pair>]) -> String {
+/// ``_format_pairs``: a line for each code and each value. The lines end with
+/// a line feed, or with CR and LF (``crlf``) as in the file AutoCAD writes.
+pub(crate) fn format_pairs(sections: &[Vec<Pair>], crlf: bool) -> String {
+    let newline = if crlf { "\r\n" } else { "\n" };
     if sections.iter().all(Vec::is_empty) {
-        return "\n".to_string();
+        return newline.to_string();
     }
     let size: usize = sections
         .iter()
         .flatten()
-        .map(|(_, value)| value.as_str().len() + 6)
+        .map(|(_, value)| value.as_str().len() + 6 + 2 * usize::from(crlf))
         .sum();
     let mut out = String::with_capacity(size);
     let mut buffer = itoa_buffer();
     for (code, value) in sections.iter().flatten() {
         out.push_str(format_code(&mut buffer, *code));
-        out.push('\n');
+        out.push_str(newline);
         push_single_line(&mut out, value.as_str());
-        out.push('\n');
+        out.push_str(newline);
     }
     out
 }

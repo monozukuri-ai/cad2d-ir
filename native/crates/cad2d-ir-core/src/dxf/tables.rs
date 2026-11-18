@@ -5,8 +5,8 @@ use std::collections::BTreeSet;
 use indexmap::IndexMap;
 
 use super::common::{
-    dxf_lineweight, hex_color, layer_val, lineweight_is_normalized, lineweight_of, nearest_aci,
-    py_str,
+    dxf_lineweight, hex_color, is_by_layer, layer_val, lineweight_is_normalized, lineweight_of,
+    nearest_aci, pure_aci, py_str,
 };
 use super::dimension::{self, GeometryBlocks};
 use super::layout::LayoutScope;
@@ -116,7 +116,8 @@ impl Referenced {
             }
         }
         if let Some(linetype) = &entity.linetype {
-            if !self.linetypes.contains(linetype.as_ref()) {
+            // "by layer" is not written on the entity, so it needs no record
+            if !is_by_layer(linetype) && !self.linetypes.contains(linetype.as_ref()) {
                 self.linetypes.insert(linetype.to_string());
             }
         }
@@ -377,6 +378,10 @@ pub(crate) fn tables_to_pairs(
                 return Err(WriteError::invalid("layer color is a bool"));
             }
             Some(Value::Str(color)) => match hex_color(color) {
+                // a pure colour is its number in both targets (``pure_aci``)
+                Some(rgb) if pure_aci(rgb).is_some() => {
+                    pairs.push((62, Val::integer(pure_aci(rgb).unwrap_or(7))));
+                }
                 Some(rgb) if r2010 => {
                     pairs.push((62, Val::S("7")));
                     pairs.push((420, Val::owned(rgb.to_string())));

@@ -176,9 +176,12 @@ linetype or text style and in a font file; names that would become the same
 get a number (`DXF_R12_CHARACTERS_REPLACED`).
 
 `write_dxf_file(..., encoding="auto")` writes AC1009 in the declared code
-page and AC1024 in UTF-8. Consumers of the `str` returned by `ir_to_dxf()`
-encode it with `dxf_text_encoding(dxf_text)`, which reads the header;
-`convert_ir_to_dxf_text()` returns the same codec as `IrToDxfResult.encoding`.
+page and AC1024 in UTF-8, with CR and LF at the end of the lines as in the
+files of AutoCAD. Consumers of the `str` returned by `ir_to_dxf()` get the
+same bytes from `dxf_text_to_bytes(dxf_text)`; the text itself keeps the line
+feed of a Python text. `dxf_text_encoding(dxf_text)` reads the codec from the
+header; `convert_ir_to_dxf_text()` returns the same codec as
+`IrToDxfResult.encoding`.
 `resolve_dxf_output_encoding(target_version=..., dxf_text=...)` validates an
 explicit encoding: for AC1009 it has to be the declared one, so the declared
 code page cannot disagree with the file bytes. Without `dxf_text` it answers

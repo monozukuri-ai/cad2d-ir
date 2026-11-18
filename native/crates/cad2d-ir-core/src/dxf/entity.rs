@@ -1052,7 +1052,10 @@ fn attribute_color(out: &mut Vec<Pair>, attribute: &Map) {
         Some(Value::Bool(flag)) => out.push((62, Val::S(if *flag { "True" } else { "False" }))),
         Some(Value::Str(text)) => {
             if let Some(rgb) = super::common::hex_color(text) {
-                out.push((420, Val::owned(rgb.to_string())));
+                match super::common::pure_aci(rgb) {
+                    Some(index) => out.push((62, Val::integer(index))),
+                    None => out.push((420, Val::owned(rgb.to_string()))),
+                }
             }
         }
         _ => {}

@@ -20,6 +20,7 @@ mod common;
 mod curves;
 mod dimension;
 mod entity;
+mod extents;
 mod image;
 mod layout;
 mod pairs;
@@ -160,6 +161,12 @@ pub struct Options {
     pub generic_dimensions: GenericDimensions,
     /// Whether [`DxfOutput::entity_map`] is filled.
     pub entity_map: bool,
+    /// Whether the lines end with CR and LF, as they do in a DXF file AutoCAD
+    /// writes. For the text that is stored as the file as it is; a text a
+    /// caller writes in text mode keeps the line feed alone. (Jw_cad reads no
+    /// entity of a UTF-8 DXF with Japanese names whose lines end with a line
+    /// feed only.)
+    pub crlf: bool,
 }
 
 impl Default for Options {
@@ -169,6 +176,7 @@ impl Default for Options {
             curve_segments: 96,
             generic_dimensions: GenericDimensions::Explode,
             entity_map: false,
+            crlf: false,
         }
     }
 }
@@ -372,6 +380,7 @@ pub fn write(
     let layouts = layout::layout_scopes(document)?;
     let mut diagnostics = Vec::new();
     let generated = dimension::geometry_blocks(document, &layouts, &mut diagnostics)?;
+    let model_extents = extents::model_extents(document, &generated);
     let mut context = Context {
         host,
         options,
@@ -471,7 +480,8 @@ pub fn write(
     } else {
         None
     };
-    let header_pairs = header_to_pairs(document, &units_name, codepage, &mut context)?;
+    let header_pairs =
+        header_to_pairs(document, &units_name, codepage, model_extents, &mut context)?;
 
     // the parts of the file in the order they are written; the passes below see
     // them as one list of pairs
@@ -490,7 +500,7 @@ pub fn write(
         r12::store_r12_text(&mut sections, &mut context)?;
     }
     Ok(DxfOutput {
-        text: pairs::format_pairs(&sections),
+        text: pairs::format_pairs(&sections, options.crlf),
         diagnostics: context.diagnostics,
         entity_map: context.entity_map,
     })
@@ -537,6 +547,7 @@ fn header_to_pairs(
     document: &Document,
     units_name: &str,
     codepage: Option<String>,
+    model_extents: Option<[f64; 4]>,
     context: &mut Context<'_>,
 ) -> Result<Vec<Pair>, WriteError> {
     let r2010 = context.r2010();
@@ -546,6 +557,16 @@ fn header_to_pairs(
         (9, Val::S("$ACADVER")),
         (1, Val::S(if r2010 { "AC1024" } else { "AC1009" })),
     ];
+    if let Some([min_x, min_y, max_x, max_y]) = model_extents {
+        // The extents of model space (see ``extents``): what a reader shows
+        // first, and what Jw_cad chooses the scale of the drawing from.
+        for (name, x, y) in [("$EXTMIN", min_x, min_y), ("$EXTMAX", max_x, max_y)] {
+            pairs.push((9, Val::S(name)));
+            pairs.push((10, Val::owned(num(x))));
+            pairs.push((20, Val::owned(num(y))));
+            pairs.push((30, Val::S("0")));
+        }
+    }
     if let Some(codepage) = codepage {
         // The text is UTF-8; the code page is what a reader converts it to for
         // an older format. ODA garbles MTEXT saved as R2000 without one.

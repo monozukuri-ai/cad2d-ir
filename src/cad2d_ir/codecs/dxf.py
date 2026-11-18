@@ -3228,13 +3228,15 @@ def _hatch_from_pairs(
 
     # Group 70: 1 = solid fill, 0 = pattern fill (a bare ``or 1`` used to coerce 0
     # into "solid", which turned pattern hatches into solid fills on re-export).
-    if _first_int(pairs, 70, default=1) == 0:
-        entity["solid"] = False
+    # A solid fill is stated too, as every other importer states it: the schema
+    # default is ``true``, but a consumer that only fills ``solid is True`` drew
+    # the fills of a DXF as outlines.
+    entity["solid"] = _first_int(pairs, 70, default=1) != 0
 
     pattern = _first_string(pairs, 2)
     if pattern and pattern.upper() != "SOLID":
         entity["pattern"] = pattern
-    if entity.get("solid") is False:
+    if not entity["solid"]:
         _apply_hatch_pattern(entity, pairs)
 
     loops, notes = _parse_hatch_loops(pairs)
@@ -3396,6 +3398,7 @@ def _solid_from_pairs(pairs: list[DXFPair], idx: int) -> dict[str, Any]:
     """
     entity = _common_from_pairs(pairs, idx)
     entity["kind"] = "HATCH"
+    entity["solid"] = True
     corners = [
         [_required_float(pairs, 10), _required_float(pairs, 20)],
         [_required_float(pairs, 11), _required_float(pairs, 21)],
@@ -4110,7 +4113,28 @@ def write_dxf_file(
         encoding=encoding,
         dxf_text=dxf_text,
     )
-    Path(path).write_bytes(dxf_text.encode(selected_encoding))
+    Path(path).write_bytes(dxf_text_to_bytes(dxf_text, selected_encoding))
+
+
+def dxf_text_to_bytes(
+    dxf_text: str, encoding: str | None = None, *, errors: str = "strict"
+) -> bytes:
+    """The bytes of the file of a DXF text.
+
+    The text is stored in its encoding (``dxf_text_encoding`` unless one is
+    given) and its lines end with CR and LF, as they do in the files AutoCAD
+    writes. Every reader takes either line end, with one known exception:
+    Jw_cad reads no entity of a UTF-8 DXF with Japanese names when the lines end
+    with a line feed alone. A text that already has CR and LF is left as it is.
+
+    ``errors`` is the error handling of ``str.encode`` (the writer has already
+    replaced what the code page of a DXF R12 cannot store, so the default finds
+    nothing to refuse in a text it made).
+    """
+    data = dxf_text.encode(encoding or dxf_text_encoding(dxf_text), errors)
+    if b"\r\n" in data[:64]:
+        return data
+    return data.replace(b"\n", b"\r\n")
 
 
 def dxf_text_encoding(dxf_text: str) -> str:

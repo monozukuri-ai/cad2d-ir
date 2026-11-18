@@ -542,6 +542,7 @@ fn dxf_options(
         curve_segments: curve_segments as u32,
         generic_dimensions,
         entity_map,
+        crlf: false,
     })
 }
 
@@ -975,8 +976,9 @@ impl NativeDocument {
         Ok((output.text, diagnostics, map))
     }
 
-    /// DXF R2010 as the bytes of its file (UTF-8) with the export diagnostics,
-    /// without a Python ``str`` of the whole file in between.
+    /// DXF R2010 as the bytes of its file (UTF-8, lines ending with CR and LF)
+    /// with the export diagnostics, without a Python ``str`` of the whole file
+    /// in between.
     #[pyo3(signature = (*, curve_segments = 96, generic_dimensions = "explode"))]
     fn to_dxf_bytes<'py>(
         &self,
@@ -984,7 +986,8 @@ impl NativeDocument {
         curve_segments: i64,
         generic_dimensions: &str,
     ) -> PyResult<(Bound<'py, pyo3::types::PyBytes>, Vec<DiagnosticTuple>)> {
-        let options = dxf_options("AC1024", curve_segments, generic_dimensions, false)?;
+        let mut options = dxf_options("AC1024", curve_segments, generic_dimensions, false)?;
+        options.crlf = true;
         let host = PythonHost::new(py)?;
         let mut output = dxf::write(&self.document, &options, &host).map_err(write_error)?;
         let diagnostics = diagnostic_tuples(&mut output);

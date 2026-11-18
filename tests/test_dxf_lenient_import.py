@@ -379,7 +379,7 @@ def test_solid_and_trace_become_solid_hatch_loops_in_outline_order() -> None:
     quad, tri = ir["entities"]
     assert quad["kind"] == "HATCH" and quad["source"]["kind"] == "SOLID"
     assert quad["loops"][0]["vertices"] == [[0, 0], [10, 0], [10, 10], [0, 10]]
-    assert "solid" not in quad  # solid fill is the default
+    assert quad["solid"] is True and tri["solid"] is True
     assert tri["loops"][0]["vertices"] == [[0, 0], [4, 0], [2, 3]]
 
 

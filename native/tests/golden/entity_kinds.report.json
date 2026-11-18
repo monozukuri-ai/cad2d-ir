@@ -169,13 +169,6 @@
     "action": "normalized"
    },
    {
-    "code": "DXF_R12_TRUE_COLOR_APPROXIMATED",
-    "severity": "warning",
-    "message": "Layer 'Geometry' true color #FF0000 was approximated as ACI 1 for DXF R12.",
-    "entity_id": null,
-    "action": "approximated"
-   },
-   {
     "code": "DXF_R12_LINEWEIGHT_OMITTED",
     "severity": "warning",
     "message": "Layer 'Geometry' lineweight was omitted from DXF R12.",
@@ -369,13 +362,6 @@
     "message": "DXF STYLE record 'STANDARD' was synthesized from defaults.",
     "entity_id": null,
     "action": "normalized"
-   },
-   {
-    "code": "DXF_R12_TRUE_COLOR_APPROXIMATED",
-    "severity": "warning",
-    "message": "Layer 'Geometry' true color #FF0000 was approximated as ACI 1 for DXF R12.",
-    "entity_id": null,
-    "action": "approximated"
    },
    {
     "code": "DXF_R12_LINEWEIGHT_OMITTED",

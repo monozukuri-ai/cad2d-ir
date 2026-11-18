@@ -106,10 +106,23 @@ pub(crate) fn layer_val(entity: &Entity) -> Result<Val, WriteError> {
     }
 }
 
-/// The linetype an entity names: ``entity.get("linetype")`` when it is not empty.
+/// Whether a linetype name says "the linetype of the layer". An entity without
+/// a linetype has just that, so the name is not written: AutoCAD leaves group 6
+/// out for it, and Jw_cad draws an entity that states ``BYLAYER`` with a solid
+/// line instead of the linetype of its layer (a DWG importer states it on
+/// every entity).
+pub(crate) fn is_by_layer(name: &str) -> bool {
+    name.eq_ignore_ascii_case("BYLAYER")
+}
+
+/// The linetype an entity names: ``entity.get("linetype")`` when it is not
+/// empty and not the linetype of the layer.
 fn linetype_val(entity: &Entity) -> Result<Option<Val>, WriteError> {
     match (&entity.linetype, entity.extra_get("linetype")) {
-        (Some(linetype), _) => Ok((!linetype.is_empty()).then(|| Val::A(Arc::clone(linetype)))),
+        (Some(linetype), _) => {
+            Ok((!linetype.is_empty() && !is_by_layer(linetype))
+                .then(|| Val::A(Arc::clone(linetype))))
+        }
         (None, None) => Ok(None),
         (None, Some(value)) if !value.truthy() => Ok(None),
         (None, Some(value)) => Ok(Some(Val::owned(
@@ -134,6 +147,23 @@ pub(crate) fn hex_color(text: &str) -> Option<u32> {
         return None;
     }
     u32::from_str_radix(&digits[..6], 16).ok()
+}
+
+/// The colour number of a true colour that is one of the six pure colours of
+/// the colour index (red 1, yellow 2, green 3, cyan 4, blue 5, magenta 6).
+/// Such a colour is written as its number (group 62) and not as a true colour
+/// (group 420): the number is exactly that colour, every reader knows it, and
+/// Jw_cad shows a pure red and a pure blue of group 420 as each other.
+pub(crate) fn pure_aci(rgb: u32) -> Option<i64> {
+    Some(match rgb {
+        0xFF0000 => 1,
+        0xFFFF00 => 2,
+        0x00FF00 => 3,
+        0x00FFFF => 4,
+        0x0000FF => 5,
+        0xFF00FF => 6,
+        _ => return None,
+    })
 }
 
 /// ``_nearest_aci``: the first of the seven basic colours that is nearest.
@@ -237,7 +267,10 @@ fn color_of(entity: &Entity) -> ColorOut {
     match &entity.color {
         Some(Color::Index(index)) => ColorOut::Index(Val::integer(*index)),
         Some(Color::Text(text)) => match hex_color(text) {
-            Some(rgb) => ColorOut::True(rgb),
+            Some(rgb) => match pure_aci(rgb) {
+                Some(index) => ColorOut::Index(Val::integer(index)),
+                None => ColorOut::True(rgb),
+            },
             None => ColorOut::None,
         },
         None => match entity.extra_get("color") {
@@ -360,6 +393,25 @@ mod tests {
         // black is as far from red as from green and blue: the first one stays
         assert_eq!(nearest_aci(0x000000), 1);
         assert_eq!(nearest_aci(0x808080), 7);
+    }
+
+    #[test]
+    fn the_six_pure_colours_have_a_number() {
+        for (rgb, index) in [
+            (0xFF0000, 1),
+            (0xFFFF00, 2),
+            (0x00FF00, 3),
+            (0x00FFFF, 4),
+            (0x0000FF, 5),
+            (0xFF00FF, 6),
+        ] {
+            assert_eq!(pure_aci(rgb), Some(index));
+        }
+        // black and white are the drawing colour 7 only by convention, and a
+        // colour beside a pure one is not it
+        for rgb in [0x000000, 0xFFFFFF, 0xFE0000, 0x808080] {
+            assert_eq!(pure_aci(rgb), None);
+        }
     }
 
     #[test]

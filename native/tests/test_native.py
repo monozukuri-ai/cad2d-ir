@@ -124,8 +124,9 @@ def test_the_typed_document_is_written_like_the_dict(path: Path) -> None:
         assert from_typed[1] == _diagnostic_rows(diagnostics)
         assert from_typed[2] == entity_map
         if version == "AC1024":
+            # the bytes of the file: the same text with CR and LF
             data, rows = held.to_dxf_bytes()
-            assert data == text.encode("utf-8")
+            assert data == cad2d_ir.dxf_text_to_bytes(text)
             assert rows == _diagnostic_rows(diagnostics)
     # other options reach the writer the same way
     text = cad2d_ir.ir_to_dxf(
@@ -143,12 +144,14 @@ def test_the_typed_document_is_written_like_the_dict(path: Path) -> None:
     )
     assert held.to_dxf_bytes(curve_segments=16, generic_dimensions="skip")[
         0
-    ] == cad2d_ir.ir_to_dxf(
-        copy.deepcopy(document),
-        validate=False,
-        curve_segments=16,
-        generic_dimensions="skip",
-    ).encode("utf-8")
+    ] == cad2d_ir.dxf_text_to_bytes(
+        cad2d_ir.ir_to_dxf(
+            copy.deepcopy(document),
+            validate=False,
+            curve_segments=16,
+            generic_dimensions="skip",
+        )
+    )
 
 
 def test_a_document_that_is_used_up_is_written_the_same() -> None:
@@ -742,7 +745,7 @@ def test_an_import_kept_in_native_code_is_the_same_document(jww_file: Path) -> N
     diagnostics: list[Any] = []
     text = cad2d_ir.ir_to_dxf(reference.document, diagnostics=diagnostics)
     data, rows = held.document.to_dxf_bytes()
-    assert data == text.encode("utf-8")
+    assert data == cad2d_ir.dxf_text_to_bytes(text)
     assert rows == _diagnostic_rows(diagnostics)
 
 
@@ -785,5 +788,5 @@ def test_sample_drawings_are_written_from_native_code_like_from_their_dicts() ->
         diagnostics: list[Any] = []
         text = cad2d_ir.ir_to_dxf(document, validate=False, diagnostics=diagnostics)
         data, rows = held.document.to_dxf_bytes()
-        assert data == text.encode("utf-8"), path.name
+        assert data == cad2d_ir.dxf_text_to_bytes(text), path.name
         assert rows == _diagnostic_rows(diagnostics), path.name
