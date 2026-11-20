@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.18.4
+
+- DXF writer: a clockwise arc (`ccw: false`) is written as the same curve. A DXF
+  `ARC` always runs counter-clockwise from its start angle to its end angle, and
+  the writer wrote the two angles of the entity as they were: a clockwise arc of
+  26 degrees was read back as the other 334 degrees of the circle. The angles
+  are now swapped for a clockwise arc, as the extents in the header and the
+  writer of `ELLIPSE` already did. Arcs are clockwise in drawings from DGN, MI
+  and HP-GL (a negative sweep) and for mirrored arcs of a projected DXF.
+- DXF writer: the angles of an `ARC` outside one turn are brought into 0 to 360
+  degrees (448.5 to 472.5 is written as 88.5 to 112.5). Angles already inside
+  one turn are written unchanged, and an arc of a whole turn or more is written
+  with equal angles, which readers take as the full circle.
+- JWW importer: a solid (`SOLID`) is the polygon through its four corners in
+  the order of the file, as Jw_cad fills it (checked in Jw_cad 10.02.1). The
+  corners were taken in another order and, when two sides crossed, put in the
+  order round their centre: a convex quadrilateral came out right, but one with
+  a reflex corner (an arrow head) became another shape with several times the
+  area. A solid whose opposite sides cross is now the two triangles Jw_cad
+  draws and no longer a convex quadrilateral.
+- DWG importer: a block without entities that a block reference names is kept
+  in the block table, as an empty block. It was left out, so the reference was
+  reported as unresolved (`DWG_UNRESOLVED_BLOCK_REFERENCE`) and a viewer drew a
+  marker where the file draws nothing, often far from the drawing.
+
 ## 0.18.3
 
 - DXF writer: the header states the extents of model space (`$EXTMIN`,

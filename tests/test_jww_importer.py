@@ -253,6 +253,43 @@ def test_jww_document_to_ir_preserves_semantics_and_reports_approximation() -> N
     validate_ir(document, strict_jsonschema=True)
 
 
+def _solid(corners: list[tuple[float, float]]) -> dict:
+    """A JWW SOLID through ``corners`` in the order Jw_cad fills them.
+
+    The file stores ``m_start, m_end, m_DPoint2, m_DPoint3`` in that order; the
+    reader names them ``point1, point4, point2, point3``.
+    """
+    entity: dict = {"type": "SOLID", "base": _base(), "color": None}
+    for name, (x, y) in zip((1, 4, 2, 3), corners, strict=True):
+        entity[f"point{name}_x"] = x
+        entity[f"point{name}_y"] = y
+    return entity
+
+
+def _solid_outline(corners: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    source = _document()
+    source["entities"] = [_solid(corners)]
+    (hatch,) = jww_document_to_ir(source).document["entities"]
+    assert hatch["kind"] == "HATCH" and hatch["solid"] is True
+    (loop,) = hatch["loops"]
+    return [(vertex[0], vertex[1]) for vertex in loop["vertices"]]
+
+
+def test_jww_solid_is_filled_through_its_corners_in_file_order() -> None:
+    # Jw_cad 10.02.1 fills the polygon start, end, point 2, point 3: a
+    # quadrilateral with a reflex corner keeps that corner, and one whose
+    # opposite sides cross is two triangles. Neither is put in another order.
+    square = [(0.0, 0.0), (10.0, 0.0), (10.0, 10.0), (0.0, 10.0)]
+    arrow = [(-50.0, -40.0), (0.0, -10.0), (50.0, -40.0), (0.0, 40.0)]
+    crossed = [(-60.0, -40.0), (60.0, 40.0), (60.0, -40.0), (-60.0, 40.0)]
+    triangle = [(0.0, 0.0), (10.0, 0.0), (5.0, 8.0), (5.0, 8.0)]
+
+    assert _solid_outline(square) == square
+    assert _solid_outline(arrow) == arrow
+    assert _solid_outline(crossed) == crossed
+    assert _solid_outline(triangle) == triangle
+
+
 def test_jww_document_to_ir_leniently_skips_unknown_entities() -> None:
     source = _document()
     source["entities"] = [{"type": "FUTURE_ENTITY", "base": _base()}]

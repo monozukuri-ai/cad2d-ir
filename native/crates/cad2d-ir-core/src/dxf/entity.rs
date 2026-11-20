@@ -516,14 +516,15 @@ fn render(
             radius,
             start_angle,
             end_angle,
-            ..
+            ccw,
         } => {
+            let (start, end) = arc_angles(*start_angle, *end_angle, *ccw);
             let handle = begin(out, "ARC", mode, context);
             common.write(out);
             sub(out, mode, "AcDbCircle");
             out.extend([n(10, center[0]), n(20, center[1]), n(40, *radius)]);
             sub(out, mode, "AcDbArc");
-            out.extend([n(50, *start_angle), n(51, *end_angle)]);
+            out.extend([n(50, start), n(51, end)]);
             rendered(context, scope, ir_id, handle, "ARC");
         }
         Shape::Point { position, .. } => {
@@ -621,6 +622,35 @@ fn r12_prepared_entity(entity: &Entity, common: &Common) -> Entity {
         extra.shift_remove("linetype_scale");
     }
     prepared
+}
+
+/// The start and end angles of a DXF ARC, which always runs counter-clockwise
+/// from its start to its end.
+///
+/// A clockwise arc (``ccw: false``, common in DGN, MI, HP-GL and mirrored DXF
+/// arcs) is the same curve walked from its end, so the two angles are swapped.
+/// Written as they are, a clockwise arc of 26 degrees is read back as the other
+/// 334 degrees of the circle. Angles outside one turn are brought into
+/// ``0..360``; angles already inside it are written unchanged.
+fn arc_angles(start_angle: f64, end_angle: f64, ccw: Option<bool>) -> (f64, f64) {
+    let (start, end) = if ccw == Some(false) {
+        (end_angle, start_angle)
+    } else {
+        (start_angle, end_angle)
+    };
+    if !start.is_finite() || !end.is_finite() {
+        return (start, end);
+    }
+    let in_turn = |angle: f64| (0.0..=360.0).contains(&angle);
+    if in_turn(start) && in_turn(end) {
+        return (start, end);
+    }
+    // a whole turn (or more) stays a whole turn: equal angles are a full circle
+    if (end - start).abs() >= 360.0 {
+        let start = start.rem_euclid(360.0);
+        return (start, start);
+    }
+    (start.rem_euclid(360.0), end.rem_euclid(360.0))
 }
 
 fn ellipse_parameters(entity: &Entity, ellipse: &EllipseData) -> (f64, f64) {
@@ -1464,4 +1494,37 @@ fn spline(
         out.push(n(41, weight));
     }
     Ok(handle)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::arc_angles;
+
+    #[test]
+    fn a_counter_clockwise_arc_keeps_its_angles() {
+        assert_eq!(arc_angles(30.0, 120.0, Some(true)), (30.0, 120.0));
+        assert_eq!(arc_angles(30.0, 120.0, None), (30.0, 120.0));
+        // across zero, and the whole turn the readers know as 0 to 360
+        assert_eq!(arc_angles(350.0, 10.0, Some(true)), (350.0, 10.0));
+        assert_eq!(arc_angles(0.0, 360.0, Some(true)), (0.0, 360.0));
+    }
+
+    #[test]
+    fn a_clockwise_arc_is_written_from_its_end() {
+        assert_eq!(arc_angles(120.0, 30.0, Some(false)), (30.0, 120.0));
+        // 26 degrees clockwise from zero: not the other 334 degrees
+        let (start, end) = arc_angles(0.0, -26.0, Some(false));
+        assert_eq!((start, end), (334.0, 0.0));
+    }
+
+    #[test]
+    fn angles_outside_one_turn_are_brought_into_it() {
+        let (start, end) = arc_angles(448.5, 472.5, Some(true));
+        assert_eq!((start, end), (88.5, 112.5));
+        let (start, end) = arc_angles(-108.5, -112.5, Some(false));
+        assert_eq!((start, end), (247.5, 251.5));
+        // a whole turn stays one: equal angles are a full circle
+        assert_eq!(arc_angles(30.0, 390.0, Some(true)), (30.0, 30.0));
+        assert_eq!(arc_angles(390.0, 30.0, Some(false)), (30.0, 30.0));
+    }
 }

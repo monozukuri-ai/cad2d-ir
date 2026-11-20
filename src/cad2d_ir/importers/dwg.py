@@ -6,7 +6,7 @@ import hashlib
 import math
 import re
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -484,7 +484,12 @@ def dwg_document_to_ir(
 
     _attach_attributes(attributes, block_entities_by_owner, entities, context)
     blocks, block_name_by_handle = _build_blocks(
-        block_names, block_entities_by_owner, context
+        block_names,
+        block_entities_by_owner,
+        context,
+        referenced_names={
+            str(insert["block"]) for insert in context.inserts_by_handle.values()
+        },
     )
     layouts = _build_layouts(paper_sheets, _read_dwg_layouts(dwg_document), context)
     layout_scopes = [layout["entities"] for layout in layouts]
@@ -1895,8 +1900,16 @@ def _build_blocks(
     block_names: Mapping[int, str],
     block_entities_by_owner: Mapping[int, list[dict[str, Any]]],
     context: _ConversionContext,
+    *,
+    referenced_names: Collection[str] = (),
 ) -> tuple[dict[str, dict[str, Any]], dict[int, str]]:
     """Block definitions by IR name, and the IR name of each block header handle.
+
+    A block header without entities is left out, unless a block reference names
+    it (``referenced_names``) and no header of that name has entities: the
+    reference is to a block that exists and draws nothing, not to a missing one.
+    Left out, such a reference was reported as unresolved and a viewer drew a
+    point marker where the file draws nothing.
 
     Two block headers can share a name: a DWG stores anonymous blocks without
     their number, and the numbers ezdwg gives them are not always unique. An
@@ -1904,11 +1917,21 @@ def _build_blocks(
     others get a free name and stay reachable through their handle (a
     ``DIMENSION`` refers to its block by handle).
     """
-    emitted = [
-        (handle, name)
-        for handle, name in sorted(block_names.items())
-        if block_entities_by_owner[handle]
-    ]
+    names_with_entities = {
+        name for handle, name in block_names.items() if block_entities_by_owner[handle]
+    }
+    empty_names: set[str] = set()
+    emitted = []
+    for handle, name in sorted(block_names.items()):
+        if not block_entities_by_owner[handle]:
+            if (
+                name not in referenced_names
+                or name in names_with_entities
+                or name in empty_names
+            ):
+                continue
+            empty_names.add(name)
+        emitted.append((handle, name))
     name_owner = {name: handle for handle, name in emitted}
     taken = {name.upper() for name in block_names.values()}
     next_number: dict[str, int] = {}

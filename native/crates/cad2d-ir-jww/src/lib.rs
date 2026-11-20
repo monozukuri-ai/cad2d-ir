@@ -1195,11 +1195,24 @@ fn convert_dimension(source: &Dimension, entity: &mut Entity) -> Result<(), Reje
 }
 
 /// ``_convert_solid``: a filled quadrilateral.
+///
+/// Jw_cad stores the corners as ``m_start, m_end, m_DPoint2, m_DPoint3`` and
+/// fills the polygon through them in that order (seen in Jw_cad 10.02.1: a
+/// quadrilateral with a reflex corner is filled with that corner, and one whose
+/// opposite sides cross is filled as two triangles). The reader names them
+/// ``point1, point4, point2, point3``, so that is the order of the outline.
+/// Taken as ``point1, point2, point3, point4`` and put in the order round the
+/// centre when crossed, a convex quadrilateral came out right and one with a
+/// reflex corner as another shape.
 fn convert_solid(source: &Solid, entity: &mut Entity) -> Result<(), Rejected> {
     let points = [
         [
             number(source.point1_x, "point1_x")?,
             number(source.point1_y, "point1_y")?,
+        ],
+        [
+            number(source.point4_x, "point4_x")?,
+            number(source.point4_y, "point4_y")?,
         ],
         [
             number(source.point2_x, "point2_x")?,
@@ -1209,12 +1222,8 @@ fn convert_solid(source: &Solid, entity: &mut Entity) -> Result<(), Rejected> {
             number(source.point3_x, "point3_x")?,
             number(source.point3_y, "point3_y")?,
         ],
-        [
-            number(source.point4_x, "point4_x")?,
-            number(source.point4_y, "point4_y")?,
-        ],
     ];
-    let vertices = order_solid_vertices(points)
+    let vertices = points
         .into_iter()
         .map(|point| Vertex {
             x: point[0],
@@ -1230,46 +1239,6 @@ fn convert_solid(source: &Solid, entity: &mut Entity) -> Result<(), Rejected> {
         solid: Some(true),
     }));
     Ok(())
-}
-
-fn orientation(a: [f64; 2], b: [f64; 2], c: [f64; 2]) -> f64 {
-    (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])
-}
-
-fn segments_intersect(a: [f64; 2], b: [f64; 2], c: [f64; 2], d: [f64; 2]) -> bool {
-    orientation(a, b, c) * orientation(a, b, d) < 0.0
-        && orientation(c, d, a) * orientation(c, d, b) < 0.0
-}
-
-fn same_point(a: [f64; 2], b: [f64; 2]) -> bool {
-    isclose(a[0], b[0], 1e-9, 1e-9) && isclose(a[1], b[1], 1e-9, 1e-9)
-}
-
-/// ``_order_solid_vertices``: a crossed quadrilateral in the order round its centre.
-fn order_solid_vertices(points: [[f64; 2]; 4]) -> Vec<[f64; 2]> {
-    let crosses = segments_intersect(points[0], points[1], points[2], points[3])
-        || segments_intersect(points[1], points[2], points[3], points[0]);
-    if !crosses {
-        return points.to_vec();
-    }
-    // ``sum()`` of Python: compensated, which can differ in the last bit from
-    // adding one after the other, and so can the order of two nearly equal angles
-    let center_x = cad2d_ir_core::num::py_sum(points.iter().map(|point| point[0])) / 4.0;
-    let center_y = cad2d_ir_core::num::py_sum(points.iter().map(|point| point[1])) / 4.0;
-    let mut ordered = points.to_vec();
-    ordered.sort_by(|a, b| {
-        let angle_a = (a[1] - center_y).atan2(a[0] - center_x);
-        let angle_b = (b[1] - center_y).atan2(b[0] - center_x);
-        angle_a
-            .partial_cmp(&angle_b)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    let first = ordered
-        .iter()
-        .position(|point| same_point(*point, points[0]))
-        .unwrap_or(0);
-    ordered.rotate_left(first);
-    ordered
 }
 
 /// ``_arc_segment_count``.

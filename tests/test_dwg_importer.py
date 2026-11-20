@@ -737,6 +737,50 @@ def test_dwg_blocks_sharing_a_name_stay_separate() -> None:
     validate_ir(ir, strict_jsonschema=True)
 
 
+def test_dwg_reference_to_an_empty_block_is_not_an_unresolved_one() -> None:
+    def insert(handle: int, name: str) -> _Entity:
+        return _Entity(
+            "INSERT", handle, {"insert": (5.0, 5.0, 0.0), "name": name, **_style()}
+        )
+
+    document = _Document(
+        [
+            insert(1, "EMPTY"),
+            insert(2, "FILLED"),
+            insert(3, "GONE"),
+            _block_line(10, 301, 10.0),
+            _block_line(11, 303, 20.0),
+        ]
+    )
+    result = dwg_document_to_ir(
+        document,
+        layer_names_by_handle={16: "0"},
+        block_names_by_handle={
+            # a block that exists and draws nothing, referenced by an INSERT
+            300: "EMPTY",
+            301: "FILLED",
+            # an empty block nothing refers to stays out of the table
+            302: "UNUSED",
+            # two headers of one name: the empty one does not take the name
+            303: "FILLED_TWICE",
+            304: "FILLED_TWICE",
+        },
+    )
+    ir = result.document
+    blocks = ir["tables"]["blocks"]
+
+    assert set(blocks) == {"EMPTY", "FILLED", "FILLED_TWICE"}
+    assert blocks["EMPTY"]["entities"] == []
+    assert blocks["EMPTY"]["metadata"]["dwg"]["block_header_handle"] == "0x12C"
+    assert len(blocks["FILLED_TWICE"]["entities"]) == 1
+    # only the reference to a block without a header is unresolved
+    (unresolved,) = [
+        d for d in result.diagnostics if d.code == "DWG_UNRESOLVED_BLOCK_REFERENCE"
+    ]
+    assert "GONE" in unresolved.message and "EMPTY" not in unresolved.message
+    validate_ir(ir, strict_jsonschema=True)
+
+
 def test_dwg_stored_placement_decides_the_owner_block() -> None:
     line = {"start": (0.0, 0.0, 0.0), "end": (1.0, 0.0, 0.0)}
     document = _PlacementDocument(

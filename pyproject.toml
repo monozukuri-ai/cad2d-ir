@@ -1,7 +1,7 @@
 [project]
 name = "cad2d-ir"
 # The release version: use scripts/set_version.py to update it and derived files.
-version = "0.18.3"
+version = "0.18.4"
 description = "Intermediate representation (IR) and importers for 2D CAD formats"
 readme = "README.md"
 license = "MIT"
@@ -29,7 +29,7 @@ dependencies = [
     # The DXF writer and the entity conversion of the JWW importer are native
     # code: the Rust extension under native/, released with this package under
     # the same version (scripts/set_version.py generates this pin).
-    "cad2d-ir-native==0.18.3",
+    "cad2d-ir-native==0.18.4",
     "jsonschema>=4.23.0",
 ]
 
