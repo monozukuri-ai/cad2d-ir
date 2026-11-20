@@ -8,7 +8,13 @@ from pathlib import Path
 
 import pytest
 
-from cad2d_ir import convert_file_to_ir, convert_mi_file_to_ir, validate_ir
+from cad2d_ir import (
+    convert_file_to_ir,
+    convert_ir_to_dxf_text,
+    convert_mi_file_to_ir,
+    dxf_to_ir,
+    validate_ir,
+)
 from cad2d_ir.cli import main
 from cad2d_ir.importers import ImportOptions, ImporterError
 from cad2d_ir.importers.mi import mi_document_to_ir
@@ -125,6 +131,58 @@ def test_utf8_text_maps_font_alignment_and_degree_rotation() -> None:
     override_metadata = overridden.document["source"]["metadata"]["mi"]
     assert override_metadata["requested_encoding"] == "utf-8"
     assert override_metadata["encoding"]["source"] == "override"
+
+
+def _ezmi2d_reads_dimension_text() -> bool:
+    """ezmi2d 0.2.3 and later name the DTA text attribute of a dimension text."""
+    return hasattr(ezmi2d.Dimension, "text_height")
+
+
+@pytest.mark.skipif(
+    not _ezmi2d_reads_dimension_text(), reason="ezmi2d before 0.2.3 does not read DTA sizes"
+)
+def test_dimension_text_height_and_direction_reach_the_ir() -> None:
+    # ``dimension-text.mi`` is ``phase5.mi`` with a DTA text attribute for the main
+    # text of the dimension (height 0.2), one for its tolerance (0.6 of the main
+    # text) and a stored text box of 0.4 by 0.2 along the X axis.
+    result = convert_mi_file_to_ir(FIXTURES / "dimension-text.mi", curve_segments=32)
+    blocks = result.document["tables"]["blocks"]
+    (dimension,) = [
+        entity
+        for block in blocks.values()
+        for entity in block["entities"]
+        if entity["kind"] == "DIMENSION"
+    ]
+    definition = dimension["definition"]
+
+    assert definition["text"] == "90"
+    assert definition["text_height"] == pytest.approx(0.2)
+    assert definition["text_rotation"] == pytest.approx(0.0)
+    validate_ir(result.document, strict_jsonschema=True)
+
+    # The size reaches the DXF: the text of the dimension is written 0.2 high, not
+    # with the height a writer falls back to.
+    written = dxf_to_ir(convert_ir_to_dxf_text(result.document).dxf_text)
+    heights = [
+        entity["height"]
+        for block in written["tables"]["blocks"].values()
+        for entity in block["entities"]
+        if entity["kind"] == "TEXT" and entity["text"] == "90"
+    ]
+    assert heights == [pytest.approx(0.2)]
+
+
+def test_dimension_without_a_text_attribute_states_no_text_height() -> None:
+    # ``phase5.mi`` names no DTA: the size is left out, not guessed.
+    result = convert_mi_file_to_ir(FIXTURES / "phase5.mi", curve_segments=32)
+    definitions = [
+        entity["definition"]
+        for block in result.document["tables"]["blocks"].values()
+        for entity in block["entities"]
+        if entity["kind"] == "DIMENSION"
+    ]
+    assert len(definitions) == 1
+    assert "text_height" not in definitions[0]
 
 
 def test_phase5_parts_are_blocks_and_annotations_have_explicit_boundaries() -> None:

@@ -637,6 +637,26 @@ def _convert_dimension(entity: Any, context: _ConversionContext) -> dict[str, An
         definition["measurement_unit"] = "rad"
     if formatted_text is not None:
         definition["text"] = str(formatted_text)
+    # The size and the direction of the main text (ezmi2d >= 0.2.3): the DTA text
+    # attribute the dimension points to and the text box stored with it. Without
+    # them a renderer has to guess the size from the size of the drawing.
+    text_height = _optional_positive(getattr(entity, "text_height", None))
+    if text_height is not None:
+        definition["text_height"] = text_height
+    text_rotation = getattr(entity, "text_rotation", None)
+    if isinstance(text_rotation, (int, float)) and math.isfinite(text_rotation):
+        definition["text_rotation"] = math.degrees(text_rotation)
+    for tolerance, tolerance_definition in zip(
+        (value for value in getattr(entity, "tolerances", ()) if value is not None),
+        definition["tolerances"],
+        strict=True,
+    ):
+        height_of = getattr(tolerance, "text_height", None)
+        tolerance_height = (
+            _optional_positive(height_of(text_height)) if callable(height_of) else None
+        )
+        if tolerance_height is not None:
+            tolerance_definition["text_height"] = tolerance_height
 
     for tolerance in getattr(entity, "tolerances", ()):
         if tolerance is not None:
@@ -959,7 +979,13 @@ def _tolerance_definition(entity: Any) -> dict[str, Any]:
         "upper_text": getattr(entity, "upper_text", None),
         "lower_text": getattr(entity, "lower_text", None),
         "text_style_id": int(getattr(entity, "text_style_id")),
-        "alignment": int(getattr(entity, "alignment")),
+        # The last field of a DTV points to the DTA text attribute of the tolerance
+        # text. ezmi2d before 0.2.3 called it ``alignment``.
+        "text_attribute_id": int(
+            getattr(entity, "text_attribute_id", None)
+            if getattr(entity, "text_attribute_id", None) is not None
+            else getattr(entity, "alignment")
+        ),
     }
 
 
@@ -1540,6 +1566,14 @@ def _positive(value: Any, label: str) -> float:
     if result <= 0.0:
         raise ValueError(f"{label} must be positive")
     return result
+
+
+def _optional_positive(value: Any) -> float | None:
+    """``value`` as a positive finite number, or ``None`` when it is not one."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    result = float(value)
+    return result if math.isfinite(result) and result > 0.0 else None
 
 
 def _kind(entity: Any) -> str:

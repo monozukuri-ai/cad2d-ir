@@ -92,3 +92,64 @@ def test_arc_angles_outside_one_turn_are_written_inside_it() -> None:
 
     untouched = _written_arc(_arc_document(start_angle=350.0, end_angle=10.0))
     assert (untouched["start_angle"], untouched["end_angle"]) == (350.0, 10.0)
+
+
+def _generic_dimension(**definition: object) -> dict:
+    return {
+        "format": "cad2d-ir",
+        "version": "0.1.0",
+        "header": {"units": "mm", "angle_unit": "deg", "coord_space": "world"},
+        "entities": [
+            {
+                "id": "D1",
+                "kind": "DIMENSION",
+                "dim_kind": "GENERIC",
+                "definition": {
+                    "points": {
+                        "p1": [0.0, 0.0],
+                        "p2": [0.0, 40.0],
+                        "location": [-5.0, 20.0],
+                        "text_midpoint": [-5.0, 20.0],
+                    },
+                    "text": "40",
+                    **definition,
+                },
+            }
+        ],
+    }
+
+
+def _dimension_text(document: dict) -> dict:
+    written = dxf_to_ir(ir_to_dxf(document))
+    texts = [
+        entity
+        for scope in (
+            written["entities"],
+            *(block["entities"] for block in written["tables"].get("blocks", {}).values()),
+        )
+        for entity in scope
+        if entity["kind"] == "TEXT" and entity["text"] == "40"
+    ]
+    (text,) = texts
+    return text
+
+
+def test_generic_dimension_with_a_text_height_is_centred_and_turned() -> None:
+    # A dimension that states the height of its text (an MI dimension with its text
+    # attribute) describes the text itself: 1.1 high, its middle at the text
+    # midpoint, along the direction it states.
+    text = _dimension_text(_generic_dimension(text_height=1.1, text_rotation=90.0))
+
+    assert text["height"] == 1.1
+    assert text["rotation"] == 90.0
+    assert (text["halign"], text["valign"]) == ("center", "middle")
+    assert text["insert"] == [-5.0, 20.0]
+
+
+def test_generic_dimension_without_a_text_height_is_written_as_before() -> None:
+    text = _dimension_text(_generic_dimension(text_rotation=90.0))
+
+    assert text["height"] == 2.5
+    assert text.get("rotation", 0.0) == 0.0
+    assert (text.get("halign", "left"), text.get("valign", "baseline")) == ("left", "baseline")
+    assert text["insert"] == [-5.0, 20.0]

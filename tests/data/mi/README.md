@@ -23,3 +23,4 @@ for MI/BI files so byte offsets, hashes, and parser source spans remain stable.
 | `phase5.mi` | fillet, B-spline, dimension, leader, hatch, symbol, nested/shared parts, sheets | `4530ce28c5f0718f7cdc291a090540dcce680a287cefa3d83e7d4d10d6060b82` |
 | `text-utf8.mi` | UTF-8 text, font, alignment, placement | `b0103fb2dbbf468459627379b3a4a6cafc7eb4fe73555364b9c93ff44ad161d4` |
 | `LICENSE.ezmi2d.txt` | upstream license | `c23c02ff94202de884636aee3b4a411761255ebb68fee9f317947ce5142a8806` |
+| `dimension-text.mi` | `phase5.mi` as of `ezmi2d` v0.2.3: two `DTA` text attributes, the pointers to them from the dimension and its tolerance, and a stored text box (text height 0.2, tolerance at 0.6 of it). An `ezmi2d` before 0.2.3 does not read its `DTV`; the test that uses it is skipped there | `02a59c96ceed96184b17224a27507bd538078514769f3785fb0f9f02c11fad0b` |

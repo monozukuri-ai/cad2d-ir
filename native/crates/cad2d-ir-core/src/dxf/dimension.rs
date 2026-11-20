@@ -805,14 +805,34 @@ pub(crate) fn components(
                     _ => 2.5,
                 },
             };
+            // A dimension that states the height of its text describes the text
+            // itself: its middle is the placement point and it runs along
+            // ``text_rotation``. Without a height the text starts at the point,
+            // unrotated, as before.
+            let stated = field("text_height")
+                .and_then(Value::as_python_number)
+                .is_some_and(|height| height.is_finite() && height > 0.0);
+            let rotation = if stated {
+                field("text_rotation")
+                    .and_then(Value::as_python_number)
+                    .filter(|rotation| rotation.is_finite() && *rotation != 0.0)
+            } else {
+                None
+            };
             builder.component(Shape::Text(Box::new(TextData {
                 insert,
                 height,
                 text: content,
-                rotation: None,
+                rotation,
                 style: None,
                 width_factor: None,
             })));
+            if stated {
+                if let Some(text) = builder.components.last_mut() {
+                    text.extra_insert("halign", Value::Str("center".to_string()));
+                    text.extra_insert("valign", Value::Str("middle".to_string()));
+                }
+            }
         }
     }
     Ok(builder.components)

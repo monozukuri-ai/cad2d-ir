@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.18.5
+
+- MI importer: a dimension states the height and the direction of its text
+  (`definition.text_height`, `definition.text_rotation` in degrees), and each of
+  its tolerances the height of the tolerance text. They come from the text
+  attribute record (`DTA`) the dimension points to and from the text box stored
+  with it, which `ezmi2d` 0.2.3 reads; with an older `ezmi2d` they are left out
+  as before. The DXF writer already wrote the text of such a dimension with
+  `text_height` and fell back to 2.5 without it, whatever the size of the text
+  in the drawing was.
+- MI importer: the last field of a tolerance record is named
+  `text_attribute_id` in `definition.tolerances` (it points to the `DTA` of the
+  tolerance text). It was `alignment`, the name `ezmi2d` gave it before 0.2.3.
+- DXF writer: the text of a `GENERIC` dimension that states its text height is
+  written with its middle at the text midpoint and along `text_rotation`. The
+  text of such a dimension started at the midpoint and was never turned, so a
+  vertical dimension of an MI drawing had a horizontal value beside it. A
+  `GENERIC` dimension without a text height is written as before.
+
 ## 0.18.4
 
 - DXF writer: a clockwise arc (`ccw: false`) is written as the same curve. A DXF
