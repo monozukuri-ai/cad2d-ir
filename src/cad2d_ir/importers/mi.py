@@ -636,7 +636,7 @@ def _convert_dimension(entity: Any, context: _ConversionContext) -> dict[str, An
     if _kind(entity) == "DANG":
         definition["measurement_unit"] = "rad"
     if formatted_text is not None:
-        definition["text"] = str(formatted_text)
+        definition["text"] = _symbol_text(str(formatted_text))
     # The size and the direction of the main text (ezmi2d >= 0.2.3): the DTA text
     # attribute the dimension points to and the text box stored with it. Without
     # them a renderer has to guess the size from the size of the drawing.
@@ -658,6 +658,23 @@ def _convert_dimension(entity: Any, context: _ConversionContext) -> dict[str, An
         if tolerance_height is not None:
             tolerance_definition["text_height"] = tolerance_height
 
+    # The drawn form the file stores with the dimension (ezmi2d >= 0.2.4): the line
+    # pieces, the terminators and where every text starts. A consumer that draws
+    # ``rendered_paths`` and ``rendered_texts`` shows the dimension as the source
+    # program drew it instead of one line between the reference points.
+    rendering = _dimension_rendering(entity, text_height)
+    if rendering is not None:
+        definition["rendered_paths"], definition["rendered_texts"] = rendering
+        context.preserved_semantics["dimension_graphics"] += 1
+    # A linear dimension measures along its dimension line, which need not be
+    # parallel to the line between the reference points. The two terminators are on
+    # it: state a point of the line as ``location`` (the text position stays in
+    # ``text_midpoint``) and its direction as ``rotation``, the way a rotated linear
+    # dimension is described.
+    dimension_line = _linear_dimension_line(entity)
+    if dimension_line is not None:
+        point_definition["location"], definition["rotation"] = dimension_line
+
     for tolerance in getattr(entity, "tolerances", ()):
         if tolerance is not None:
             context.handled_annotation_ids.add(int(getattr(tolerance, "id")))
@@ -676,6 +693,145 @@ def _convert_dimension(entity: Any, context: _ConversionContext) -> dict[str, An
             }
         },
     }
+
+
+def _linear_dimension_line(entity: Any) -> tuple[list[float], float] | None:
+    """A point on the dimension line of a linear dimension and its direction in
+    degrees, from the two terminators the file stores. ``None`` for another kind of
+    dimension or without them."""
+    graphics = getattr(entity, "graphics", None)
+    if graphics is None or _kind(entity) != "DSGL" or len(graphics.arrows) != 2:
+        return None
+    first = _point(graphics.arrows[0].tip, "dimension terminator")
+    second = _point(graphics.arrows[1].tip, "dimension terminator")
+    dx, dy = second[0] - first[0], second[1] - first[1]
+    if math.hypot(dx, dy) <= 0.0:
+        return None
+    return second, math.degrees(math.atan2(dy, dx)) % 180.0
+
+
+#: The largest step of a dimension arc drawn as a polyline, in radians.
+_DIMENSION_ARC_STEP = math.radians(5.0)
+
+
+def _dimension_rendering(
+    entity: Any, text_height: float | None
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] | None:
+    """The drawn form of a dimension as ``rendered_paths`` and ``rendered_texts``.
+
+    ``None`` when the reader gives no drawn form (ezmi2d before 0.2.4, or a record
+    that does not follow the known layout), when the height of the main text is
+    unknown, or when nothing would be drawn.
+    """
+    graphics = getattr(entity, "graphics", None)
+    if graphics is None or text_height is None:
+        return None
+
+    paths: list[dict[str, Any]] = []
+    for segment in (*graphics.lines, *graphics.extension_lines):
+        start = _point(segment.start, "dimension line start")
+        end = _point(segment.end, "dimension line end")
+        if start != end:
+            paths.append({"points": [start, end], "closed": False})
+    for arc in graphics.arcs:
+        points = _dimension_arc_points(arc)
+        if len(points) >= 2:
+            paths.append({"points": points, "closed": False})
+    for arrow in graphics.arrows:
+        if not arrow.visible:
+            continue
+        outline = arrow.outline(text_height)
+        if outline is None:
+            continue  # a terminator of another shape (slash, dot): its form is not known
+        paths.append(
+            {
+                "points": [_point(corner, "dimension terminator") for corner in outline],
+                "closed": True,
+            }
+        )
+
+    rotation = getattr(entity, "text_rotation", None)
+    angle = float(rotation) if isinstance(rotation, (int, float)) else 0.0
+    if not math.isfinite(angle):
+        angle = 0.0
+    along = (math.cos(angle), math.sin(angle))
+    texts: list[dict[str, Any]] = []
+
+    def add_text(value: Any, origin: Any, height: float | None) -> None:
+        if value is None:
+            return  # bytes the reader could not decode
+        content = _symbol_text(str(value))
+        size = height if height is not None else text_height
+        anchor = _point(origin, "dimension text start")
+        # The text starts at its first character. A text that begins with spaces
+        # (" R") is moved by about their width so that renderers that trim it keep
+        # the letter where it was; the font advances roughly one height per space.
+        lead = len(content) - len(content.lstrip(" "))
+        content = content.strip(" ")
+        if not content:
+            return
+        if lead:
+            anchor = [anchor[0] + along[0] * lead * size, anchor[1] + along[1] * lead * size]
+        texts.append(
+            {
+                "anchor": anchor,
+                "height": size,
+                "text": content,
+                "angle_deg": math.degrees(angle),
+            }
+        )
+
+    placement = graphics.tolerance
+    if placement is None or not placement.replaces_main_text:
+        add_text(getattr(entity, "formatted_text", None), graphics.text_origin, text_height)
+    tolerance = None if placement is None else placement.tolerance
+    if placement is not None and tolerance is not None:
+        tolerance_height = _optional_positive(tolerance.text_height(text_height))
+        add_text(tolerance.upper_text, placement.upper_origin, tolerance_height)
+        if placement.layout_value != 1:
+            add_text(tolerance.lower_text, placement.lower_origin, tolerance_height)
+    for part in graphics.text_parts:
+        add_text(part.text, part.origin, _optional_positive(part.text_height(text_height)))
+
+    if not paths and not texts:
+        return None
+    return paths, texts
+
+
+def _dimension_arc_points(arc: Any) -> list[list[float]]:
+    """A dimension arc, counterclockwise from its start to its end, as a polyline."""
+    center = _point(arc.center, "dimension arc center")
+    start = _point(arc.start, "dimension arc start")
+    end = _point(arc.end, "dimension arc end")
+    radius = math.hypot(start[0] - center[0], start[1] - center[1])
+    if not radius > 0.0:
+        return []
+    start_angle = math.atan2(start[1] - center[1], start[0] - center[0])
+    end_angle = math.atan2(end[1] - center[1], end[0] - center[0])
+    sweep = (end_angle - start_angle) % math.tau
+    if sweep <= 0.0:
+        return []
+    steps = max(2, math.ceil(sweep / _DIMENSION_ARC_STEP - 1e-9))
+    points = [
+        [
+            center[0] + radius * math.cos(start_angle + sweep * index / steps),
+            center[1] + radius * math.sin(start_angle + sweep * index / steps),
+        ]
+        for index in range(1, steps)
+    ]
+    return [start, *points, end]
+
+
+def _symbol_text(text: str) -> str:
+    """Dimension text with the symbol font codes replaced by characters (degree,
+    diameter, plus-minus, minutes, seconds). Needs ezmi2d >= 0.2.4; unchanged
+    without it."""
+    try:
+        import ezmi2d
+    except ImportError:  # a duck-typed document without the reader installed
+        return text
+    replace = getattr(ezmi2d, "replace_symbol_codes", None)
+    return replace(text) if callable(replace) else text
 
 
 def _convert_leader(entity: Any, context: _ConversionContext) -> dict[str, Any]:

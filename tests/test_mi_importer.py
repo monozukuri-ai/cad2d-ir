@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
+from collections import Counter
 from dataclasses import replace
 from pathlib import Path
 
@@ -170,6 +171,198 @@ def test_dimension_text_height_and_direction_reach_the_ir() -> None:
         if entity["kind"] == "TEXT" and entity["text"] == "90"
     ]
     assert heights == [pytest.approx(0.2)]
+
+
+needs_dimension_graphics = pytest.mark.skipif(
+    not hasattr(ezmi2d, "DimensionGraphics"),
+    reason="ezmi2d before 0.2.4 does not read the drawn form of a dimension",
+)
+
+
+def _only_dimension(document: dict) -> dict:
+    (dimension,) = [
+        entity
+        for block in document["tables"]["blocks"].values()
+        for entity in block["entities"]
+        if entity["kind"] == "DIMENSION"
+    ]
+    return dimension
+
+
+@needs_dimension_graphics
+def test_dimension_is_drawn_from_the_form_the_file_stores() -> None:
+    # ``dimension-graphics.mi``: an angle of 90 degrees about the origin with radius 1.
+    # The file stores, relative to the text position (0.5, 0.5), four extension line
+    # pieces, the arc in two pieces around the text, two terminators (the second is
+    # not drawn) and where the five texts start.
+    result = convert_mi_file_to_ir(FIXTURES / "dimension-graphics.mi", curve_segments=32)
+    definition = _only_dimension(result.document)["definition"]
+    validate_ir(result.document, strict_jsonschema=True)
+
+    paths = definition["rendered_paths"]
+    lines = [path["points"] for path in paths if len(path["points"]) == 2]
+    assert lines == [
+        [pytest.approx([1.0, 0.0]), pytest.approx([1.1, 0.0])],
+        [pytest.approx([0.0, 1.0]), pytest.approx([0.0, 1.1])],
+        [pytest.approx([0.8, 0.0]), pytest.approx([1.0, 0.0])],
+        [pytest.approx([0.0, 0.8]), pytest.approx([0.0, 1.0])],
+    ]
+    # Each arc piece covers 30 degrees counterclockwise on the circle of radius 1.
+    arcs = [path for path in paths if len(path["points"]) > 3]
+    assert len(arcs) == 2
+    assert all(path["closed"] is False for path in arcs)
+    for path in arcs:
+        assert all(x * x + y * y == pytest.approx(1.0) for x, y in path["points"])
+    assert arcs[0]["points"][0] == pytest.approx([1.0, 0.0])
+    assert arcs[0]["points"][-1] == pytest.approx([0.8660254037844386, 0.5])
+    assert arcs[1]["points"][-1] == pytest.approx([0.0, 1.0])
+    # One arrowhead: 0.2 long and 0.052 wide, its tip on the first reference line
+    # and its body along the arc. The terminator that is stored without being drawn
+    # leaves no path.
+    (arrow,) = [path for path in paths if path["closed"]]
+    assert arrow["points"] == [
+        pytest.approx([1.0 - 0.026, 0.2]),
+        pytest.approx([1.0, 0.0]),
+        pytest.approx([1.0 + 0.026, 0.2]),
+    ]
+    assert len(paths) == 7
+
+    texts = {
+        text["text"]: (text["anchor"], text["height"], text["angle_deg"])
+        for text in definition["rendered_texts"]
+    }
+    assert texts == {
+        "90": (pytest.approx([0.3, 0.4]), pytest.approx(0.2), 0.0),
+        # the tolerance: an upper and a lower text at 0.6 of the main text
+        "0.9990": (pytest.approx([0.55, 0.52]), pytest.approx(0.12), 0.0),
+        "0.9985": (pytest.approx([0.55, 0.34]), pytest.approx(0.12), 0.0),
+        "ca.": (pytest.approx([0.05, 0.4]), pytest.approx(0.2), 0.0),
+        "(TYP)": (pytest.approx([0.3, 0.16]), pytest.approx(0.12), 0.0),
+    }
+    assert definition["text"] == "90"
+    assert definition["text_height"] == pytest.approx(0.2)
+
+    # The DXF carries the same pieces: four lines, the two arcs and the arrowhead as
+    # polylines and the five texts at their sizes, and no line between the
+    # reference points.
+    alone = {
+        **result.document,
+        "tables": {**result.document["tables"], "blocks": {}},
+        "entities": [_only_dimension(result.document)],
+    }
+    drawn = dxf_to_ir(convert_ir_to_dxf_text(alone).dxf_text)["entities"]
+    assert Counter(entity["kind"] for entity in drawn) == {"LINE": 4, "LWPOLYLINE": 3, "TEXT": 5}
+    heights = {entity["text"]: entity["height"] for entity in drawn if entity["kind"] == "TEXT"}
+    assert heights == {
+        "90": pytest.approx(0.2),
+        "0.9990": pytest.approx(0.12),
+        "0.9985": pytest.approx(0.12),
+        "ca.": pytest.approx(0.2),
+        "(TYP)": pytest.approx(0.12),
+    }
+    polylines = [entity for entity in drawn if entity["kind"] == "LWPOLYLINE"]
+    assert sorted(len(entity["vertices"]) for entity in polylines) == [3, 7, 7]
+    assert [
+        bool(entity.get("closed")) for entity in polylines if len(entity["vertices"]) == 3
+    ] == [True]
+
+
+@needs_dimension_graphics
+def test_dimension_text_shows_the_symbols_of_the_symbol_font(tmp_path: Path) -> None:
+    # An older file switches to the symbol font between SO and SI: code 0 is the
+    # degree sign, 2 the plus-minus sign. A text that starts with a space is moved
+    # by about the width of the space instead of keeping it.
+    source = (FIXTURES / "dimension-graphics.mi").read_text(encoding="ascii")
+    for old, new in (
+        ("\n1.5707963267948966\n90\n", "\n1.5707963267948966\n90\x0e0\x0f\n"),
+        ("\n0.9990\n", "\n\x0e2\x0f0.5\x0e0\x0f\n"),
+        ("\nca.\n", "\n R\n"),
+    ):
+        assert source.count(old) == 1
+        source = source.replace(old, new)
+    path = tmp_path / "symbols.mi"
+    path.write_text(source, encoding="ascii")
+
+    definition = _only_dimension(convert_mi_file_to_ir(path, curve_segments=32).document)[
+        "definition"
+    ]
+
+    assert definition["text"] == "90\u00b0"
+    texts = {text["text"]: text["anchor"] for text in definition["rendered_texts"]}
+    assert set(texts) == {"90\u00b0", "\u00b10.5\u00b0", "0.9985", "R", "(TYP)"}
+    # " R" started at (0.05, 0.4); the letter starts one text height further on
+    assert texts["R"] == pytest.approx([0.25, 0.4])
+
+
+@needs_dimension_graphics
+def test_tolerance_limits_are_drawn_in_place_of_the_main_text(tmp_path: Path) -> None:
+    # Layout 3 of a tolerance: the two limits stand where the main text would.
+    source = (FIXTURES / "dimension-graphics.mi").read_text(encoding="ascii")
+    old = "\n0\n2\n30\n0.05\n0.02\n0.05\n-0.16\n"
+    assert source.count(old) == 1
+    path = tmp_path / "limits.mi"
+    path.write_text(source.replace(old, "\n0\n3\n30\n-0.2\n0.02\n-0.2\n-0.16\n"), encoding="ascii")
+
+    definition = _only_dimension(convert_mi_file_to_ir(path, curve_segments=32).document)[
+        "definition"
+    ]
+
+    assert {text["text"] for text in definition["rendered_texts"]} == {
+        "0.9990",
+        "0.9985",
+        "ca.",
+        "(TYP)",
+    }
+    assert definition["text"] == "90"  # the measured value stays in the definition
+
+
+@needs_dimension_graphics
+def test_dimension_whose_drawn_form_is_not_understood_is_converted_as_before(
+    tmp_path: Path,
+) -> None:
+    source = (FIXTURES / "dimension-graphics.mi").read_text(encoding="ascii")
+    old = "(TYP)\n-0.2\n-0.34\n17\n|~"
+    assert source.count(old) == 1
+    path = tmp_path / "other-layout.mi"
+    path.write_text(source.replace(old, "(TYP)\n-0.2\n-0.34\n17\n0\n|~"), encoding="ascii")
+
+    definition = _only_dimension(convert_mi_file_to_ir(path, curve_segments=32).document)[
+        "definition"
+    ]
+
+    assert "rendered_paths" not in definition
+    assert "rendered_texts" not in definition
+    assert definition["text"] == "90"
+    assert definition["text_height"] == pytest.approx(0.2)
+    assert definition["points"]["location"] == pytest.approx([0.5, 0.5])
+
+
+def test_linear_dimension_states_its_dimension_line() -> None:
+    from types import SimpleNamespace
+
+    from cad2d_ir.importers.mi import _linear_dimension_line
+
+    def point(x: float, y: float) -> SimpleNamespace:
+        return SimpleNamespace(x=x, y=y)
+
+    def dimension(kind: str, *tips: tuple[float, float]) -> SimpleNamespace:
+        arrows = tuple(SimpleNamespace(tip=point(*tip)) for tip in tips)
+        return SimpleNamespace(mi_type=kind, graphics=SimpleNamespace(arrows=arrows))
+
+    # A horizontal dimension between two points at different heights: the line
+    # through the terminators, not the line between the reference points.
+    location, rotation = _linear_dimension_line(dimension("DSGL", (2.0, 5.0), (12.0, 5.0)))
+    assert location == [12.0, 5.0]
+    assert rotation == pytest.approx(0.0)
+    _, rotation = _linear_dimension_line(dimension("DSGL", (3.0, 9.0), (3.0, 1.0)))
+    assert rotation == pytest.approx(90.0)
+    _, rotation = _linear_dimension_line(dimension("DSGL", (4.0, 4.0), (0.0, 0.0)))
+    assert rotation == pytest.approx(45.0)
+    # Other kinds, a missing terminator and terminators on one point state nothing.
+    assert _linear_dimension_line(dimension("DANG", (0.0, 0.0), (1.0, 0.0))) is None
+    assert _linear_dimension_line(dimension("DSGL", (0.0, 0.0))) is None
+    assert _linear_dimension_line(dimension("DSGL", (1.0, 1.0), (1.0, 1.0))) is None
+    assert _linear_dimension_line(SimpleNamespace(mi_type="DSGL", graphics=None)) is None
 
 
 def test_dimension_without_a_text_attribute_states_no_text_height() -> None:

@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.18.6
+
+- MI importer: a dimension is drawn as the file stores it. An MI dimension record
+  keeps its drawn form after the formatted text: the pieces of the dimension line
+  and of the extension lines, the dimension arcs, the terminators, and where the
+  main text, the tolerance texts and the texts before, after and below the main
+  text start. `ezmi2d` 0.2.4 reads it, and the importer states it as
+  `definition.rendered_paths` (lines, arcs as polylines, arrowheads as closed
+  triangles) and `definition.rendered_texts` (each text with its height and
+  direction), the form the DXF writer and other consumers already draw. Until now
+  such a dimension was one line between its two reference points and the measured
+  value. The limits of a tolerance drawn in place of the main text replace it, and
+  a terminator the file stores without drawing leaves no arrowhead. With an older
+  `ezmi2d`, without a text height, or for a record that does not follow the known
+  layout, the dimension is converted as before.
+- MI importer: dimension texts show the characters of the symbol font. The degree
+  sign, the diameter sign, the plus-minus sign and the marks for minutes and
+  seconds are stored as codes (private use characters in a UTF-8 file, a code
+  between two control characters in an older one), so an angle of 3 degrees could
+  be read as `30`. `definition.text` and the rendered texts carry the characters
+  (`ezmi2d` 0.2.4).
+- MI importer: a linear dimension (`DSGL`) states its dimension line.
+  `definition.points.location` is a point on the dimension line (the tip of a
+  terminator) instead of the text position, which stays in `text_midpoint`, and
+  `definition.rotation` is the direction of the line in degrees. The line between
+  the two reference points need not be parallel to it.
+
 ## 0.18.5
 
 - MI importer: a dimension states the height and the direction of its text

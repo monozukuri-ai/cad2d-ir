@@ -17,7 +17,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.18.5"
+version = "0.18.6"
 source = { editable = "." }
 dependencies = [
     { name = "cad2d-ir-native" },
@@ -377,14 +377,14 @@ wheels = [
 
 [[package]]
 name = "ezmi2d"
-version = "0.2.2"
+version = "0.2.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/dd/f4/152f38874605a4f3e3517f83b178f2aa7c1861884bf670b0693d348028a1/ezmi2d-0.2.2.tar.gz", hash = "sha256:a3f2aada9da30ce1f72d2ff0c497c173fc234598480f5c856df15282510dbb7a", size = 125293, upload-time = "2026-09-02T15:25:16.27Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/af/3a/6d889cfbdbf126ef14ec5caf1d733f0ca601a9ade1b1752e0b50b4bb510c/ezmi2d-0.2.4.tar.gz", hash = "sha256:411e255444a59f371c6dab24a952eb65761c4f9fdbd550b87e03173551d91ba3", size = 139696, upload-time = "2026-11-21T02:43:34.709Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/28/dc/cdfd0d073881497144c858e3a1103707930b43b7a378f4e95a1919f2f857/ezmi2d-0.2.2-cp310-abi3-macosx_10_12_x86_64.macosx_11_0_arm64.macosx_10_12_universal2.whl", hash = "sha256:b82f19a22b2a2278e746b9453e6c2a881e67b54e2f2eb90f906b44d5d936a534", size = 1094575, upload-time = "2026-09-02T15:25:09.449Z" },
-    { url = "https://files.pythonhosted.org/packages/49/3d/bb66bfcecca6738d5d888f1a3ac9f20a8165a821cc56bbb42b0050baf365/ezmi2d-0.2.2-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:2d560f9986b342e6d377115899ece24772557f27a446a715082cb5558141c8f7", size = 601624, upload-time = "2026-09-02T15:25:11.439Z" },
-    { url = "https://files.pythonhosted.org/packages/e9/05/44b9e5903a8fe67ea22463be7e3d04d003a2a75bdceef27753ace826a347/ezmi2d-0.2.2-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:aa998c4cd4c80d0968cf63198e23d4c307d557afd6d7241123d9c09534b0d2bf", size = 612562, upload-time = "2026-09-02T15:25:13.187Z" },
-    { url = "https://files.pythonhosted.org/packages/d7/97/c0890f1598cd890247b9111191d7a7727454f3426966ca9e82404482cc16/ezmi2d-0.2.2-cp310-abi3-win_amd64.whl", hash = "sha256:7ca8c79c578ce3c0f72d397cc6e0b24ed5b392198760bcd9d464922036ae161b", size = 465212, upload-time = "2026-09-02T15:25:14.9Z" },
+    { url = "https://files.pythonhosted.org/packages/75/64/d443b7e9d245807d7c0f464e63e33ab41732eb6f3c176cb31c0f943feec8/ezmi2d-0.2.4-cp310-abi3-macosx_10_12_universal2.macosx_10_12_x86_64.macosx_11_0_arm64.whl", hash = "sha256:6ea97e987a6efdf80d3c59ea683f00986da71f8b49828908e6f545f7cc9c85cc", size = 1123029, upload-time = "2026-11-21T02:43:29.389Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/02/07104e8389e22178cbfc15de60e8d487b895630eeab01db4a629cf6a3faa/ezmi2d-0.2.4-cp310-abi3-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:fff19dd00a7900f5708dc833019a1ea3abc8087d6128a78159baf3a6535da2c2", size = 617269, upload-time = "2026-11-21T02:43:30.73Z" },
+    { url = "https://files.pythonhosted.org/packages/11/9b/483becd12b4b6f71f08597cfd829ac5c7ca38f224acf6c532365e0589445/ezmi2d-0.2.4-cp310-abi3-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:23c0717c5d968746f02e019e06ddc3212ede7f902e06294fe74aca5826a1d7bc", size = 624953, upload-time = "2026-11-21T02:43:32.095Z" },
+    { url = "https://files.pythonhosted.org/packages/c8/1e/cb32ac02388f3ebd0f26a6f8a3a388032a6c41eeb1456bfc3e1c9dba5b24/ezmi2d-0.2.4-cp310-abi3-win_amd64.whl", hash = "sha256:2374cd869bef4df66b68ab1e0e8f074de7da5ba0c4053d394a0ec3664e30f7f1", size = 482273, upload-time = "2026-11-21T02:43:33.387Z" },
 ]
 
 [[package]]
