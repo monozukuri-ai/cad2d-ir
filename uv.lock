@@ -17,7 +17,7 @@ wheels = [
 
 [[package]]
 name = "cad2d-ir"
-version = "0.18.6"
+version = "0.19.0"
 source = { editable = "." }
 dependencies = [
     { name = "cad2d-ir-native" },
@@ -38,6 +38,9 @@ all = [
 ]
 dgn = [
     { name = "ezdgn" },
+]
+dracad = [
+    { name = "ezdracad" },
 ]
 dwf = [
     { name = "ezdwf" },
@@ -88,6 +91,7 @@ requires-dist = [
     { name = "edrawings-kit", marker = "extra == 'edrawings'", specifier = ">=0.2,<0.3" },
     { name = "ezdgn", marker = "extra == 'all'", specifier = ">=0.3,<0.4" },
     { name = "ezdgn", marker = "extra == 'dgn'", specifier = ">=0.3,<0.4" },
+    { name = "ezdracad", marker = "extra == 'dracad'", specifier = ">=0.1.0a4,<0.2" },
     { name = "ezdwf", marker = "extra == 'all'", specifier = ">=0.0.11,<0.1" },
     { name = "ezdwf", marker = "extra == 'dwf'", specifier = ">=0.0.11,<0.1" },
     { name = "ezdwg", marker = "extra == 'all'", specifier = ">=0.11,<1" },
@@ -108,7 +112,7 @@ requires-dist = [
     { name = "pypdfium2", marker = "extra == 'all'", specifier = ">=4.30,<6" },
     { name = "pypdfium2", marker = "extra == 'pdf'", specifier = ">=4.30,<6" },
 ]
-provides-extras = ["dwg", "dgn", "dwf", "edrawings", "exb", "hpgl", "icad", "idw", "jww", "mi", "pdf", "sxf", "all"]
+provides-extras = ["dwg", "dgn", "dracad", "dwf", "edrawings", "exb", "hpgl", "icad", "idw", "jww", "mi", "pdf", "sxf", "all"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -311,6 +315,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ef/98/e676eae5c7925e63d95c66c3e257ba774c1afba6bf493877cee3f8bff250/ezdgn-0.3.0-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:b7722ae8b4d5ac14adb6040b75ebd899624e66d8b93e20cbe889625251c285c4", size = 590287, upload-time = "2026-10-19T13:09:01.952Z" },
     { url = "https://files.pythonhosted.org/packages/80/62/d5e60890cc82b5e0abcf8e6f1ba24d89d0f10e3bbe6732c01f4f1b97ba7d/ezdgn-0.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:eb46441430a53a19f1350926fa39a4a331ac5cfea480ea636e8d6cd91c35e3c0", size = 604074, upload-time = "2026-10-19T13:09:03.74Z" },
     { url = "https://files.pythonhosted.org/packages/1c/bf/8548ee622cb3bfca5d36ea7e6257d6de95fabbb4391ddf090cab02250311/ezdgn-0.3.0-cp310-abi3-win_amd64.whl", hash = "sha256:8a7e439cc2adc9dfb81036deab7fed8c0ab9a5e390a3142d4a72c070b2869579", size = 448271, upload-time = "2026-10-19T13:09:05.585Z" },
+]
+
+[[package]]
+name = "ezdracad"
+version = "0.1.0a4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/0e/17/4f50f8e70da604f7761875e2df8c44f6d5522f2c7831a3eafad7bc1c780a/ezdracad-0.1.0a4.tar.gz", hash = "sha256:aeca2a46034bb12441c0e55e32007f4a46e0c462b3d14e85a16526112176b03b", size = 369540, upload-time = "2026-11-22T01:58:28.367Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ca/2c/134f6aa58799fcc7394941e114803a0a90c428a19f9f2b9e4a20dec35390/ezdracad-0.1.0a4-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:0db17bf0889b671a2ccaa6763d27379e9ca4a219a2ec0bb9eb071ec6e4f0ae73", size = 872517, upload-time = "2026-11-22T01:58:21.211Z" },
+    { url = "https://files.pythonhosted.org/packages/94/f8/fac873fb90defa0fb1d077c74dba20ef8a837ce43d5ff5e1b7d8c9264ef0/ezdracad-0.1.0a4-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:a329160bdf4e0ab4f91e85d344ec500fa4302aa2dc72cf29f55edefb7a45c801", size = 862466, upload-time = "2026-11-22T01:58:22.662Z" },
+    { url = "https://files.pythonhosted.org/packages/3e/0a/323e56d4ee9d6807ed02b0f748885470a986c98e9a4458361b1120a56617/ezdracad-0.1.0a4-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:ec12a0c5b9ed8e0b77729b8ab192c8fe74c5743a090a82980e321e2a97eafeb0", size = 925379, upload-time = "2026-11-22T01:58:24.161Z" },
+    { url = "https://files.pythonhosted.org/packages/a8/2e/1681cd1420d40da52d034c7d0b9bc9d6967195c71c43054a695b2d5b5d57/ezdracad-0.1.0a4-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:2df3101da070142da6ef8c424d71ca1ab822d34cf17e2e96417dd2b38722f9e0", size = 933806, upload-time = "2026-11-22T01:58:25.606Z" },
+    { url = "https://files.pythonhosted.org/packages/5e/0d/18bb8848eaab2b4cc6ff5afe0b074a859b23af5e1895acf0d3b6386941a2/ezdracad-0.1.0a4-cp310-abi3-win_amd64.whl", hash = "sha256:66d23988c8a5dde509d3bd102c814e69bb6b96ed44270806d194cecdd5a16ddd", size = 771179, upload-time = "2026-11-22T01:58:26.995Z" },
 ]
 
 [[package]]
