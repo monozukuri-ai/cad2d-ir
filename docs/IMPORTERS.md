@@ -24,6 +24,7 @@ The registry in `cad2d_ir.importers.registry` currently dispatches:
 | MI | `.mi`, `.bi` | implemented (verified typed subset) | `ezmi2d>=0.2,<0.3` |
 | SXF | `.sxf`, `.sfc`, `.p21` | implemented | `ezsxf>=0.2,<0.4` |
 | ICD (iCAD SX) | `.icd` | implemented (2D drawing area) | `icadkit>=0.3.10,<0.4` |
+| DRA-CAD | `.mpz`, `.mps`, `.mpx`, `.mpuw` | implemented (2D, as drawn) | `ezdracad>=0.1.0a4,<0.2` |
 
 ## JWW vertical slice
 
@@ -730,3 +731,98 @@ The fixtures in `tests/data/edrw` are edrawings-kit's self-authored drawings
 (project-authored DXFs exported by eDrawings 2026 SP4.1); eDrawings-authored
 corpus files are run from a local directory through `CAD2D_IR_EDRW_FIXTURES`.
 
+## DRA-CAD adapter
+
+`convert_dracad_file_to_ir` / `dracad_drawing_to_ir` read a DRA-CAD drawing
+through `ezdracad`'s best-effort reader (`cad2d-ir[dracad]`): MPZ, flat MPX, and
+MPS and MPUW files saved without a password, in every record generation DRA-CAD
+can save and in the one of its oldest part libraries. The container is
+identified by content, including the compound files older releases saved
+without a class identifier. A file saved with a password raises `ImporterError`
+("Unsupported DRA-CAD file …"). The resource budgets are raised above
+`ezdracad`'s defaults (`cad2d_ir.importers.dracad.DEFAULT_PARSE_LIMITS` and
+`DEFAULT_READ_LIMITS`; pass `limits` and `read_limits` to change them). Objects
+`ezdracad` does not decode are counted in `DRACAD_PARTIAL_READ`.
+
+The file stores drawing coordinates, a drawing scale and a sheet. The adapter
+converts what DRA-CAD draws:
+
+| DRA-CAD source | IR mapping | Notes |
+| --- | --- | --- |
+| line, 3D line | `LINE` | a 3D line is projected to XY (`DRACAD_3D_PROJECTED`) |
+| 3D polyline, face in space with holes | `LWPOLYLINE` | the edges, projected to XY; the surface of a face is not filled, since the faces of a model seen from above would cover each other |
+| camera, light | left out | they are no part of what is drawn |
+| circle, arc | `CIRCLE`, `ARC` | |
+| ellipse, elliptical arc | `ELLIPSE` | the longer radius becomes the major axis |
+| point | `POINT` | the marker type is in `metadata.dracad.point_type`: 1 dot, 2 cross, 3 diagonal cross, 4 circle, 5 square, 6 circle with cross, 7 square with cross, 8 asterisk, 9 triangle, 10 to 12 the filled circle, square and triangle; 0 follows a setting of DRA-CAD, which draws a dot |
+| text | `TEXT`, or `MTEXT` for several lines | cell height as `height`; a stored character advance becomes `width_factor` (one cell per full-width character, half a cell per half-width one); sizes given on the output sheet are multiplied by the drawing scale |
+| polyline of lines and arcs | `LWPOLYLINE` with bulges | members that are not one path are drawn separately (`DRACAD_POLYLINE_EXPLODED`) |
+| quadratic and cubic spline, Bezier curve | `LWPOLYLINE` with `approximation` | through the points `ezdracad` evaluates (`DRACAD_CURVE_APPROXIMATED`) |
+| fill of a circle, ellipse, polyline or region | solid `HATCH` before the outline | colour as `#RRGGBB`, or `#RRGGBBAA` with a transparency; `metadata.dracad.fill` is `true`; a region lists its holes as loops with `is_outer: false` |
+| named area (a room, a site) | its fill, its outline and the `TEXT` of its label | |
+| gradation hatch | solid `HATCH` bands | the bands of one colour each that DRA-CAD saved for it |
+| dimension | `DIMENSION` with `definition.block` | the block holds the lines, arcs, arrowheads and text DRA-CAD saved (`DRACAD_DIMENSION_FROM_PACKAGE`) |
+| leader, hatch | their saved geometry | `LINE`, `LWPOLYLINE`, `TEXT` and arrowhead shapes; a hatch of a named pattern is the lines DRA-CAD drew for it |
+| arrowhead | `LINE`, `LWPOLYLINE`, `CIRCLE` or solid `HATCH` | by its type; the tip is the stored position; a one-sided head stands on the left of its direction, and on the right when it points anywhere from straight up over left to straight down |
+| block reference, block definition | `INSERT`, `tables.blocks` | |
+| image | `IMAGE` with `href` | lower-left corner and drawn size; no pixels (`DRACAD_IMAGE_REFERENCED`) |
+| reference to another drawing, laid under this one or placed as a part | left out | `DRACAD_EXTERNAL_REFERENCE_SKIPPED` |
+| sheet with its windows onto the model | `layouts` | see below (`DRACAD_LAYOUT_SHEETS`) |
+
+A dimension, a leader and a hatch are stored as a definition and as a package of
+the geometry DRA-CAD drew for it. The package is converted and the definition is
+kept only as `definition.source_geometry` of a dimension. A definition without a
+package draws nothing in DRA-CAD and is left out (`DRACAD_DEFINITION_NOT_DRAWN`).
+
+Layers are named by their name, or by their three-digit number when they have
+none (`001`), as DRA-CAD's own DXF export names them; only layers that are named
+or used are listed. A layer keeps its visibility and whether it is printed.
+Line types are `CONTINUOUS` and `DRACAD_LT02` … `DRACAD_LT32` with the stored
+dash and gap lengths, which are millimetres on the output sheet:
+`header.linetype_scale` is the drawing scale. Line widths come from the width
+table of the file. A colour is the RGB value of its palette entry; white and
+black lines and texts are ACI 7, the colour that contrasts with the background,
+as DRA-CAD draws them, while a fill keeps its RGB value.
+
+DRA-CAD paints the last object of the file first. The entities are listed in
+the reverse of the stored order, so that a later IR entity is drawn over an
+earlier one.
+
+A text can hold fields that DRA-CAD replaces when it draws. The adapter prints
+what the drawing says (`DRACAD_TEXT_FIELD_FILLED`): `{TCODE:DrawingName}` and
+`{TCODE:FileName}` the file name without and with its extension,
+`{TCODE:Comment}` the comment of the drawing, `{TCODE:PaperSizeName}` and
+`{TCODE:PaperOrientation}` the paper, `{TCODE:PaperScale}` and
+`{TCODE:DrawingScale}` the scales as `1:100`, and `{PSET:name}` a value of the
+property set of the drawing. A cut after the name (`@"L4"`, `@"R3"`, `@"M6"`,
+`@"M2,3"`) keeps a part of the value. A name DRA-CAD does not know prints as
+`{ERR:name}`, as in DRA-CAD. Fields for the user, the licence, dates, the
+folder and the file size take their value from outside the drawing and are
+left empty (`DRACAD_TEXT_FIELD_UNRESOLVED`); a text that then holds nothing is
+left out. The file name is that of `path`; pass `source_name` when `path` is a
+copy under another name. With `entity_provenance`,
+`metadata.dracad.stored_text` keeps the text as stored.
+
+A drawing can hold sheets next to its model. Each becomes one entry of
+`layouts`, named by its name, with its paper, the entities drawn on it in
+millimetres, and its windows onto the model as viewports: `center`, `width`
+and `height` on the sheet, `view_center`, `view_height` and `rotation` for the
+part of the model they show. `entities` is the model. A window whose outline is
+not a rectangle is left out (`DRACAD_VIEWPORT_SKIPPED`).
+
+When the drawing is printed with the pen width of each colour, `lineweight_mm`
+is that pen width instead of the width of the object, and
+`header.metadata.dracad.width_by_color` is `true`.
+
+`header.metadata.dracad` has the container (`format`), the record generation
+(`marker`), `paper_scale` (the drawing scale denominator) and `paper` with the
+sheet size in millimetres and its `extent` in drawing coordinates, the
+`comment` of the drawing, and `stated_scale` when the scale the drawing states
+differs from `paper_scale`: a title block drawn at full size for drawings at
+1:100 has `paper_scale` 1 and `stated_scale` 100. Entity ids
+are `DRA_E…`; with `entity_provenance` each entity keeps the record it came
+from in `source` and its stored attribute numbers in `metadata.dracad`.
+
+The fixtures in `tests/data/dracad` are `ezdracad`'s independently authored
+payloads; drawings saved by DRA-CAD are run from a local directory through
+`CAD2D_IR_DRACAD_FIXTURES`.

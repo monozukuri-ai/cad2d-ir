@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ADAPTER_PACKAGES = {
     "dwg": "ezdwg",
     "dgn": "ezdgn",
+    "dracad": "ezdracad",
     "dwf": "ezdwf",
     "edrawings": "edrawings-kit",
     "exb": "ezexb",
@@ -32,7 +33,7 @@ ADAPTER_PACKAGES = {
     "sxf": "ezsxf",
 }
 # These adapters require explicit opt-in for licensing/dependency or platform reasons.
-EXPLICIT_EXTRAS = {"idw", "icad", "edrawings"}
+EXPLICIT_EXTRAS = {"idw", "icad", "edrawings", "dracad"}
 
 
 @pytest.fixture(scope="module")

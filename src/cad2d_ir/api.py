@@ -290,7 +290,7 @@ def convert_file_to_ir(
     """Convert a supported CAD file to IR using format detection or an explicit adapter.
 
     ``entity_provenance=False`` omits per-entity ``source``/``metadata`` (JWW,
-    IDW, EXB; DWF omits ``source``), roughly halving peak memory for render-only
+    IDW, EXB, DRA-CAD; DWF omits ``source``), roughly halving peak memory for render-only
     imports of very large drawings.
     ``keep_3d=True`` (DWG/DXF) returns the geometry before XY projection in
     ``ImportResult.model3d``; see ``cad2d_ir.model3d``.
@@ -424,6 +424,48 @@ def convert_dwf_file_to_ir(
             strict=strict,
             curve_segments=curve_segments,
         ),
+    )
+
+
+def convert_dracad_file_to_ir(
+    path: str | Path,
+    *,
+    ir_version: str = CURRENT_IR_VERSION,
+    validate: bool = True,
+    strict: bool = True,
+    curve_segments: int = 96,
+    entity_provenance: bool = True,
+    limits: Any = None,
+    read_limits: Any = None,
+    source_name: str | None = None,
+) -> ImportResult:
+    """Convert a DRA-CAD drawing (MPZ, MPS, MPX or MPUW) directly to IR.
+
+    Requires the ``dracad`` extra (``ezdracad``). Coordinates are the stored
+    drawing coordinates taken as millimetres; the drawing scale and the sheet
+    are in ``header.metadata.dracad``. Dimensions, leaders and hatches are
+    converted from the geometry DRA-CAD saved for them. ``limits`` is an
+    ``ezdracad.ParseLimits`` and ``read_limits`` an
+    ``ezdracad.best_effort.BestEffortLimits``; by default the budgets are raised
+    above ``ezdracad``'s so that production-size drawings read. A file saved
+    with a password is not read. Text fields are replaced by what DRA-CAD
+    prints for them; ``source_name`` gives the file name they print when
+    ``path`` is a copy under another name.
+    """
+    from cad2d_ir.importers.dracad import convert_dracad_file_to_ir as import_dracad
+
+    return import_dracad(
+        path,
+        options=ImportOptions(
+            ir_version=ir_version,
+            validate=validate,
+            strict=strict,
+            curve_segments=curve_segments,
+            entity_provenance=entity_provenance,
+        ),
+        limits=limits,
+        read_limits=read_limits,
+        source_name=source_name,
     )
 
 

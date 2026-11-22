@@ -53,6 +53,7 @@ def test_registry_dispatches_optional_adapters(
 ) -> None:
     from cad2d_ir.importers import (
         dgn,
+        dracad,
         dwf,
         dwg,
         edrawings,
@@ -98,6 +99,10 @@ def test_registry_dispatches_optional_adapters(
         calls.append(("exb", path))
         return "exb-result"
 
+    def fake_dracad(path: Path, *, options: object) -> str:
+        calls.append(("dracad", path))
+        return "dracad-result"
+
     def fake_icad(path: Path, *, options: object) -> str:
         calls.append(("icd", path))
         return "icd-result"
@@ -113,6 +118,7 @@ def test_registry_dispatches_optional_adapters(
     monkeypatch.setattr(idw, "convert_idw_file_to_ir", fake_idw)
     monkeypatch.setattr(jww, "convert_jws_file_to_ir", fake_jws)
     monkeypatch.setattr(exb, "convert_exb_file_to_ir", fake_exb)
+    monkeypatch.setattr(dracad, "convert_dracad_file_to_ir", fake_dracad)
     monkeypatch.setattr(icad, "convert_icad_file_to_ir", fake_icad)
     monkeypatch.setattr(edrawings, "convert_edrw_file_to_ir", fake_edrw)
     monkeypatch.setattr(sxf, "convert_sxf_file_to_ir", fake_sxf)
@@ -127,6 +133,9 @@ def test_registry_dispatches_optional_adapters(
     icd_path = tmp_path / "part.icd"
     edrw_path = tmp_path / "drawing.EDRW"
     sxf_path = tmp_path / "drawing.p21"
+    dracad_paths = [
+        tmp_path / f"drawing.{suffix}" for suffix in ("mpz", "MPS", "mpx", "mpuw")
+    ]
     assert convert_file_to_ir(dwg_path) == "dwg-result"
     assert convert_file_to_ir(dgn_path) == "dgn-result"
     assert convert_file_to_ir(dwf_path) == "dwf-result"
@@ -137,6 +146,8 @@ def test_registry_dispatches_optional_adapters(
     assert convert_file_to_ir(icd_path) == "icd-result"
     assert convert_file_to_ir(edrw_path) == "edrw-result"
     assert convert_file_to_ir(sxf_path) == "sxf-result"
+    for dracad_path in dracad_paths:
+        assert convert_file_to_ir(dracad_path) == "dracad-result"
     assert calls == [
         ("dwg", dwg_path),
         ("dgn", dgn_path),
@@ -148,6 +159,7 @@ def test_registry_dispatches_optional_adapters(
         ("icd", icd_path),
         ("edrw", edrw_path),
         ("sxf", sxf_path),
+        *(("dracad", dracad_path) for dracad_path in dracad_paths),
     ]
 
 

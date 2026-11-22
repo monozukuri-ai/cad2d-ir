@@ -216,6 +216,33 @@ entity/source identifiers and structured details.
 Use `cad2d_ir.diagnostics.ALL_CODES` for exhaustive CI checks and
 `cad2d_ir.diagnostics.DIAGNOSTIC_CODES` for catalog metadata.
 
+## DRA-CAD diagnostics
+
+The DRA-CAD adapter (`ezdracad`) reports per drawing, with the number of objects
+in `details.count`:
+
+| Code | Severity | Action | Condition |
+| --- | --- | --- | --- |
+| `DRACAD_3D_PROJECTED` | info | normalized | Three-dimensional lines and the edges of faces in space were projected to the XY plane; faces are not filled. |
+| `DRACAD_ARROWHEAD_UNKNOWN` | warning | skipped | An arrowhead has a type outside the known ones and is left out. |
+| `DRACAD_CURVE_APPROXIMATED` | info | approximated | Quadratic and cubic splines and Bezier curves became polylines through the points `ezdracad` evaluates. |
+| `DRACAD_DEFINITION_NOT_DRAWN` | warning | skipped | A dimension or hatch has a definition but no saved geometry; DRA-CAD draws nothing for it either, and it is left out. |
+| `DRACAD_DIMENSION_FROM_PACKAGE` | info | exploded | Dimensions are drawn from the lines, arcs, arrowheads and text DRA-CAD saved for them, as a block in `definition.block`; they are not associative. |
+| `DRACAD_ENTITY_CONVERSION_FAILED` | error | skipped | A decoded object could not be converted (non-strict mode); it was skipped. |
+| `DRACAD_EXTERNAL_REFERENCE_SKIPPED` | warning | skipped | A reference to another drawing is left out, whether it is laid under this one or placed as a part: the referenced file is not part of this file. `details.files` lists the names. |
+| `DRACAD_GENERATION_UNVERIFIED` | warning | assumed | The file was saved in a record generation outside those the reader was checked against (raw markers 3 to 25); it was read with the same record layouts. |
+| `DRACAD_IMAGE_REFERENCED` | info | normalized | A placed image keeps the path of its file in `href`; a DRA-CAD drawing does not contain the pixels. |
+| `DRACAD_LAYOUT_SHEETS` | info | preserved | Sheets of the drawing are kept as `layouts`, with their windows onto the model; `entities` is the model. |
+| `DRACAD_PARTIAL_READ` | warning | skipped | `ezdracad` could not decode every object: kinds it does not read, objects that did not fit their layout, or stray records. `details` has the counts by object kind. |
+| `DRACAD_POLYLINE_EXPLODED` | info | exploded | The members of a polyline do not form one path; they are drawn as separate lines and arcs and the fill of the polyline is left out. |
+| `DRACAD_TEXT_FIELD_FILLED` | info | normalized | Text fields (`{TCODE:…}`, `{PSET:…}`) were replaced by what DRA-CAD prints for them: the file name, the comment, the paper, the scales and the property set of the drawing. |
+| `DRACAD_TEXT_FIELD_UNRESOLVED` | info | normalized | Text fields were left empty: DRA-CAD takes their values from the application, the user, the clock or the file system, not from the drawing. |
+| `DRACAD_TEXT_FORMAT_REMOVED` | info | normalized | A text lost its inline formatting (font, height and colour of a part of the text); the characters are kept. |
+| `DRACAD_TEXT_VERTICAL_IGNORED` | info | normalized | A text in a font for vertical writing is laid out horizontally. |
+| `DRACAD_UNDEFINED_BLOCK` | warning | skipped | A block reference names a block the file does not define; it is left out. |
+| `DRACAD_UNITS_ASSUMED_MM` | info | assumed | A DRA-CAD drawing carries no unit; coordinates were taken as millimetres at real size. The drawing scale and the sheet are in `header.metadata.dracad`. |
+| `DRACAD_VIEWPORT_SKIPPED` | warning | skipped | A window of a sheet is left out: its outline is not a rectangle or its view is not usable. |
+
 ## HP-GL diagnostics
 
 | Code | Severity | Action | Condition |

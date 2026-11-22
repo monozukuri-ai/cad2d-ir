@@ -8,7 +8,7 @@ for 2D CAD data.
 It provides:
 
 - a canonical JSON Schema for 2D CAD geometry and tables;
-- native DXF, DWG, DGN, DWF/DWFx, EDRW (eDrawings), EXB, HP-GL/PLT, ICD (iCAD SX), IDW, JWW, JWS, MI/BI, SXF, and vector PDF import paths;
+- native DXF, DWG, DGN, DRA-CAD (MPZ/MPS/MPX), DWF/DWFx, EDRW (eDrawings), EXB, HP-GL/PLT, ICD (iCAD SX), IDW, JWW, JWS, MI/BI, SXF, and vector PDF import paths;
 - DXF R12 (`AC1009`) and R2010 (`AC1024`) export;
 - structured import/export diagnostics;
 - deterministic IR-entity to DXF-handle correspondence.
@@ -19,6 +19,7 @@ It provides:
 pip install cad2d-ir
 pip install "cad2d-ir[dwg]"
 pip install "cad2d-ir[dgn]"
+pip install "cad2d-ir[dracad]"  # DRA-CAD (.mpz, .mps, .mpx, .mpuw); see the DRA-CAD license notice below
 pip install "cad2d-ir[dwf]"
 pip install "cad2d-ir[edrawings]"   # eDrawings drawings (.edrw); Linux x86_64, Windows, macOS arm64
 # HP-GL: install local ezhpgl + cad2d-ir wheels until the first ezhpgl release
@@ -51,10 +52,15 @@ the source distribution, which needs a Rust toolchain. See
 > Before using ICD in commercial workflows, including internal business use,
 > review the [ICD licensing terms](#icd-licensing-icadkit).
 
+> **DRA-CAD license notice:** DRA-CAD support uses `ezdracad`, which is offered
+> under PolyForm Noncommercial 1.0.0. Before using DRA-CAD import in commercial
+> workflows, including internal business use, review the
+> [DRA-CAD licensing terms](#dra-cad-licensing-ezdracad).
+
 `pip install cad2d-ir` and `pip install "cad2d-ir[all]"` do not install
-`inventor-kit` or `icadkit`; install `[idw]` or `[icad]` explicitly when needed.
-The development command `uv sync --all-extras` below includes both and installs
-`inventor-kit` and `icadkit`.
+`inventor-kit`, `icadkit` or `ezdracad`; install `[idw]`, `[icad]` or `[dracad]`
+explicitly when needed. The development command `uv sync --all-extras` below
+includes them and installs `inventor-kit`, `icadkit` and `ezdracad`.
 
 HP-GL uses ezhpgl through the optional `[hpgl]` extra. See [HP-GL conversion](docs/HPGL.md)
 for local wheel installation, paper-space mapping, page selection and loss reporting.
@@ -84,6 +90,7 @@ Import adapters:
 | DXF | built-in parser | core |
 | DWG | native `ezdwg` model | `cad2d-ir[dwg]` |
 | DGN V7 2D / V8 | native `ezdgn` models | `cad2d-ir[dgn]` |
+| DRA-CAD (MPZ / MPS / MPX / MPUW) | objects and saved display geometry from `ezdracad` | `cad2d-ir[dracad]` |
 | DWF/DWFx 2D | normalized `ezdwf` sheet model | `cad2d-ir[dwf]` |
 | EDRW (eDrawings drawing sheets) | HOOPS segment tree from `edrawings-kit` | `cad2d-ir[edrawings]` |
 | EXB (CAXA CAD / 电子图板) | stored-entity model from `ezexb` | `cad2d-ir[exb]` |
@@ -109,7 +116,7 @@ cad2d-ir validate examples/ir/minimal.json
 cad2d-ir dxf2ir drawing.dxf -o drawing.json --pretty
 cad2d-ir dxf2ir drawing.dxf --encoding cp932 -o drawing.json
 
-# Auto-detected DXF/DWG/DGN/DWF/DWFx/EDRW/EXB/HP-GL/ICD/IDW/JWW/JWS/MI/BI/PDF/SFC/P21 -> IR
+# Auto-detected DXF/DWG/DGN/DRA-CAD/DWF/DWFx/EDRW/EXB/HP-GL/ICD/IDW/JWW/JWS/MI/BI/PDF/SFC/P21 -> IR
 cad2d-ir import drawing.JWW -o drawing.json --pretty
 cad2d-ir import drawing.dwg -o drawing.json --pretty
 cad2d-ir import drawing.dgn -o drawing.json --pretty
@@ -253,7 +260,7 @@ docs/
 
 `cad2d-ir` は、2D CAD の図面を 1 つの型付きの中間表現（IR。JSON Schema つき）に読み込み、DXF に書き出す Python のライブラリです。形式ごとの読み取りは、追加のパッケージ（extras）で入れます。DXF の書き出しと JWW の要素の変換は Rust で書いてあり、`pip install cad2d-ir` で `cad2d-ir-native`（Linux・Windows・macOS の wheel）が一緒に入ります。
 
-- 読める形式: DXF、DWG、DGN、DWF / DWFx、EDRW（eDrawings）、EXB（CAXA）、HP-GL / PLT、ICD（iCAD SX）、IDW（Inventor）、JWW・JWS（Jw_cad）、MI / BI（ME10）、SXF（SFC・P21）、ベクター PDF
+- 読める形式: DXF、DWG、DGN、DRA-CAD（MPZ・MPS・MPX）、DWF / DWFx、EDRW（eDrawings）、EXB（CAXA）、HP-GL / PLT、ICD（iCAD SX）、IDW（Inventor）、JWW・JWS（Jw_cad）、MI / BI（ME10）、SXF（SFC・P21）、ベクター PDF
 - 書き出し: DXF R12（AC1009）と R2010（AC1024）
 - 読み取りと書き出しで落ちた情報は、診断として構造化して返します
 
@@ -282,8 +289,9 @@ IDW（`inventor-kit`）と ICD（`icadkit`）の読み取りは、PolyForm Nonco
 
 ## License
 
-`cad2d-ir` itself is licensed under MIT ([LICENSE](LICENSE)), including its IDW
-and ICD adapter code. Optional parser dependencies retain their own licenses.
+`cad2d-ir` itself is licensed under MIT ([LICENSE](LICENSE)), including its IDW,
+ICD and DRA-CAD adapter code. Optional parser dependencies retain their own
+licenses.
 
 ### IDW licensing (`inventor-kit`)
 
@@ -327,3 +335,24 @@ with separate commercial licenses from UnRobotics Inc. The MIT license for
 
 These additional conditions concern the `icadkit` dependency used for ICD
 support. Workflows using only other formats do not require `icadkit`.
+
+### DRA-CAD licensing (`ezdracad`)
+
+DRA-CAD support depends on `ezdracad`, which is offered under
+[PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0).
+The MIT license for `cad2d-ir` does not grant additional rights to use or
+redistribute `ezdracad`.
+
+- Use permitted by the PolyForm terms does not require a commercial agreement.
+- Use outside those permissions, including commercial internal business use
+  and commercial product integration, requires separate permission from the
+  copyright holder. See the `LICENSE` file in the
+  [ezdracad distribution](https://pypi.org/project/ezdracad/) and use the
+  [contact form](https://www.un-robotics.com/#contact).
+- If you redistribute `ezdracad` with your application, comply with its
+  distribution terms and preserve the applicable license texts and notices,
+  including those of its third-party components.
+
+These additional conditions concern the `ezdracad` dependency used for DRA-CAD
+support. Workflows using only other formats do not require `ezdracad`. The
+fixtures in `tests/data/dracad` are `ezdracad`'s and stay under its license.

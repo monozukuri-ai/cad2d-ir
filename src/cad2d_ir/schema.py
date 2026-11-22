@@ -633,6 +633,7 @@ def _validate_source(source: Any, path: str) -> None:
         "dxf",
         "dwg",
         "dgn",
+        "dracad",
         "dwf",
         "edrw",
         "exb",

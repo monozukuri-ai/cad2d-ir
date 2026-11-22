@@ -6,7 +6,7 @@ Use `cad2d_ir.api` for file imports and diagnostic-aware DXF export.
 
 ### `convert_file_to_ir(path, *, source_format="auto", ir_version="0.2.0", validate=True, strict=True, curve_segments=96, encoding="auto")`
 
-Dispatches to the DXF, DWG, DGN, DWF/DWFx, EXB, IDW, JWW, JWS, MI/BI, PDF, or SXF adapter and returns
+Dispatches to the DXF, DWG, DGN, DRA-CAD, DWF/DWFx, EXB, IDW, JWW, JWS, MI/BI, PDF, or SXF adapter and returns
 `ImportResult`:
 
 - `document`: imported IR document
@@ -40,6 +40,7 @@ Format-specific helpers are also public:
 - `convert_dwg_file_to_ir(path, ...)`
 - `convert_dgn_file_to_ir(path, *, encoding="auto", ...)`
 - `convert_dwf_file_to_ir(path, ...)`
+- `convert_dracad_file_to_ir(path, *, entity_provenance=True, limits=None, read_limits=None, source_name=None, ...)` (DRA-CAD MPZ / MPS / MPX / MPUW, `ezdracad`)
 - `convert_exb_file_to_ir(path, *, entity_provenance=True, parse_options=None, ...)` (CAXA EXB, `ezexb`)
 - `convert_idw_file_to_ir(path, *, entity_provenance=True, ...)`
 - `convert_jww_file_to_ir(path, ...)`
@@ -66,6 +67,16 @@ in partial mode with raised resource budgets; `parse_options` takes an
 `ezexb.ParseOptions`. Coordinates are millimetres at real size and the drawing
 scale and the paper measured from the frame block are in `header.metadata.exb`
 (see "EXB adapter" in docs/IMPORTERS.md).
+
+DRA-CAD import reads MPZ, MPS, MPX and MPUW drawings through `ezdracad`
+(`cad2d-ir[dracad]`) with raised resource budgets; `limits` takes an
+`ezdracad.ParseLimits` and `read_limits` an
+`ezdracad.best_effort.BestEffortLimits`. Coordinates are millimetres at real
+size, the drawing scale and the sheet are in `header.metadata.dracad`, and
+dimensions, leaders and hatches are converted from the geometry DRA-CAD saved
+for them. Text fields print what the drawing says; `source_name` is the file
+name they print when `path` is a copy under another name. Sheets of the
+drawing are `layouts` (see "DRA-CAD adapter" in docs/IMPORTERS.md).
 
 `DxfToIrResult` contains `document`, `diagnostics`,
 `warnings`, and an `encoding` convenience property for file input.

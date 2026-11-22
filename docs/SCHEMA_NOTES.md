@@ -401,6 +401,46 @@ report (completeness, record counts and the GUIDs of undecoded record types),
 and each entity's `metadata.exb` the raw colour, width and line type
 selection; `metadata.exb.hatch` keeps the hatch pattern definition.
 
+## DRA-CAD drawings
+
+A DRA-CAD drawing imports with `source.format` `"dracad"`, coordinates in
+millimetres at real size, and the drawing-level facts in
+`header.metadata.dracad`:
+
+```json
+{
+  "format": "mpz",
+  "marker": 25,
+  "units_assumed": true,
+  "paper_scale": 100.0,
+  "paper": {"width_mm": 594.0, "height_mm": 420.0,
+            "extent": [0.0, 0.0, 59400.0, 42000.0]},
+  "drawing_origin": [0.0, 0.0],
+  "comment": "…",
+  "stated_scale": 100.0,
+  "width_by_color": true
+}
+```
+
+`format` is the container (`mpz`, `mps`, `mpx` or `mpuw`) and `marker` the
+record generation. `paper_scale` is the drawing scale denominator (`100.0` is
+1:100) and `paper.extent` the sheet in drawing coordinates, so a consumer that
+writes the drawing to a sheet-based format divides the coordinates by
+`paper_scale` and uses `paper` as the sheet. `comment`, `stated_scale` and
+`width_by_color` are present only when the drawing has them: `stated_scale` is
+the scale the drawing states where it differs from `paper_scale` (a title block
+drawn at full size for drawings at 1:100 has `paper_scale` 1 and `stated_scale`
+100; the coordinates follow `paper_scale`), and `width_by_color` says that
+`lineweight_mm` is the pen width of each colour, as the drawing is printed.
+Sheets of the drawing are `layouts`; `entities` is the model. Line-type patterns
+are millimetres on the sheet: `header.linetype_scale` is `paper_scale`. A
+`POINT` has its marker type in `metadata.dracad.point_type`. A solid `HATCH` that is
+the fill of a shape has `metadata.dracad.fill` set, with or without
+`entity_provenance`: unlike the colour of a line, the colour of a fill is paint,
+and a white fill hides what is drawn before it. `source.metadata.dracad`
+records the `ezdracad` read report (completeness and the counts of decoded and
+undecoded object kinds).
+
 ## Current conversion limitations
 
 - `constraints` are IR-only metadata today and are omitted on DXF export.

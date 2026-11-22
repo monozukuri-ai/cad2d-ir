@@ -32,6 +32,11 @@ _SUFFIX_TO_FORMAT = {
     ".jws": "jws",
     ".mi": "mi",
     ".bi": "mi",
+    # DRA-CAD: the drawing, its password-capable and Unicode forms, and the flat file
+    ".mpz": "dracad",
+    ".mps": "dracad",
+    ".mpx": "dracad",
+    ".mpuw": "dracad",
     ".p21": "sxf",
     ".pdf": "pdf",
     ".sfc": "sxf",
@@ -149,6 +154,11 @@ def import_file(
         from cad2d_ir.importers.dwf import convert_dwf_file_to_ir
 
         return convert_dwf_file_to_ir(source_path, options=import_options)
+
+    if normalized_format == "dracad":
+        from cad2d_ir.importers.dracad import convert_dracad_file_to_ir
+
+        return convert_dracad_file_to_ir(source_path, options=import_options)
 
     if normalized_format == "exb":
         from cad2d_ir.importers.exb import convert_exb_file_to_ir

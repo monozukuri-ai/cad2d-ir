@@ -36,6 +36,9 @@ dependencies = [
 [project.optional-dependencies]
 dwg = ["ezdwg>=0.11,<1"]
 dgn = ["ezdgn>=0.3,<0.4"]
+# ezdracad has its own licence terms (PolyForm Noncommercial, see README), so
+# like inventor-kit it is deliberately not part of `all`.
+dracad = ["ezdracad>=0.1.0a4,<0.2"]
 dwf = ["ezdwf>=0.0.11,<0.1"]
 # edrawings-kit ships wheels for Linux x86_64, Windows and macOS arm64 only; like
 # icadkit it stays out of `all` so that `cad2d-ir[all]` installs on Linux aarch64.

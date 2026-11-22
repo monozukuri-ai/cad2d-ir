@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.19.0
+
+- DRA-CAD importer (`cad2d-ir[dracad]`, `ezdracad` 0.1.0a4 or later):
+  `convert_dracad_file_to_ir` and `source_format="dracad"` read MPZ, flat MPX,
+  and MPS and MPUW drawings saved without a password, in every record
+  generation DRA-CAD can save (`.mpz`, `.mps`, `.mpx`, `.mpuw`). The drawing is
+  converted as DRA-CAD shows it: a dimension, a leader and a hatch from the
+  lines, arcs, arrowheads and text DRA-CAD saved for them (a dimension as a
+  `DIMENSION` with `definition.block`, a hatch of a named pattern as its drawn
+  lines), the fills of circles, ellipses, polylines and regions as solid
+  `HATCH` entities with their transparency, splines and Bezier curves as
+  polylines, texts in character cells with the sizes given on the output sheet
+  multiplied by the drawing scale, and images as references to their files.
+  The drawing scale and the sheet are in `header.metadata.dracad`, the
+  line-type patterns scale with `header.linetype_scale`, and the entities are
+  listed in the order DRA-CAD paints them. Text fields print what the drawing
+  says: the file name, the comment, the paper, the scales and the property set
+  (`{TCODE:…}`, `{PSET:…}`; `source_name` gives the file name when the path is
+  a copy under another name). Sheets become `layouts` with their windows onto
+  the model as viewports, named areas keep their label, gradation hatches are
+  the colour bands DRA-CAD saved, a point keeps its marker type, the faces of a
+  model are drawn by their edges, and a drawing that is printed with the pen
+  width of each colour gets those widths. Compound files that older releases
+  saved without a class identifier and the record generation of the oldest part
+  libraries are read. Nineteen `DRACAD_*` diagnostics report what was assumed,
+  approximated or left out. `ezdracad` is offered under PolyForm Noncommercial
+  1.0.0, so the extra is not part of `all`.
+- `source.format` accepts `"dracad"`.
+
 ## 0.18.6
 
 - MI importer: a dimension is drawn as the file stores it. An MI dimension record
