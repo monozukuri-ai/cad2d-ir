@@ -171,6 +171,7 @@ entity/source identifiers and structured details.
 | `MI_CURVE_APPROXIMATED` | warning | approximated | MI import | An MI spline fallback or curved hatch boundary was sampled as a polyline. |
 | `MI_ENTITY_CONVERSION_FAILED` | error | skipped | MI import | A malformed typed MI entity was skipped in lenient mode. |
 | `MI_INSTANCE_SKIPPED` | error | skipped | MI import | An unresolved, cyclic, or non-affine MI assembly instance was skipped in lenient mode. |
+| `MI_MULTISHEET_TILED` | warning | flattened | MI import | Sheets the drawing keeps on top of each other were placed side by side along +X in one IR modelspace; offsets remain in source metadata. |
 | `MI_PARSER_DIAGNOSTIC` | warning | forwarded | MI import | An `ezmi2d` diagnostic was forwarded with its upstream code, action, and source span in `details`. The instance severity follows the upstream diagnostic. |
 | `MI_SOURCE_SEMANTICS_PRESERVED` | warning | preserved_metadata | MI import | MI semantics without an exact operational IR field, such as unscaled lineweight values or hatch pattern definitions, were retained in metadata. |
 | `MI_UNKNOWN_UNITS` | warning | preserved_metadata | MI import | The MI drawing-unit label had no IR unit mapping. |

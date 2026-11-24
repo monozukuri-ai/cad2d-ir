@@ -21,6 +21,10 @@ from cad2d_ir.importers.base import (
 from cad2d_ir.schema import validate_ir
 
 _EPSILON = 1.0e-10
+# Gap between sheets laid side by side, as a share of the widest sheet (as for IDW).
+DEFAULT_SHEET_GAP_RATIO = 0.1
+# Block references followed when measuring a sheet.
+_EXTENT_DEPTH = 64
 _TAU = 2.0 * math.pi
 
 _COLOR_MAP: dict[int, str] = {
@@ -105,6 +109,10 @@ class _ConversionContext:
     handled_annotation_ids: set[int] = field(default_factory=set)
     invalid_instance_edges: set[tuple[int, int]] = field(default_factory=set)
     instance_transforms: dict[tuple[int, int], Any] = field(default_factory=dict)
+    # Empty parts that only place one child at the origin, mapped to that child.
+    pass_through: dict[int, int] = field(default_factory=dict)
+    parts_by_index: Mapping[int, Any] = field(default_factory=dict)
+    mi_document: Any = None
     next_entity_number: int = 1
 
     def allocate_id(self) -> str:
@@ -182,8 +190,14 @@ def mi_document_to_ir(
         "pattern_mm": [],
     }
 
+    context.parts_by_index = parts_by_index
+    context.mi_document = mi_document
     top_part_index = _resolve_top_part_index(mi_document, parts_by_index)
     _classify_instance_edges(parts_by_index, context)
+    sheet_indices = set(getattr(mi_document, "sheet_part_indices", ()))
+    context.pass_through = _pass_through_parts(
+        parts_by_index, context, keep=sheet_indices | {top_part_index}
+    )
 
     modelspace_entities: list[dict[str, Any]] = []
     if top_part_index is not None:
@@ -200,8 +214,9 @@ def mi_document_to_ir(
         not in context.invalid_instance_edges
         if getattr(instance, "target_part_index", None) is not None
     )
+    # Placements name the part behind a pass-through part, so nothing refers to these.
+    block_part_indices.difference_update(context.pass_through)
     blocks: dict[str, dict[str, Any]] = {}
-    sheet_indices = set(getattr(mi_document, "sheet_part_indices", ()))
     for part_index in sorted(block_part_indices):
         part = parts_by_index.get(part_index)
         if part is None:
@@ -222,6 +237,7 @@ def mi_document_to_ir(
                         getattr(part, "parent_part_indices", ())
                     ),
                     "is_sheet": part_index in sheet_indices,
+                    **_placement_metadata(part, context),
                 }
             },
         }
@@ -230,16 +246,31 @@ def mi_document_to_ir(
         root_indices = tuple(getattr(mi_document, "root_part_indices", ()))
         if not root_indices:
             root_indices = tuple(sorted(parts_by_index))
+        reference_part = next(
+            (parts_by_index[index] for index in root_indices if index in parts_by_index),
+            None,
+        )
         for root_index in root_indices:
+            root_index, _ = _behind_pass_through(root_index, context)
             if root_index not in block_names or root_index not in parts_by_index:
                 continue
+            # Roots drawn at different scales are sized against the first one.
+            placed = _with_part_placements(
+                _IDENTITY, reference_part, parts_by_index[root_index], context
+            )
+            root_scale = (
+                {}
+                if math.isclose(placed.a, 1.0, abs_tol=_EPSILON)
+                else {"scale": placed.a}
+            )
             modelspace_entities.append(
                 context.add_converted(
                     {
                         "id": context.allocate_id(),
                         "kind": "INSERT",
                         "block": block_names[root_index],
-                        "insert": [0.0, 0.0],
+                        "insert": [placed.tx, placed.ty],
+                        **root_scale,
                         "layer": "0",
                         "metadata": {
                             "mi": {
@@ -251,6 +282,7 @@ def mi_document_to_ir(
                 )
             )
 
+    _tile_overlapping_sheets(modelspace_entities, blocks, context)
     _forward_parser_diagnostics(mi_document, context)
     _report_unsupported_entities(mi_document, context)
     _report_unhandled_annotations(mi_document, context)
@@ -265,6 +297,11 @@ def mi_document_to_ir(
         requested_encoding=requested_encoding,
     )
     header = _build_header(mi_document, units=units, source_unit=source_unit)
+    header["metadata"]["mi"]["top_part_scale"] = (
+        None
+        if top_part_index is None
+        else _placement_metadata(parts_by_index[top_part_index], context)["scale"]
+    )
     tables: dict[str, Any] = {
         "layers": context.layers,
         "linetypes": context.linetypes,
@@ -302,6 +339,7 @@ def mi_document_to_ir(
         "converted_entities": len(modelspace_entities),
         "converted_block_entities": block_entity_count,
         "converted_blocks": len(blocks),
+        "passed_through_parts": len(context.pass_through),
         "converted_entity_counts": dict(sorted(context.converted_counts.items())),
         "skipped_entities": sum(context.skipped_counts.values()),
         "skipped_entity_counts": dict(sorted(context.skipped_counts.items())),
@@ -969,9 +1007,16 @@ def _convert_instance(
     context: _ConversionContext,
 ) -> dict[str, Any]:
     parent_index = int(getattr(part, "index"))
-    target_index = int(getattr(instance, "target_part_index"))
+    target_index, passed_through = _behind_pass_through(
+        int(getattr(instance, "target_part_index")), context
+    )
     edge = (parent_index, instance_index)
-    transform = context.instance_transforms[edge]
+    transform = _with_part_placements(
+        context.instance_transforms[edge],
+        part,
+        context.parts_by_index.get(target_index),
+        context,
+    )
     result: dict[str, Any] = {
         "id": context.allocate_id(),
         "kind": "INSERT",
@@ -1005,6 +1050,8 @@ def _convert_instance(
             }
         },
     }
+    if passed_through:
+        result["metadata"]["mi"]["passed_through_part_indices"] = passed_through
     decomposed = _decompose_insert_transform(transform)
     if decomposed is None:
         # IRのAffine2DはSVG順 [a,b,c,d,e,f] (x'=a*x+c*y+e, y'=b*x+d*y+f)
@@ -1235,6 +1282,319 @@ def _sample_spline(entity: Any, curve_segments: int) -> list[list[float]]:
         )
         vertices.append(_point(entity.evaluate(parameter), "sampled spline point"))
     return _deduplicate_adjacent(vertices)
+
+
+def _tile_overlapping_sheets(
+    modelspace_entities: list[dict[str, Any]],
+    blocks: Mapping[str, dict[str, Any]],
+    context: _ConversionContext,
+) -> None:
+    """Lay the sheets side by side when the file draws them on top of each other.
+
+    A drawing of several sheets keeps each sheet in the same place: the program shows
+    one at a time. In one modelspace they would cover each other, so each sheet after
+    the first is moved along +X behind the one before, with a gap of
+    ``DEFAULT_SHEET_GAP_RATIO`` times the widest sheet. Sheets the file already keeps
+    apart stay where they are.
+    """
+    sheets = [
+        entity
+        for entity in modelspace_entities
+        if entity.get("kind") == "INSERT"
+        and entity.get("metadata", {}).get("mi", {}).get("is_sheet")
+    ]
+    if len(sheets) < 2:
+        return
+    memo: dict[str, tuple[float, float, float, float] | None] = {}
+    extents = [_entity_extent(entity, blocks, memo, _EXTENT_DEPTH) for entity in sheets]
+    if any(extent is None for extent in extents):
+        return
+    boxes = [extent for extent in extents if extent is not None]
+    overlapping = any(
+        first[0] < second[2]
+        and second[0] < first[2]
+        and first[1] < second[3]
+        and second[1] < first[3]
+        for index, first in enumerate(boxes)
+        for second in boxes[index + 1 :]
+    )
+    if not overlapping:
+        return
+    gap = max(box[2] - box[0] for box in boxes) * DEFAULT_SHEET_GAP_RATIO
+    cursor = boxes[0][0]
+    offsets: list[list[float]] = []
+    for entity, box in zip(sheets, boxes):
+        shift = cursor - box[0]
+        if not math.isclose(shift, 0.0, abs_tol=_EPSILON):
+            entity["insert"] = [
+                float(entity["insert"][0]) + shift,
+                float(entity["insert"][1]),
+            ]
+            entity["metadata"]["mi"]["sheet_offset"] = [shift, 0.0]
+        offsets.append([shift, 0.0])
+        cursor += (box[2] - box[0]) + gap
+    context.diagnostics.append(
+        ImportDiagnostic(
+            code="MI_MULTISHEET_TILED",
+            severity="warning",
+            message=(
+                f"Placed {len(sheets)} MI sheets side by side in one IR modelspace; "
+                "sheet offsets remain in source metadata."
+            ),
+            action="flattened",
+            details={"sheet_count": len(sheets), "gap": gap, "offsets": offsets},
+        )
+    )
+
+
+def _entity_extent(
+    entity: Mapping[str, Any],
+    blocks: Mapping[str, dict[str, Any]],
+    memo: dict[str, tuple[float, float, float, float] | None],
+    depth: int,
+) -> tuple[float, float, float, float] | None:
+    """(min x, min y, max x, max y) of what the entity draws, from its defining points.
+
+    Good enough to tell where a sheet ends: curves count by their centres, radii and
+    control points, text by where it starts.
+    """
+    kind = entity.get("kind")
+    points: list[tuple[float, float]] = []
+    if kind == "LINE":
+        points = [_xy(entity["p1"]), _xy(entity["p2"])]
+    elif kind in {"CIRCLE", "ARC"}:
+        cx, cy = _xy(entity["center"])
+        radius = abs(float(entity["radius"]))
+        points = [(cx - radius, cy - radius), (cx + radius, cy + radius)]
+    elif kind == "LWPOLYLINE":
+        points = [_xy(vertex) for vertex in entity.get("vertices", ())]
+    elif kind == "SPLINE":
+        points = [_xy(point) for point in entity.get("control_points", ())]
+    elif kind in {"TEXT", "MTEXT"}:
+        points = [_xy(entity["insert"])] if "insert" in entity else []
+    elif kind == "HATCH":
+        points = [
+            _xy(vertex)
+            for loop in entity.get("loops", ())
+            for vertex in loop.get("vertices", ())
+        ]
+    elif kind == "INSERT":
+        name = str(entity.get("block"))
+        if depth <= 0 or name not in blocks:
+            return None
+        if name not in memo:
+            memo[name] = None  # a block that names itself draws nothing here
+            memo[name] = _merge_extents(
+                _entity_extent(inner, blocks, memo, depth - 1)
+                for inner in blocks[name].get("entities", ())
+            )
+        inner_extent = memo[name]
+        if inner_extent is None:
+            return None
+        transform = _insert_affine(entity)
+        x0, y0, x1, y1 = inner_extent
+        points = [
+            (
+                transform.a * x + transform.c * y + transform.tx,
+                transform.b * x + transform.d * y + transform.ty,
+            )
+            for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))
+        ]
+    if not points:
+        return None
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    if not all(math.isfinite(value) for value in (*xs, *ys)):
+        return None
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _merge_extents(
+    extents: Iterable[tuple[float, float, float, float] | None],
+) -> tuple[float, float, float, float] | None:
+    found = [extent for extent in extents if extent is not None]
+    if not found:
+        return None
+    return (
+        min(extent[0] for extent in found),
+        min(extent[1] for extent in found),
+        max(extent[2] for extent in found),
+        max(extent[3] for extent in found),
+    )
+
+
+def _xy(value: Any) -> tuple[float, float]:
+    if isinstance(value, Mapping):
+        return (float(value["x"]), float(value["y"]))
+    return (float(value[0]), float(value[1]))
+
+
+def _insert_affine(entity: Mapping[str, Any]) -> "_Affine":
+    """The transform an INSERT of this module applies to its block."""
+    tx, ty = _xy(entity.get("insert", (0.0, 0.0)))
+    complete = entity.get("transform")
+    if complete is not None:
+        a, b, c, d = (float(value) for value in complete[:4])
+        return _Affine(a, b, c, d, tx, ty)
+    scale = entity.get("scale", 1.0)
+    scale_x, scale_y = (
+        (float(scale[0]), float(scale[1]))
+        if isinstance(scale, (list, tuple))
+        else (float(scale), float(scale))
+    )
+    angle = math.radians(float(entity.get("rotation", 0.0)))
+    cos_angle, sin_angle = math.cos(angle), math.sin(angle)
+    return _Affine(
+        a=cos_angle * scale_x,
+        b=sin_angle * scale_x,
+        c=-sin_angle * scale_y,
+        d=cos_angle * scale_y,
+        tx=tx,
+        ty=ty,
+    )
+
+
+@dataclass(frozen=True)
+class _Affine:
+    """x' = a*x + c*y + tx, y' = b*x + d*y + ty (the fields ezmi2d's Affine2D has)."""
+
+    a: float
+    b: float
+    c: float
+    d: float
+    tx: float
+    ty: float
+
+
+_IDENTITY = _Affine(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)
+
+
+def _part_placement(
+    part: Any, context: _ConversionContext
+) -> tuple[float, float, float] | None:
+    """Scale and offset the part's geometry is drawn with, when the file states them.
+
+    A point ``p`` of the part lies at ``scale * p + offset`` on the sheet, whatever part it
+    is placed in: a view drawn at 1:5 holds geometry five times the size it has there.
+    ezmi2d 0.2.5 and later read both (``Document.part_placement``), with parts whose
+    geometry is kept in sheet units (frames, title blocks, symbols) at full size.
+    """
+    reader = getattr(context.mi_document, "part_placement", None)
+    placement = None if part is None or reader is None else reader(part)
+    if placement is None:
+        return None
+    offset = getattr(placement, "offset")
+    values = (
+        float(getattr(placement, "scale")),
+        float(getattr(offset, "x")),
+        float(getattr(offset, "y")),
+    )
+    if not all(math.isfinite(value) for value in values) or values[0] <= 0.0:
+        return None
+    return values
+
+
+def _placement_metadata(part: Any, context: _ConversionContext) -> dict[str, Any]:
+    placement = _part_placement(part, context)
+    if placement is None:
+        return {"scale": None, "offset": None}
+    return {"scale": placement[0], "offset": [placement[1], placement[2]]}
+
+
+def _with_part_placements(
+    transform: Any, parent: Any, child: Any, context: _ConversionContext
+) -> _Affine:
+    """The placement's transform with the two parts' scales and offsets taken in.
+
+    Equating where a point lies on the sheet in the child's and in the parent's
+    coordinates gives the child point in the parent's units; the placement's own matrix
+    is applied after that. Parts that state no scale are taken as they are.
+    """
+    result = _Affine(
+        float(transform.a),
+        float(transform.b),
+        float(transform.c),
+        float(transform.d),
+        float(transform.tx),
+        float(transform.ty),
+    )
+    parent_placement = _part_placement(parent, context)
+    child_placement = _part_placement(child, context)
+    if parent_placement is None or child_placement is None:
+        return result
+    factor = child_placement[0] / parent_placement[0]
+    dx = (child_placement[1] - parent_placement[1]) / parent_placement[0]
+    dy = (child_placement[2] - parent_placement[2]) / parent_placement[0]
+    return _Affine(
+        a=result.a * factor,
+        b=result.b * factor,
+        c=result.c * factor,
+        d=result.d * factor,
+        tx=result.a * dx + result.c * dy + result.tx,
+        ty=result.b * dx + result.d * dy + result.ty,
+    )
+
+
+def _pass_through_parts(
+    parts_by_index: Mapping[int, Any],
+    context: _ConversionContext,
+    *,
+    keep: set[int | None],
+) -> dict[int, int]:
+    """Parts that hold nothing of their own and place exactly one child at the origin.
+
+    Some drawings nest a part inside dozens of such parts. Written as blocks they give
+    block references as many levels deep, more than drawing programs and viewers follow,
+    while the geometry sits where the innermost part puts it. A placement of such a part
+    names the part behind it instead (``_behind_pass_through``) and the part is not
+    written as a block. A part whose placement of the child moves, turns or scales it is
+    kept: skipping it would need the two placements combined. The scale the empty part is
+    drawn with does not matter: each part states where it lies on the sheet by itself
+    (``_with_part_placements``). The top part and the sheets are kept too.
+    """
+    result: dict[int, int] = {}
+    for part_index, part in parts_by_index.items():
+        if part_index in keep:
+            continue
+        if getattr(part, "entities", ()) or getattr(part, "annotations", ()):
+            continue
+        instances = tuple(getattr(getattr(part, "assembly", None), "instances", ()))
+        if len(instances) != 1:
+            continue
+        edge = (part_index, 0)
+        if edge in context.invalid_instance_edges:
+            continue
+        transform = context.instance_transforms.get(edge)
+        target_index = getattr(instances[0], "target_part_index", None)
+        if transform is None or target_index is None or not _is_identity(transform):
+            continue
+        result[part_index] = int(target_index)
+    return result
+
+
+def _behind_pass_through(
+    part_index: int, context: _ConversionContext
+) -> tuple[int, list[int]]:
+    """The part a placement of ``part_index`` draws, and the pass-through parts skipped."""
+    skipped: list[int] = []
+    while part_index in context.pass_through and part_index not in skipped:
+        skipped.append(part_index)
+        part_index = context.pass_through[part_index]
+    return part_index, skipped
+
+
+def _is_identity(transform: Any) -> bool:
+    return all(
+        math.isclose(float(actual), expected, abs_tol=_EPSILON)
+        for actual, expected in (
+            (transform.a, 1.0),
+            (transform.b, 0.0),
+            (transform.c, 0.0),
+            (transform.d, 1.0),
+            (transform.tx, 0.0),
+            (transform.ty, 0.0),
+        )
+    )
 
 
 def _classify_instance_edges(

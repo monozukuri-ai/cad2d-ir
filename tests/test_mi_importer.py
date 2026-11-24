@@ -611,3 +611,331 @@ def test_invalid_assembly_cycle_is_strict_or_diagnosed_in_lenient_mode() -> None
     assert any(
         diagnostic.code == "MI_INSTANCE_SKIPPED" for diagnostic in result.diagnostics
     )
+
+
+def _with_wrapper_chain(source: ezmi2d.Document, length: int) -> ezmi2d.Document:
+    """``phase5.mi`` with ``length`` empty parts between the drawing and its second child.
+
+    Each added part holds nothing of its own and places exactly one child at the origin,
+    the way some drawings nest a part inside dozens of empty ones.
+    """
+    drawing = source.parts[source.top_part_index]
+    sheet_b = source.parts[2]
+    assert not sheet_b.entities and not sheet_b.annotations
+    assert sheet_b.assembly is not None and len(sheet_b.assembly.instances) == 1
+    inner = sheet_b.assembly.instances[0]
+    first = len(source.parts)
+    wrappers = []
+    for offset in range(length):
+        index = first + offset
+        target = index + 1 if offset + 1 < length else inner.target_part_index
+        instance = replace(inner, target_part_index=target, is_sheet=False)
+        wrappers.append(
+            replace(
+                sheet_b,
+                index=index,
+                assembly=replace(sheet_b.assembly, instances=(instance,)),
+                child_part_indices=(target,),
+                parent_part_indices=(index - 1 if offset else drawing.index,),
+            )
+        )
+    assembly = drawing.assembly
+    assert assembly is not None
+    second = replace(assembly.instances[1], target_part_index=first, is_sheet=False)
+    parts = list(source.parts) + wrappers
+    parts[drawing.index] = replace(
+        drawing, assembly=replace(assembly, instances=(assembly.instances[0], second))
+    )
+    return replace(source, parts=tuple(parts))
+
+
+def _nesting_depth(document: dict) -> int:
+    blocks = document["tables"]["blocks"]
+
+    def depth(entities: list[dict], seen: tuple[str, ...]) -> int:
+        deepest = 0
+        for entity in entities:
+            if entity["kind"] == "INSERT" and entity["block"] not in seen:
+                inner = blocks[entity["block"]]["entities"]
+                deepest = max(deepest, 1 + depth(inner, (*seen, entity["block"])))
+        return deepest
+
+    return depth(document["entities"], ())
+
+
+def test_empty_parts_that_only_place_one_child_are_passed_through() -> None:
+    source = ezmi2d.readfile(FIXTURES / "phase5.mi")
+    plain = mi_document_to_ir(source)
+    result = mi_document_to_ir(_with_wrapper_chain(source, 40))
+    document = result.document
+    blocks = document["tables"]["blocks"]
+
+    # The placement of the chain's first part now names the part that holds the geometry,
+    # with the same position; the 40 empty parts are not written as blocks. (SheetB is no
+    # longer placed, and stays a block because it is a sheet.)
+    placed = document["entities"][1]
+    assert placed["block"] == "MI_PART_0_Leaf"
+    assert placed["insert"] == pytest.approx([10.0, 0.0])
+    assert placed["metadata"]["mi"]["target_part_index"] == 0
+    assert placed["metadata"]["mi"]["passed_through_part_indices"] == list(range(4, 44))
+    assert sorted(blocks) == ["MI_PART_0_Leaf", "MI_PART_1_SheetA", "MI_PART_2_SheetB"]
+    assert _nesting_depth(document) == 2
+    assert result.statistics["passed_through_parts"] == 40
+    assert result.statistics["converted_blocks"] == 3
+    # Nothing else moves: the other placement and the blocks' contents are as before.
+    assert document["entities"][0] == plain.document["entities"][0]
+    assert blocks["MI_PART_0_Leaf"] == plain.document["tables"]["blocks"]["MI_PART_0_Leaf"]
+    validate_ir(document, strict_jsonschema=True)
+
+
+def test_parts_with_content_a_moved_child_or_a_sheet_are_kept_as_blocks() -> None:
+    source = ezmi2d.readfile(FIXTURES / "phase5.mi")
+
+    # A sheet stays a block even when it only places one child (phase5.mi: SheetB).
+    sheets = mi_document_to_ir(source)
+    assert sheets.document["entities"][1]["block"] == "MI_PART_2_SheetB"
+    assert sheets.statistics["passed_through_parts"] == 0
+
+    # An empty part that moves its child is kept: skipping it would need the two placements
+    # combined.
+    chained = _with_wrapper_chain(source, 1)
+    wrapper = chained.parts[4]
+    assert wrapper.assembly is not None
+    moved = replace(
+        wrapper.assembly.instances[0],
+        transform_values=(1.0, 0.0, 5.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+    )
+    parts = list(chained.parts)
+    parts[4] = replace(wrapper, assembly=replace(wrapper.assembly, instances=(moved,)))
+    result = mi_document_to_ir(replace(chained, parts=tuple(parts)))
+    assert result.document["entities"][1]["block"].startswith("MI_PART_4_")
+    assert result.statistics["passed_through_parts"] == 0
+
+    # A part with geometry of its own is kept (phase5.mi: SheetA holds annotations).
+    assert "MI_PART_1_SheetA" in result.document["tables"]["blocks"]
+
+
+def _ezmi2d_reads_part_scale() -> bool:
+    # ezmi2d 0.2.5 states the scale and offset each part is drawn with.
+    return hasattr(ezmi2d.Document, "part_placement")
+
+
+needs_part_scale = pytest.mark.skipif(
+    not _ezmi2d_reads_part_scale(),
+    reason="ezmi2d does not read the scale and offset of parts",
+)
+
+
+def _with_placements(
+    source: ezmi2d.Document, placements: dict[int, tuple[float, tuple[float, float]]]
+) -> ezmi2d.Document:
+    """``source`` with the scale and offset of the given parts set."""
+    parts = list(source.parts)
+    for index, (scale, offset) in placements.items():
+        part = parts[index]
+        assert part.assembly is not None
+        parts[index] = replace(
+            part,
+            assembly=replace(part.assembly, scale=scale, offset=ezmi2d.Vec2(*offset)),
+        )
+    return replace(source, parts=tuple(parts))
+
+
+@needs_part_scale
+def test_parts_are_placed_with_the_scale_and_offset_they_are_drawn_with() -> None:
+    source = ezmi2d.readfile(FIXTURES / "phase5.mi")
+    # A point p of a part lies at scale * p + offset on the sheet. The drawing and SheetA
+    # are drawn 1:1, SheetB 1:2 moved by (1, 1), the leaf 1:5 moved by (3, -4).
+    document = _with_placements(
+        source,
+        {
+            3: (1.0, (0.0, 0.0)),
+            1: (1.0, (0.0, 0.0)),
+            2: (0.5, (1.0, 1.0)),
+            0: (0.2, (3.0, -4.0)),
+        },
+    )
+
+    result = mi_document_to_ir(document)
+    blocks = result.document["tables"]["blocks"]
+
+    # SheetA in the drawing: nothing changes.
+    sheet_a = result.document["entities"][0]
+    assert sheet_a["insert"] == pytest.approx([0.0, 0.0])
+    assert "scale" not in sheet_a
+    # SheetB in the drawing: half size and moved by its offset, then placed 10 to the right.
+    sheet_b = result.document["entities"][1]
+    assert sheet_b["block"] == "MI_PART_2_SheetB"
+    assert sheet_b["scale"] == pytest.approx(0.5)
+    assert sheet_b["insert"] == pytest.approx([11.0, 1.0])
+    # The leaf in SheetA (1:1): a fifth of its size at its offset.
+    leaf_in_a = blocks["MI_PART_1_SheetA"]["entities"][3]
+    assert leaf_in_a["scale"] == pytest.approx(0.2)
+    assert leaf_in_a["insert"] == pytest.approx([3.0, -4.0])
+    # The leaf in SheetB (1:2, moved by (1, 1)): measured in SheetB's units, so that
+    # 0.5 * (0.4 * p + (4, -10)) + (1, 1) = 0.2 * p + (3, -4).
+    leaf_in_b = blocks["MI_PART_2_SheetB"]["entities"][0]
+    assert leaf_in_b["scale"] == pytest.approx(0.4)
+    assert leaf_in_b["insert"] == pytest.approx([4.0, -10.0])
+    assert blocks["MI_PART_0_Leaf"]["metadata"]["mi"]["scale"] == pytest.approx(0.2)
+    assert blocks["MI_PART_0_Leaf"]["metadata"]["mi"]["offset"] == pytest.approx([3.0, -4.0])
+    assert result.document["header"]["metadata"]["mi"]["top_part_scale"] == pytest.approx(1.0)
+    validate_ir(result.document, strict_jsonschema=True)
+
+
+@needs_part_scale
+def test_a_part_behind_pass_through_parts_keeps_its_own_scale() -> None:
+    source = ezmi2d.readfile(FIXTURES / "phase5.mi")
+    chained = _with_wrapper_chain(source, 3)
+    # The empty parts are drawn at other scales than the leaf they lead to; where the leaf
+    # lies on the sheet depends on its own scale and offset only.
+    document = _with_placements(
+        chained,
+        {
+            3: (1.0, (0.0, 0.0)),
+            4: (0.5, (0.0, 0.0)),
+            5: (0.5, (0.0, 0.0)),
+            6: (0.25, (0.0, 0.0)),
+            0: (0.2, (3.0, -4.0)),
+        },
+    )
+
+    result = mi_document_to_ir(document)
+
+    placed = result.document["entities"][1]
+    assert placed["block"] == "MI_PART_0_Leaf"
+    assert placed["metadata"]["mi"]["passed_through_part_indices"] == [4, 5, 6]
+    assert placed["scale"] == pytest.approx(0.2)
+    # Scaled and moved by its offset, then placed 10 to the right like the chain was.
+    assert placed["insert"] == pytest.approx([13.0, -4.0])
+
+
+def test_parts_that_state_no_scale_are_placed_as_before() -> None:
+    result = convert_mi_file_to_ir(FIXTURES / "phase5.mi", curve_segments=32)
+
+    for entity in result.document["entities"]:
+        assert "scale" not in entity
+    assert result.document["header"]["metadata"]["mi"]["top_part_scale"] is None
+    for block in result.document["tables"]["blocks"].values():
+        assert block["metadata"]["mi"]["scale"] is None
+        assert block["metadata"]["mi"]["offset"] is None
+
+
+def _with_second_sheet_at_the_origin(source: ezmi2d.Document) -> ezmi2d.Document:
+    """``phase5.mi`` with SheetB placed where SheetA is, the way sheets of one drawing are."""
+    drawing = source.parts[source.top_part_index]
+    assembly = drawing.assembly
+    assert assembly is not None
+    second = replace(
+        assembly.instances[1],
+        transform_values=(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0),
+    )
+    parts = list(source.parts)
+    parts[drawing.index] = replace(
+        drawing, assembly=replace(assembly, instances=(assembly.instances[0], second))
+    )
+    return replace(source, parts=tuple(parts))
+
+
+def _extent_x(document: dict, placed: dict) -> tuple[float, float]:
+    """Smallest and largest x of the line ends, centres and vertices a placement draws."""
+    blocks = document["tables"]["blocks"]
+
+    def points(entities: list[dict], dx: float) -> list[float]:
+        found: list[float] = []
+        for entity in entities:
+            if entity["kind"] == "INSERT":
+                found += points(
+                    blocks[entity["block"]]["entities"], dx + entity["insert"][0]
+                )
+            elif entity["kind"] in {"ARC", "CIRCLE"}:
+                found += [
+                    dx + entity["center"][0] - entity["radius"],
+                    dx + entity["center"][0] + entity["radius"],
+                ]
+            elif entity["kind"] == "LWPOLYLINE":
+                found += [dx + vertex[0] for vertex in entity["vertices"]]
+        return found
+
+    xs = points(blocks[placed["block"]]["entities"], placed["insert"][0])
+    return min(xs), max(xs)
+
+
+def test_sheets_drawn_on_top_of_each_other_are_laid_side_by_side() -> None:
+    source = ezmi2d.readfile(FIXTURES / "phase5.mi")
+
+    result = mi_document_to_ir(_with_second_sheet_at_the_origin(source))
+    document = result.document
+
+    first, second = document["entities"]
+    assert first["insert"] == pytest.approx([0.0, 0.0])
+    # The second sheet starts a tenth of the widest sheet to the right of the first.
+    first_x = _extent_x(document, first)
+    second_x = _extent_x(document, second)
+    widest = max(first_x[1] - first_x[0], second_x[1] - second_x[0])
+    assert second_x[0] == pytest.approx(first_x[1] + 0.1 * widest)
+    assert second["insert"][1] == pytest.approx(0.0)
+    assert second["metadata"]["mi"]["sheet_offset"] == pytest.approx(
+        [second["insert"][0], 0.0]
+    )
+    assert "sheet_offset" not in first["metadata"]["mi"]
+    tiled = [d for d in result.diagnostics if d.code == "MI_MULTISHEET_TILED"]
+    assert len(tiled) == 1
+    assert tiled[0].details["sheet_count"] == 2
+    assert tiled[0].details["offsets"][0] == pytest.approx([0.0, 0.0])
+    assert tiled[0].details["offsets"][1] == pytest.approx(second["insert"])
+    validate_ir(document, strict_jsonschema=True)
+
+
+def test_sheets_that_do_not_overlap_stay_where_the_file_puts_them() -> None:
+    # phase5.mi places SheetB 10 to the right of SheetA: nothing is on top of anything.
+    result = convert_mi_file_to_ir(FIXTURES / "phase5.mi", curve_segments=32)
+
+    assert result.document["entities"][1]["insert"] == pytest.approx([10.0, 0.0])
+    assert not [d for d in result.diagnostics if d.code == "MI_MULTISHEET_TILED"]
+
+
+
+
+class _SheetUnitParts:
+    """A document whose given parts are kept in sheet units, the way ezmi2d reports it."""
+
+    def __init__(self, document: ezmi2d.Document, part_indices: set[int]) -> None:
+        self._document = document
+        self._part_indices = part_indices
+
+    def __getattr__(self, name: str):
+        return getattr(self._document, name)
+
+    def part_placement(self, part: ezmi2d.Part):
+        placement = self._document.part_placement(part)
+        if placement is None or part.index not in self._part_indices:
+            return placement
+        return replace(placement, scale=1.0)
+
+
+@needs_part_scale
+def test_a_part_kept_in_sheet_units_is_not_scaled() -> None:
+    source = ezmi2d.readfile(FIXTURES / "phase5.mi")
+    # The leaf's record states 1:5, but its geometry is kept in sheet units (a title block
+    # in a drawing at another scale): only its offset applies.
+    document = _SheetUnitParts(
+        _with_placements(
+            source,
+            {
+                3: (1.0, (0.0, 0.0)),
+                1: (1.0, (0.0, 0.0)),
+                2: (1.0, (0.0, 0.0)),
+                0: (0.2, (3.0, -4.0)),
+            },
+        ),
+        {0},
+    )
+
+    result = mi_document_to_ir(document)
+
+    leaf_in_a = result.document["tables"]["blocks"]["MI_PART_1_SheetA"]["entities"][3]
+    assert "scale" not in leaf_in_a
+    assert leaf_in_a["insert"] == pytest.approx([3.0, -4.0])
+    leaf = result.document["tables"]["blocks"]["MI_PART_0_Leaf"]["metadata"]["mi"]
+    assert leaf["scale"] == pytest.approx(1.0)

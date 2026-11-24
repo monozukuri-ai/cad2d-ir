@@ -1049,6 +1049,13 @@ DIAGNOSTIC_CODES: dict[str, DiagnosticCode] = {
         "MI import",
         "An unresolved, cyclic, or non-affine assembly instance was skipped.",
     ),
+    "MI_MULTISHEET_TILED": DiagnosticCode(
+        "warning",
+        "flattened",
+        "MI import",
+        "Sheets drawn on top of each other were placed side by side in one IR "
+        "modelspace with sheet offsets retained in source metadata.",
+    ),
     "SXF_DIMENSION_CONVERSION_FAILED": DiagnosticCode(
         "error", "skipped", "SXF import", "A malformed SXF dimension was skipped."
     ),

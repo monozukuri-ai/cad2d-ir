@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.19.1
+
+- MI: parts are placed with the scale and offset they are drawn with
+  (`ezmi2d` 0.2.5 or later). A drawing whose views, details, frame and title
+  block are drawn at different scales came out with every part at its stored
+  size: a view at 1:5 five times too large next to the frame, a 20:1 detail a
+  twentieth of its size. Each `INSERT` now carries the scale and position of
+  its part in the units of the part it is placed in; modelspace stays in the
+  units of the top part (`header.metadata.mi.top_part_scale`), and the block
+  metadata states the scale and offset of each part. Drawings whose parts
+  share one scale are unchanged.
+- MI: empty parts that only place one child at the origin are passed through
+  instead of being written as blocks (`passed_through_part_indices` on the
+  placement). Drawings that nest a part inside dozens of them no longer give
+  block references too deep for viewers and writers to follow.
+- MI: the sheets of a multi-sheet drawing, kept on top of each other in the
+  file, are laid out side by side along +X (`MI_MULTISHEET_TILED`).
+
 ## 0.19.0
 
 - DRA-CAD importer (`cad2d-ir[dracad]`, `ezdracad` 0.1.0a4 or later):

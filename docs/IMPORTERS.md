@@ -298,7 +298,7 @@ retained in header metadata.
 | dimension families | `GENERIC DIMENSION` | typed reference points/IDs, text position, measurement, formatted text, property/style IDs, and tolerances remain in the flexible definition; with `ezmi2d` 0.2.3 or later also `text_height` and `text_rotation` (degrees) of the main text and `text_height` of each tolerance, from the `DTA` text attribute and the stored text box; with `ezmi2d` 0.2.4 or later the drawn form the record stores as `rendered_paths` (dimension and extension line pieces, arcs as polylines, arrowheads as closed triangles) and `rendered_texts` (main, tolerance, prefix, postfix and lower texts, each with height and direction), the symbol font codes of the texts as characters, and for a linear dimension a point of the dimension line in `points.location` with its direction in `rotation` |
 | `LED` | `LWPOLYLINE` | vertices map to visible geometry; arrow type/size remain metadata and flattening is diagnosed |
 | `HAT` + `COC`/`PFA`/`HAPP` | patterned `HATCH` | ordered curve boundaries are sampled with an approximation record; outer/inner association and source pattern lines remain metadata |
-| `ASSE` part hierarchy | block table + `INSERT` | nested/shared definitions, sheets, signed scale, rotation, translation, and exact affine transforms are retained without world-space duplication |
+| `ASSE` part hierarchy | block table + `INSERT` | nested/shared definitions, sheets, signed scale, rotation, translation, and exact affine transforms are retained without world-space duplication; each part is placed with the scale and offset it is drawn with |
 
 MI color codes 0 through 7 map to their named RGB values. Named linetypes are
 retained, but their physical dash lengths are not exposed by the parser, so
@@ -307,6 +307,29 @@ lineweight value is retained in metadata instead of being mislabeled as
 millimeters. Multiple source layers, unknown visibility codes, mirrored text,
 presence-aware spline flags, and hatch pattern definitions likewise stay in
 MI metadata with one aggregate `MI_SOURCE_SEMANTICS_PRESERVED` diagnostic.
+
+Every part of an MI drawing states the scale it is drawn with: a view at 1:5
+holds geometry five times the size it has on the sheet, next to a frame kept
+at 1:1. With `ezmi2d` 0.2.5 or later (`Document.part_placement`) each `INSERT`
+carries the scale and position that put the part where the drawing shows it,
+measured in the units of the part it is placed in, so that views, details,
+frames and title blocks keep their sizes relative to each other. Modelspace
+is in the units of the top part, whose scale is `header.metadata.mi.top_part_scale`;
+the scale and offset of each part are in the block metadata. Parts whose
+records state no scale, and all parts with an older `ezmi2d`, are placed by
+their assembly matrices alone.
+
+Empty parts that only place one child at the origin are passed through: the
+placement names the part behind them (`passed_through_part_indices` lists the
+ones skipped) and they are not written as blocks. Drawings nest parts dozens
+of such levels deep, more than programs follow block references. The top part
+and the sheets are kept.
+
+A drawing of several sheets keeps them in the same place and shows one at a
+time. Sheets that would cover each other in one modelspace are laid out side
+by side along +X with a gap of a tenth of the widest sheet
+(`MI_MULTISHEET_TILED`, `sheet_offset` in the placement's metadata); sheets
+the file keeps apart stay where they are.
 
 `ezmi2d` parser diagnostics are forwarded as `MI_PARSER_DIAGNOSTIC` without
 discarding their upstream code, action, severity, or byte/line span. Raw
